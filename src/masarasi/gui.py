@@ -57,8 +57,8 @@ class Application:
         self._trip_choices: Dict[str, Optional[int]] = {}
 
         root.title("masarasi — Segel-Logbuch")
-        root.geometry("920x780")
-        root.minsize(760, 600)
+        root.geometry("1180x640")
+        root.minsize(1000, 560)
 
         self._build_ui()
         self._refresh_trips()
@@ -119,28 +119,31 @@ class Application:
         )
         self._close_trip_btn.grid(row=0, column=3, padx=4)
 
-        # Live-Daten-Dashboard
-        dash = ttk.LabelFrame(self._root, text="Aktuelle Messwerte")
-        dash.pack(fill="x", **pad)
-        columns = 4
-        for index, (key, label, unit) in enumerate(FIELD_LABELS):
-            row, col = divmod(index, columns)
-            cell = ttk.Frame(dash)
-            cell.grid(row=row, column=col, sticky="w", padx=10, pady=6)
-            ttk.Label(cell, text=label, foreground="#666").pack(anchor="w")
-            value = tk.Label(cell, text="—", font=("TkDefaultFont", 13, "bold"))
-            value.pack(anchor="w")
-            ttk.Label(cell, text=unit, foreground="#999").pack(anchor="w")
+        # Hauptzeile: Messwerte | Bedingungen | Kartenplotter nebeneinander
+        main_row = ttk.Frame(self._root)
+        main_row.pack(fill="x", **pad)
+
+        # Messwerte kompakt (zwei Spalten, je Zeile "Label  Wert Einheit")
+        dash = ttk.LabelFrame(main_row, text="Messwerte")
+        dash.pack(side="left", fill="y")
+        per_col = (len(FIELD_LABELS) + 1) // 2
+        for index, (key, label, _unit) in enumerate(FIELD_LABELS):
+            row = index % per_col
+            base = (index // per_col) * 2
+            ttk.Label(dash, text=label, foreground="#666").grid(
+                row=row, column=base, sticky="e", padx=(8, 3), pady=1
+            )
+            value = tk.Label(dash, text="—", font=("TkDefaultFont", 10, "bold"),
+                             width=11, anchor="w")
+            value.grid(row=row, column=base + 1, sticky="w", padx=(0, 10), pady=1)
             self._value_labels[key] = value
 
-        # Mittlerer Bereich: Bedingungen + Kartenplotter nebeneinander
-        mid = ttk.Frame(self._root)
-        mid.pack(fill="x", **pad)
-        cond = ttk.LabelFrame(mid, text="Bedingungen (werden bei jedem Log mitgeschrieben)")
-        cond.pack(side="left", fill="both", expand=True)
+        cond = ttk.LabelFrame(main_row, text="Bedingungen (bei jedem Log mitgeschrieben)")
+        cond.pack(side="left", fill="both", expand=True, padx=(8, 0))
         self._build_conditions(cond)
-        plotter = ttk.LabelFrame(mid, text="Kartenplotter (GoFree)")
-        plotter.pack(side="left", fill="both", padx=(8, 0))
+
+        plotter = ttk.LabelFrame(main_row, text="Kartenplotter")
+        plotter.pack(side="left", fill="y", padx=(8, 0))
         self._build_plotter(plotter)
 
         # Logging-Steuerung
@@ -211,33 +214,38 @@ class Application:
 
     def _build_conditions(self, parent: ttk.LabelFrame) -> None:
         self._cond_vars: Dict[str, tk.Variable] = {}
+        # In zwei Spalten anordnen, damit die Maske flach bleibt.
         self._row = 0
+        per_col = 5
 
         def add(label, widget):
+            i = self._row
+            r = i % per_col
+            base = (i // per_col) * 2
             ttk.Label(parent, text=label).grid(
-                row=self._row, column=0, sticky="e", padx=4, pady=2
+                row=r, column=base, sticky="e", padx=(6, 3), pady=2
             )
-            widget.grid(row=self._row, column=1, sticky="w", padx=4, pady=2)
+            widget.grid(row=r, column=base + 1, sticky="w", padx=(0, 8), pady=2)
             self._row += 1
 
         self._cond_vars["logevent"] = tk.StringVar(value="Routineeintrag")
         add("Anlass:", ttk.Combobox(
-            parent, textvariable=self._cond_vars["logevent"], width=22,
+            parent, textvariable=self._cond_vars["logevent"], width=18,
             values=["Routineeintrag", "Wache", "Manöver", "Hafen", "Ankern", "Besonderes"],
         ))
         self._cond_vars["engine_mode"] = tk.StringVar(value="automatisch")
         add("Motor:", ttk.Combobox(
-            parent, textvariable=self._cond_vars["engine_mode"], width=22,
+            parent, textvariable=self._cond_vars["engine_mode"], width=18,
             state="readonly", values=["automatisch", "ein", "aus"],
         ))
         self._cond_vars["mainsail"] = tk.StringVar(value="—")
         add("Großsegel:", ttk.Combobox(
-            parent, textvariable=self._cond_vars["mainsail"], width=22,
+            parent, textvariable=self._cond_vars["mainsail"], width=18,
             state="readonly", values=MAINSAIL_OPTIONS,
         ))
         self._cond_vars["genoa"] = tk.StringVar()
         add("Genua %:", ttk.Spinbox(
-            parent, from_=0, to=100, textvariable=self._cond_vars["genoa"], width=10,
+            parent, from_=0, to=100, textvariable=self._cond_vars["genoa"], width=8,
         ))
         self._cond_vars["spinnaker"] = tk.BooleanVar(value=False)
         add("Spinnaker:", ttk.Checkbutton(
@@ -245,26 +253,26 @@ class Application:
         ))
         self._cond_vars["cloud"] = tk.StringVar(value="—")
         add("Bewölkung:", ttk.Combobox(
-            parent, textvariable=self._cond_vars["cloud"], width=22,
+            parent, textvariable=self._cond_vars["cloud"], width=18,
             state="readonly", values=CLOUD_COVER_LABELS,
         ))
         self._cond_vars["precip"] = tk.StringVar(value="kein")
         add("Niederschlag:", ttk.Combobox(
-            parent, textvariable=self._cond_vars["precip"], width=22,
+            parent, textvariable=self._cond_vars["precip"], width=18,
             state="readonly", values=PRECIPITATION,
         ))
         self._cond_vars["visibility"] = tk.StringVar(value="—")
         add("Sicht:", ttk.Combobox(
-            parent, textvariable=self._cond_vars["visibility"], width=22,
+            parent, textvariable=self._cond_vars["visibility"], width=18,
             state="readonly", values=VISIBILITY_LABELS,
         ))
         self._cond_vars["wave"] = tk.StringVar()
-        add("Seegang/Welle (m):", ttk.Entry(
-            parent, textvariable=self._cond_vars["wave"], width=12,
+        add("Seegang (m):", ttk.Entry(
+            parent, textvariable=self._cond_vars["wave"], width=10,
         ))
         self._cond_vars["note"] = tk.StringVar()
         add("Bemerkung:", ttk.Entry(
-            parent, textvariable=self._cond_vars["note"], width=30,
+            parent, textvariable=self._cond_vars["note"], width=20,
         ))
 
         # Änderungen sofort in den Thread-sicheren Cache übernehmen,
@@ -313,10 +321,10 @@ class Application:
         self._capture_enabled = False       # (Auto-Aufnahme derzeit nicht genutzt)
         self._plotter_label = tk.Label(
             parent,
-            text="(kein Bild)\n\nPlotter-Screenshot laden —\nwird an den nächsten Eintrag gehängt",
-            width=42, height=12, background="#1f2d36", foreground="#c8d2d8",
+            text="(kein Bild)\n\nPlotter-Screenshot\nladen",
+            width=32, height=8, background="#1f2d36", foreground="#c8d2d8",
         )
-        self._plotter_label.pack(padx=6, pady=6)
+        self._plotter_label.pack(padx=6, pady=4)
 
         btns = ttk.Frame(parent)
         btns.pack(fill="x", padx=6, pady=(0, 2))
@@ -427,17 +435,13 @@ class Application:
 
     def _update_live_labels(self) -> None:
         snapshot = self._live.snapshot()
-        for key, label, _unit in FIELD_LABELS:
+        for key, _label, unit in FIELD_LABELS:
             value = snapshot.get(key)
             if value is None:
-                label_widget = self._value_labels[key]
-                label_widget.config(text="—", fg="#bbbbbb")
+                self._value_labels[key].config(text="—", fg="#bbbbbb")
             else:
-                if key in ("lat", "lon"):
-                    text = f"{value:.5f}"
-                else:
-                    text = f"{value:.1f}"
-                self._value_labels[key].config(text=text, fg="#111111")
+                text = f"{value:.5f}" if key in ("lat", "lon") else f"{value:.1f}"
+                self._value_labels[key].config(text=f"{text} {unit}", fg="#111111")
 
     # --- Auto-Logging -------------------------------------------------------
 
