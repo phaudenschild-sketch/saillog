@@ -47,7 +47,10 @@ class Application:
         self._live = LiveData()
         self._store = LogbookStore(self._config.db_path)
         self._logbook = LogbookService(self._store, self._live)
-        self._source: Optional[NmeaSource] = None
+        # Datenquellen: Definitionen + aktive Verbindungen + Status je Quelle
+        self._source_defs = self._load_source_defs()
+        self._sources: list = []
+        self._src_status: Dict[int, tuple] = {}
 
         self._value_labels: Dict[str, tk.Label] = {}
         # Ringpuffer für die Rohdaten-Anzeige (Thread-sicher via deque.append)
@@ -72,40 +75,23 @@ class Application:
     def _build_ui(self) -> None:
         pad = dict(padx=8, pady=4)
 
-        # Kopfzeile: Verbindung
-        top = ttk.LabelFrame(self._root, text="Gateway-Verbindung")
+        # Kopfzeile: Datenquellen (mehrere gleichzeitig möglich)
+        top = ttk.LabelFrame(self._root, text="Datenquellen")
         top.pack(fill="x", **pad)
 
-        ttk.Label(top, text="Host:").grid(row=0, column=0, sticky="e", padx=4, pady=4)
-        self._host_var = tk.StringVar(value=self._config.gateway_host)
-        ttk.Entry(top, textvariable=self._host_var, width=16).grid(row=0, column=1, padx=4)
-
-        ttk.Label(top, text="Port:").grid(row=0, column=2, sticky="e", padx=4)
-        self._port_var = tk.StringVar(value=str(self._config.gateway_port))
-        ttk.Entry(top, textvariable=self._port_var, width=7).grid(row=0, column=3, padx=4)
-
-        ttk.Label(top, text="Protokoll:").grid(row=0, column=4, sticky="e", padx=4)
-        self._proto_var = tk.StringVar(value=self._config.protocol)
-        proto = ttk.Combobox(
-            top, textvariable=self._proto_var, values=["tcp", "udp", "serial"],
-            width=7, state="readonly",
+        self._connect_btn = ttk.Button(top, text="Verbinden", command=self._on_connect_all)
+        self._connect_btn.grid(row=0, column=0, padx=6, pady=6)
+        ttk.Button(top, text="Quellen…", command=self._on_manage_sources).grid(
+            row=0, column=1, padx=4
         )
-        proto.grid(row=0, column=5, padx=4)
-        proto.bind("<<ComboboxSelected>>", lambda _e: self._update_conn_hint())
-
-        self._connect_btn = ttk.Button(top, text="Verbinden", command=self._on_connect)
-        self._connect_btn.grid(row=0, column=6, padx=8)
-
         ttk.Button(top, text="Rohdaten…", command=self._on_show_raw).grid(
-            row=0, column=7, padx=4
+            row=0, column=2, padx=4
         )
-
         self._status_label = tk.Label(top, text="getrennt", fg="#888888")
-        self._status_label.grid(row=0, column=8, padx=8)
-
-        self._conn_hint = ttk.Label(top, text="", foreground="#888")
-        self._conn_hint.grid(row=1, column=0, columnspan=9, sticky="w", padx=6)
-        self._update_conn_hint()
+        self._status_label.grid(row=0, column=3, padx=8)
+        self._sources_label = ttk.Label(top, text="", foreground="#555")
+        self._sources_label.grid(row=1, column=0, columnspan=4, sticky="w", padx=8, pady=(0, 4))
+        self._update_sources_label()
 
         # Törn-Leiste
         trip_bar = ttk.LabelFrame(self._root, text="Törn")
@@ -387,43 +373,95 @@ class Application:
 
     # --- Verbindung ---------------------------------------------------------
 
-    def _on_connect(self) -> None:
-        if self._source is not None:
-            self._source.stop()
-            self._source = None
+    def _load_source_defs(self) -> list:
+        """Quellen-Definitionen aus der Konfiguration (mit Abwärtskompatibilität)."""
+        defs = self._config.sources
+        if defs:
+            return [dict(d) for d in defs]
+        # Einzelquelle aus der alten Konfiguration übernehmen
+        return [{
+            "host": self._config.gateway_host,
+            "port": self._config.gateway_port,
+            "protocol": self._config.protocol,
+        }]
+
+    @property
+    def _connected(self) -> bool:
+        return bool(self._sources)
+
+    def _on_connect_all(self) -> None:
+        if self._connected:
+            for src in self._sources:
+                src.stop()
+            self._sources = []
+            self._src_status = {}
             self._connect_btn.config(text="Verbinden")
-            self._set_status(STATUS_DISCONNECTED, "getrennt")
+            self._update_sources_label()
             return
-
-        try:
-            port = int(self._port_var.get())
-        except ValueError:
-            messagebox.showerror("Ungültiger Port", "Bitte eine Portnummer eingeben.")
+        if not self._source_defs:
+            messagebox.showinfo("Quellen", "Bitte zuerst über 'Quellen…' eine Datenquelle anlegen.")
             return
-
-        host = self._host_var.get().strip()
-        protocol = self._proto_var.get()
-        self._config.gateway_host = host
-        self._config.gateway_port = port
-        self._config.protocol = protocol
-        self._config.save()
-
-        self._source = NmeaSource(
-            host=host, port=port, live=self._live, protocol=protocol,
-            on_status=self._on_source_status,
-            on_raw=self._raw_buffer.append,  # deque.append ist thread-sicher
-        )
-        self._source.start()
-        self._connect_btn.config(text="Trennen")
-
-    def _update_conn_hint(self) -> None:
-        if self._proto_var.get() == "serial":
-            self._conn_hint.config(
-                text="Seriell (z.B. Maretron USB100): Host = COM-Port (z.B. COM5), "
-                     "Port = Baudrate (z.B. 115200) · benötigt pyserial"
+        for index, definition in enumerate(self._source_defs):
+            try:
+                port = int(definition["port"])
+            except (ValueError, KeyError, TypeError):
+                messagebox.showerror("Quelle", f"Ungültiger Port bei Quelle {index + 1}.")
+                continue
+            source = NmeaSource(
+                host=str(definition["host"]).strip(),
+                port=port,
+                live=self._live,
+                protocol=definition.get("protocol", "tcp"),
+                on_status=self._make_status_cb(index),
+                on_raw=self._raw_buffer.append,
             )
+            source.start()
+            self._sources.append(source)
+        self._connect_btn.config(text="Trennen")
+        self._update_sources_label()
+
+    def _make_status_cb(self, index: int):
+        # Läuft im Quellen-Thread -> KEINE tkinter-Aufrufe hier, nur Dict schreiben.
+        # Die Anzeige aktualisiert der periodische GUI-Timer (_schedule_live_update).
+        def cb(status: str, message: str) -> None:
+            self._src_status[index] = (status, message)
+        return cb
+
+    def _update_sources_label(self) -> None:
+        parts = []
+        connected = 0
+        for index, d in enumerate(self._source_defs):
+            status = self._src_status.get(index, (STATUS_DISCONNECTED, ""))[0]
+            mark = {
+                STATUS_CONNECTED: "✓", STATUS_CONNECTING: "…",
+                STATUS_ERROR: "✗", STATUS_DISCONNECTED: "·",
+            }.get(status, "·")
+            if status == STATUS_CONNECTED:
+                connected += 1
+            proto = d.get("protocol", "tcp")
+            parts.append(f"{mark} {proto} {d.get('host')}:{d.get('port')}")
+        self._sources_label.config(text="   ".join(parts) if parts else "keine Quellen")
+        if not self._connected:
+            self._status_label.config(text="getrennt", fg="#888888")
         else:
-            self._conn_hint.config(text="")
+            total = len(self._sources)
+            color = "#1a8a1a" if connected == total else "#c08000"
+            self._status_label.config(text=f"{connected}/{total} verbunden", fg=color)
+
+    def _on_manage_sources(self) -> None:
+        dialog = _SourcesDialog(self._root, self._source_defs)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        self._source_defs = dialog.result
+        self._config.sources = self._source_defs
+        self._config.save()
+        if self._connected:
+            messagebox.showinfo(
+                "Quellen", "Geänderte Quellen werden beim nächsten 'Verbinden' aktiv."
+            )
+        self._src_status = {}
+        self._update_sources_label()
 
     def _on_show_raw(self) -> None:
         """Öffnet das Fenster mit den rohen NMEA-Sätzen."""
@@ -432,20 +470,11 @@ class Application:
             return
         self._raw_window = _RawMonitor(self._root, self._raw_buffer)
 
-    def _on_source_status(self, status: str, message: str) -> None:
-        # Aus dem Netzwerk-Thread -> in den GUI-Thread verlagern
-        self._root.after(0, lambda: self._set_status(status, message))
-
-    def _set_status(self, status: str, message: str) -> None:
-        text, color = _STATUS_TEXT.get(status, (status, "#000"))
-        if message and status in (STATUS_ERROR, STATUS_CONNECTING):
-            text = f"{text}: {message}"
-        self._status_label.config(text=text, fg=color)
-
     # --- Live-Anzeige -------------------------------------------------------
 
     def _schedule_live_update(self) -> None:
         self._update_live_labels()
+        self._update_sources_label()  # Quellen-Status im GUI-Thread aktualisieren
         self._root.after(1000, self._schedule_live_update)
 
     def _update_live_labels(self) -> None:
@@ -674,8 +703,8 @@ class Application:
     def _on_close(self) -> None:
         self._capture_enabled = False
         self._logbook.stop_auto()
-        if self._source is not None:
-            self._source.stop()
+        for src in self._sources:
+            src.stop()
         self._root.destroy()
 
 
@@ -951,6 +980,106 @@ class _TripCloseDialog:
             "end_log_nm": _parse_float(self._vars["end_log_nm"].get()),
             "note": self._note.get("1.0", "end").strip(),
         }
+        self.top.destroy()
+
+
+class _SourcesDialog:
+    """Verwaltet die Liste der Datenquellen (mehrere gleichzeitig möglich)."""
+
+    def __init__(self, parent: tk.Tk, defs: list) -> None:
+        self.result: Optional[list] = None
+        self._defs = [dict(d) for d in defs]
+        self.top = tk.Toplevel(parent)
+        self.top.title("Datenquellen")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="Aktive Quellen (alle werden gleichzeitig gelesen):").grid(
+            row=0, column=0, columnspan=6, sticky="w"
+        )
+        self._listbox = tk.Listbox(frame, width=52, height=5)
+        self._listbox.grid(row=1, column=0, columnspan=5, pady=6, sticky="w")
+        ttk.Button(frame, text="Entfernen", command=self._on_remove).grid(
+            row=1, column=5, sticky="n", padx=4
+        )
+        self._refresh_list()
+
+        # Eingabezeile zum Hinzufügen
+        ttk.Label(frame, text="Protokoll:").grid(row=2, column=0, sticky="e", pady=6)
+        self._proto = tk.StringVar(value="tcp")
+        proto = ttk.Combobox(
+            frame, textvariable=self._proto, values=["tcp", "udp", "serial"],
+            width=8, state="readonly",
+        )
+        proto.grid(row=2, column=1, sticky="w")
+        proto.bind("<<ComboboxSelected>>", lambda _e: self._update_hint())
+        ttk.Label(frame, text="Host / COM:").grid(row=2, column=2, sticky="e")
+        self._host = tk.StringVar()
+        ttk.Entry(frame, textvariable=self._host, width=16).grid(row=2, column=3, sticky="w")
+        ttk.Label(frame, text="Port / Baud:").grid(row=2, column=4, sticky="e")
+        self._port = tk.StringVar()
+        ttk.Entry(frame, textvariable=self._port, width=8).grid(row=2, column=5, sticky="w")
+
+        ttk.Button(frame, text="+ Quelle hinzufügen", command=self._on_add).grid(
+            row=3, column=0, columnspan=2, sticky="w", pady=6
+        )
+        self._hint = ttk.Label(frame, text="", foreground="#888")
+        self._hint.grid(row=3, column=2, columnspan=4, sticky="w")
+        self._update_hint()
+
+        # Vorlagen
+        tmpl = ttk.Frame(frame)
+        tmpl.grid(row=4, column=0, columnspan=6, sticky="w", pady=(4, 0))
+        ttk.Label(tmpl, text="Vorlagen:", foreground="#555").pack(side="left")
+        ttk.Button(tmpl, text="B&G (TCP 10110)", command=self._tmpl_bg).pack(side="left", padx=3)
+        ttk.Button(tmpl, text="Maretron (COM)", command=self._tmpl_maretron).pack(side="left", padx=3)
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=5, column=0, columnspan=6, pady=(12, 0))
+        ttk.Button(buttons, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _refresh_list(self) -> None:
+        self._listbox.delete(0, "end")
+        for d in self._defs:
+            self._listbox.insert(
+                "end", f"{d.get('protocol', 'tcp')}   {d.get('host')} : {d.get('port')}"
+            )
+
+    def _update_hint(self) -> None:
+        if self._proto.get() == "serial":
+            self._hint.config(text="seriell: Host = COM-Port (COM11), Port = Baud (115200)")
+        else:
+            self._hint.config(text="")
+
+    def _on_add(self) -> None:
+        host = self._host.get().strip()
+        port = self._port.get().strip()
+        if not host or not port:
+            return
+        self._defs.append({"host": host, "port": port, "protocol": self._proto.get()})
+        self._host.set("")
+        self._port.set("")
+        self._refresh_list()
+
+    def _on_remove(self) -> None:
+        sel = self._listbox.curselection()
+        if sel:
+            del self._defs[sel[0]]
+            self._refresh_list()
+
+    def _tmpl_bg(self) -> None:
+        self._proto.set("tcp"); self._host.set("192.168.9.224"); self._port.set("10110")
+        self._update_hint()
+
+    def _tmpl_maretron(self) -> None:
+        self._proto.set("serial"); self._host.set("COM11"); self._port.set("115200")
+        self._update_hint()
+
+    def _on_ok(self) -> None:
+        self.result = self._defs
         self.top.destroy()
 
 

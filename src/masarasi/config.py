@@ -27,10 +27,14 @@ CONFIG_PATH = _app_dir() / "config.json"
 class Config:
     """Typisierte Anwendungskonfiguration."""
 
-    # Gateway-Anbindung
+    # Gateway-Anbindung (Einzelquelle, für Abwärtskompatibilität)
     gateway_host: str = "192.168.4.1"
     gateway_port: int = 2000
-    protocol: str = "tcp"  # "tcp" oder "udp"
+    protocol: str = "tcp"  # "tcp", "udp" oder "serial"
+
+    # Mehrere Datenquellen gleichzeitig: Liste von
+    # {"host": ..., "port": ..., "protocol": ...}
+    sources: Optional[list] = None
 
     # Automatisches Logging
     auto_interval_seconds: int = 300  # alle 5 Minuten
