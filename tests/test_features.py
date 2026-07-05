@@ -43,6 +43,30 @@ class EngineNmeaTest(unittest.TestCase):
         self.assertEqual(engine_running({"oil_pressure_bar": 3.0}), 1)
         self.assertIsNone(engine_running({"sog_kn": 5.0}))
 
+    def test_engine_running_from_voltage(self):
+        # Lichtmaschinen-Spannung ist das bevorzugte Kriterium
+        self.assertEqual(engine_running({"alternator_v": 14.2}), 1)
+        self.assertEqual(engine_running({"alternator_v": 12.6}), 0)
+        # Spannung schlägt Drehzahl (falls beide da)
+        self.assertEqual(engine_running({"alternator_v": 12.5, "engine_rpm": 0}), 0)
+
+    def test_xdr_voltage(self):
+        result = self.parser.parse("$IIXDR,U,14.2,V,ALTERNATOR")
+        self.assertAlmostEqual(result[nmea.ALT_VOLTAGE], 14.2)
+
+    def test_xdr_engine_temperature(self):
+        result = self.parser.parse("$IIXDR,C,86.0,C,ENGINETEMP#0")
+        self.assertAlmostEqual(result[nmea.ENGINE_TEMP], 86.0)
+
+    def test_xdr_water_temp_not_engine(self):
+        # Nicht-motorbezogene Temperatur wird nicht als Motortemperatur gewertet
+        result = self.parser.parse("$IIXDR,C,19.0,C,AIRTEMP")
+        self.assertNotIn(nmea.ENGINE_TEMP, result)
+
+    def test_xdr_tachometer_any_id(self):
+        result = self.parser.parse("$IIXDR,T,1850.0,R,#0")
+        self.assertAlmostEqual(result[nmea.ENGINE_RPM], 1850.0)
+
     def test_vlw_log(self):
         result = self.parser.parse("$VWVLW,305.70,N,12.3,N")
         self.assertAlmostEqual(result[nmea.LOG_TOTAL], 305.70)

@@ -37,6 +37,8 @@ WATER_TEMP = "water_temp_c"  # Wassertemperatur (Grad Celsius)
 ENGINE_RPM = "engine_rpm"   # Motordrehzahl (U/min) — für Motor-Erkennung
 OIL_PRESSURE = "oil_pressure_bar"  # Öldruck (bar) — für Motor-Erkennung
 ENGINE_HOURS = "engine_hours"  # Motorbetriebsstunden (h)
+ENGINE_TEMP = "engine_temp_c"  # Motor-/Kühlwassertemperatur (°C)
+ALT_VOLTAGE = "alternator_v"  # Lichtmaschinen-/Bordspannung (V) — Motor an/aus
 LOG_TOTAL = "log_total_nm"   # Logstand / Gesamtdistanz durchs Wasser (Nm)
 UTC_TIME = "utc_time"       # Uhrzeit UTC als "hhmmss"
 
@@ -57,6 +59,8 @@ FIELD_LABELS = [
     (WATER_TEMP, "Wassertemp.", "°C"),
     (LOG_TOTAL, "Log", "NM"),
     (ENGINE_RPM, "Motor-Drehzahl", "U/min"),
+    (ENGINE_TEMP, "Motortemperatur", "°C"),
+    (ALT_VOLTAGE, "Lichtmaschine", "V"),
     (OIL_PRESSURE, "Öldruck", "bar"),
     (ENGINE_HOURS, "Motorstunden", "h"),
 ]
@@ -287,6 +291,10 @@ def _rpm(f):
     return {ENGINE_RPM: rpm}
 
 
+_ENGINE_HINTS = ("ENG", "MOTOR", "COOL", "EXH", "CYL")
+_ALT_HINTS = ("ALT", "CHARGE", "CHRG", "ENG")
+
+
 def _xdr(f):
     # $--XDR,typ,wert,einheit,id, typ,wert,einheit,id, …  (Gruppen zu 4)
     result = {}
@@ -298,15 +306,21 @@ def _xdr(f):
         tid = (groups[i + 3] or "").upper()
         if value is None:
             continue
-        if ttype == "T":  # Tachometer / Drehzahl
-            if "ENGINE" in tid or "RPM" in tid or units == "R" or not tid:
-                result[ENGINE_RPM] = value
-        elif ttype == "P":  # Druck — nur eindeutig motorbezogenen als Öldruck werten
-            if "OIL" in tid or "ENGINE" in tid:
+        if ttype == "T":  # Tachometer -> Motordrehzahl
+            result[ENGINE_RPM] = value
+        elif ttype == "C":  # Temperatur -> nur motorbezogene als Motortemperatur
+            if any(k in tid for k in _ENGINE_HINTS):
+                result[ENGINE_TEMP] = value
+        elif ttype == "P":  # Druck -> Öldruck (motorbezogen)
+            if "OIL" in tid or "ENG" in tid:
                 if units == "P":  # Pascal -> bar
                     value = value / 100000.0
                 result[OIL_PRESSURE] = value
-        elif ttype == "G":  # generischer Wert — z.B. Motorbetriebsstunden
+        elif ttype == "U":  # Spannung -> Lichtmaschine/Bordspannung
+            # Motor-/Lade-Spannung bevorzugen, sonst als Fallback übernehmen
+            if any(k in tid for k in _ALT_HINTS) or ALT_VOLTAGE not in result:
+                result[ALT_VOLTAGE] = value
+        elif ttype == "G":  # generischer Wert -> Motorbetriebsstunden
             if units == "H" or "HOUR" in tid or "HRS" in tid or "STUND" in tid:
                 result[ENGINE_HOURS] = value
     return result
@@ -332,12 +346,21 @@ _HANDLERS = {
 }
 
 
+# Schwelle: über dieser Bordspannung lädt die Lichtmaschine -> Motor läuft
+ENGINE_VOLTAGE_THRESHOLD = 13.0
+
+
 def engine_running(snapshot: dict) -> Optional[int]:
     """Leitet Motor ein/aus aus den Live-Werten ab.
 
     Gibt 1 (läuft), 0 (aus) oder None (keine Motordaten) zurück.
-    Kriterium: Drehzahl > 0 oder Öldruck > 0.
+    Bevorzugtes Kriterium: Lichtmaschinen-/Bordspannung über ~13 V (die
+    Lichtmaschine lädt nur bei laufendem Motor). Ersatzweise Drehzahl bzw.
+    Öldruck > 0.
     """
+    volts = snapshot.get(ALT_VOLTAGE)
+    if volts is not None:
+        return 1 if volts >= ENGINE_VOLTAGE_THRESHOLD else 0
     rpm = snapshot.get(ENGINE_RPM)
     oil = snapshot.get(OIL_PRESSURE)
     if rpm is None and oil is None:
