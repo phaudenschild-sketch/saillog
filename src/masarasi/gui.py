@@ -312,7 +312,8 @@ class Application:
         self._latest_plotter_png: Optional[bytes] = None  # letzter Screenshot
         self._capture_enabled = False
         self._plotter_label = tk.Label(
-            parent, text="(kein Bild)\n\nBereich festlegen und\nAuto-Aufnahme starten",
+            parent,
+            text="(kein Bild)\n\nScreenshot per 'Laden…'\noder Bildschirmausschnitt",
             width=42, height=12, background="#1f2d36", foreground="#c8d2d8",
         )
         self._plotter_label.pack(padx=6, pady=6)

@@ -24,10 +24,12 @@ Python.
   bei Törnbeginn/-abschluss automatisch vorbelegt
 - 🗺️ **Törns** — Einträge gruppieren; Törn mit Startort, Wasser-/Diesel­menge,
   Motorenstunden und Log-Stand beginnen und am Ende abschließen
-- 🖼️ **Kartenplotter-Feld** (GoFree): erfasst automatisch einen frei
-  wählbaren **Bildschirmausschnitt** (z.B. das GoFree-Remote-Fenster), zeigt
-  ihn an und **speichert das Bild zu jedem Logbuch-Eintrag** (abrufbar per
-  Doppelklick, als Ordner exportierbar). Auto-Aufnahme benötigt `pillow`.
+- 🖼️ **Kartenplotter-Feld**: Screenshot per „Laden…" oder — falls der
+  Plotter als normales Fenster am PC sichtbar ist — als **Bildschirm­aus­schnitt**
+  (Pillow). Das Bild wird **zu jedem Logbuch-Eintrag gespeichert** (Doppel­klick
+  zum Ansehen, Ordner-Export). Hinweis: Das **Live-Mirroring vom B&G-Plotter**
+  läuft über einen **lizenzierten Navico-Videokanal (GoFree Tier 3)** und ist
+  ohne Navico-Lizenz nicht zugänglich — siehe „GoFree" unten.
 - ⏱️ **Automatisches Logging** in einstellbarem Intervall (dem aktiven Törn
   zugeordnet, inkl. der Bedingungswerte)
 - 💾 **Speicherung** in einer lokalen SQLite-Datenbank
@@ -97,6 +99,9 @@ python discover.py 192.168.4.1 --full
 
 # Auf UDP-Broadcasts lauschen (z.B. B&G)
 python discover.py --udp
+
+# GoFree-Dienste des B&G-Plotters anzeigen (Multicast 239.2.1.1:2052)
+python discover.py --gofree
 ```
 
 `discover.py` startet — wie `main.py` — direkt aus dem `masarasi`-Ordner,
@@ -127,6 +132,25 @@ python -m masarasi.simulator --port 2000
 # Terminal 2 – GUI starten und mit host=127.0.0.1, port=2000, tcp verbinden
 python main.py
 ```
+
+## Kartenplotter / GoFree (B&G, Navico)
+
+Der **Live-Bildschirm** des B&G-Plotters wird bei GoFree über einen
+**MPEG4-Videokanal (Tier 3)** übertragen — das ist ein **lizenzierter,
+proprietärer** Navico-Kanal (die Bestätigung am MFD ist die Kopplung dafür).
+Ohne Navico-Lizenz gibt es dafür keine offene Schnittstelle, daher kann
+masarasi den Plotterbildschirm **nicht** direkt spiegeln.
+
+Offen zugänglich ist die GoFree-**Daten**schnittstelle: der MFD kündigt sich
+per Multicast `239.2.1.1:2052` mit seinen Diensten an. `python discover.py
+--gofree` zeigt Modell, IP und angebotene Dienste/Ports — nützlich, um zu
+sehen, was dein Plotter bereitstellt (die Messdaten holt masarasi ohnehin
+schon über NMEA0183, z.B. B&G TCP-Port 10110).
+
+Für ein Plotterbild im Logbuch bleiben damit: **manuell laden** (z.B. einen
+Screenshot aus der GoFree-App) oder **Bildschirmausschnitt**, falls der
+Plotter als normales Fenster am PC sichtbar ist (z.B. über eine
+HDMI-Video-Eingabe des MFD).
 
 ## Unterstützte NMEA0183-Sätze
 

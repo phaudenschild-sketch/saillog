@@ -57,6 +57,34 @@ class ProbeTcpTest(unittest.TestCase):
         self.assertIsNone(probe_tcp("127.0.0.1", port, listen_seconds=0.5))
 
 
+class GoFreeAnnouncementTest(unittest.TestCase):
+    def test_parses_services(self):
+        from masarasi.discover import parse_gofree_announcement
+        import json
+
+        payload = json.dumps({
+            "Name": "Zeus3-9inch",
+            "Model": "Zeus3",
+            "IP": "192.168.9.224",
+            "Services": [
+                {"Service": "nmea-0183", "Version": 1, "Port": 10110},
+                {"Service": "websocket", "Version": 2, "Port": 443},
+            ],
+        }).encode("utf-8")
+        ann = parse_gofree_announcement(payload)
+        self.assertEqual(ann["model"], "Zeus3")
+        self.assertEqual(ann["ip"], "192.168.9.224")
+        names = {s["name"] for s in ann["services"]}
+        self.assertIn("nmea-0183", names)
+        ports = {s["port"] for s in ann["services"]}
+        self.assertIn(10110, ports)
+        self.assertIn(443, ports)
+
+    def test_rejects_non_json(self):
+        from masarasi.discover import parse_gofree_announcement
+        self.assertIsNone(parse_gofree_announcement(b"$GPRMC,not json"))
+
+
 class ProbeUdpTest(unittest.TestCase):
     def test_receives_broadcast(self):
         port = _free_port()
