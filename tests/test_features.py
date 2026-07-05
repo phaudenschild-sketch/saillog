@@ -43,6 +43,14 @@ class EngineNmeaTest(unittest.TestCase):
         self.assertEqual(engine_running({"oil_pressure_bar": 3.0}), 1)
         self.assertIsNone(engine_running({"sog_kn": 5.0}))
 
+    def test_vlw_log(self):
+        result = self.parser.parse("$VWVLW,305.70,N,12.3,N")
+        self.assertAlmostEqual(result[nmea.LOG_TOTAL], 305.70)
+
+    def test_xdr_engine_hours(self):
+        result = self.parser.parse("$IIXDR,G,1234.5,H,ENGINEHOURS#0")
+        self.assertAlmostEqual(result[nmea.ENGINE_HOURS], 1234.5)
+
 
 class StorageFieldsTest(unittest.TestCase):
     def setUp(self):
@@ -172,6 +180,38 @@ class LogbookServiceTest(unittest.TestCase):
         self.live.update({"lat": 47.0, "lon": 9.0})
         entry = self.service.record_auto(trip_id=self.service.current_trip_id)
         self.assertEqual(entry.trip_id, trip.id)
+
+    def test_conditions_logged_in_auto_and_manual(self):
+        # Dauerhafte Maskenwerte werden bei Auto- und Manuell-Log mitgeschrieben
+        self.live.update({"lat": 47.0, "lon": 9.0, "log_total_nm": 305.7})
+        conditions = {
+            "engine_mode": "aus",
+            "mainsail": "Reff 1",
+            "genoa_percent": 60.0,
+            "spinnaker": 0,
+            "wave_height_m": 1.5,
+            "cloud_cover": "wolkig",
+            "precipitation": "kein",
+            "visibility": "gut",
+            "logevent": "Routineeintrag",
+            "note": "Bedingungen stabil",
+        }
+        auto = self.service.record_auto(conditions=conditions)
+        self.assertEqual(auto.mainsail, "Reff 1")
+        self.assertEqual(auto.genoa_percent, 60.0)
+        self.assertEqual(auto.cloud_cover, "wolkig")
+        self.assertEqual(auto.logevent, "Routineeintrag")
+        self.assertEqual(auto.engine_on, 0)  # Motor-Modus 'aus'
+        self.assertEqual(auto.log_total_nm, 305.7)
+
+        manual = self.service.add_current(conditions=conditions, note="Halt")
+        self.assertEqual(manual.mainsail, "Reff 1")
+        self.assertEqual(manual.note, "Halt")
+
+    def test_engine_mode_auto_derives_from_nmea(self):
+        self.live.update({"engine_rpm": 1500.0})
+        entry = self.service.record_auto(conditions={"engine_mode": "automatisch"})
+        self.assertEqual(entry.engine_on, 1)
 
 
 if __name__ == "__main__":

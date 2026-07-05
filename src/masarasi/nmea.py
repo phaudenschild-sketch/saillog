@@ -36,6 +36,8 @@ DEPTH = "depth_m"          # Wassertiefe (Meter)
 WATER_TEMP = "water_temp_c"  # Wassertemperatur (Grad Celsius)
 ENGINE_RPM = "engine_rpm"   # Motordrehzahl (U/min) — für Motor-Erkennung
 OIL_PRESSURE = "oil_pressure_bar"  # Öldruck (bar) — für Motor-Erkennung
+ENGINE_HOURS = "engine_hours"  # Motorbetriebsstunden (h)
+LOG_TOTAL = "log_total_nm"   # Logstand / Gesamtdistanz durchs Wasser (Nm)
 UTC_TIME = "utc_time"       # Uhrzeit UTC als "hhmmss"
 
 # Reihenfolge & Anzeigenamen für die GUI
@@ -53,8 +55,10 @@ FIELD_LABELS = [
     (TWD, "Windrichtung", "°"),
     (DEPTH, "Tiefe", "m"),
     (WATER_TEMP, "Wassertemp.", "°C"),
+    (LOG_TOTAL, "Log", "NM"),
     (ENGINE_RPM, "Motor-Drehzahl", "U/min"),
     (OIL_PRESSURE, "Öldruck", "bar"),
+    (ENGINE_HOURS, "Motorstunden", "h"),
 ]
 
 
@@ -267,6 +271,11 @@ def _vhw(f):
     }
 
 
+def _vlw(f):
+    # $--VLW,gesamt,N,seit_reset,N  — Gesamtdistanz durchs Wasser (Logstand)
+    return {LOG_TOTAL: _to_float(f[1])}
+
+
 def _rpm(f):
     # $--RPM,quelle,nummer,drehzahl,steigung,status  (S=Welle, E=Motor)
     if len(f) > 5 and f[5] and f[5].upper() != "A":
@@ -297,6 +306,9 @@ def _xdr(f):
                 if units == "P":  # Pascal -> bar
                     value = value / 100000.0
                 result[OIL_PRESSURE] = value
+        elif ttype == "G":  # generischer Wert — z.B. Motorbetriebsstunden
+            if units == "H" or "HOUR" in tid or "HRS" in tid or "STUND" in tid:
+                result[ENGINE_HOURS] = value
     return result
 
 
@@ -314,6 +326,7 @@ _HANDLERS = {
     "HDT": _hdt,
     "HDM": _hdm,
     "VHW": _vhw,
+    "VLW": _vlw,
     "RPM": _rpm,
     "XDR": _xdr,
 }

@@ -31,6 +31,9 @@ class LogbookService:
         self._on_auto_entry: Optional[Callable[[LogEntry], None]] = None
         # Aktiver Törn, dem neue Einträge zugeordnet werden (vom GUI gesetzt)
         self.current_trip_id: Optional[int] = None
+        # Liefert die aktuell in der Maske eingestellten Bedingungen (dict).
+        # Wird vom Hauptthread aktuell gehalten; der Auto-Thread liest nur.
+        self.conditions_provider: Optional[Callable[[], dict]] = None
 
     # --- manuelle Einträge --------------------------------------------------
 
@@ -95,22 +98,71 @@ class LogbookService:
         self._store.update_trip(trip)
         return trip
 
+    # --- Bedingungen (dauerhafte Maskenwerte) ------------------------------
+
+    @staticmethod
+    def _conditions_to_fields(conditions: Optional[dict], measurements: dict) -> dict:
+        """Übersetzt die Maskenwerte in LogEntry-Felder inkl. Motor-Ableitung."""
+        conditions = conditions or {}
+        mode = conditions.get("engine_mode", "automatisch")
+        if mode == "ein":
+            engine_on = 1
+        elif mode == "aus":
+            engine_on = 0
+        else:
+            engine_on = engine_running(measurements)
+        return {
+            "engine_on": engine_on,
+            "mainsail": conditions.get("mainsail", ""),
+            "genoa_percent": conditions.get("genoa_percent"),
+            "spinnaker": conditions.get("spinnaker"),
+            "wave_height_m": conditions.get("wave_height_m"),
+            "cloud_cover": conditions.get("cloud_cover", ""),
+            "precipitation": conditions.get("precipitation", ""),
+            "visibility": conditions.get("visibility", ""),
+            "logevent": conditions.get("logevent", ""),
+        }
+
+    def add_current(
+        self,
+        conditions: Optional[dict] = None,
+        note: str = "",
+        trip_id: Optional[int] = None,
+    ) -> LogEntry:
+        """Schreibt sofort einen Eintrag mit aktuellen Mess- und Maskenwerten."""
+        measurements = self._live.snapshot()
+        fields = self._conditions_to_fields(conditions, measurements)
+        entry = LogEntry.from_snapshot(
+            timestamp=utc_now_iso(),
+            entry_type="manual",
+            measurements=measurements,
+            note=note or (conditions or {}).get("note", ""),
+            trip_id=trip_id,
+            **fields,
+        )
+        self._store.add(entry)
+        return entry
+
     # --- automatische Einträge ---------------------------------------------
 
-    def record_auto(self, trip_id: Optional[int] = None) -> Optional[LogEntry]:
-        """Schreibt einen Auto-Eintrag aus dem aktuellen Snapshot.
+    def record_auto(
+        self, trip_id: Optional[int] = None, conditions: Optional[dict] = None
+    ) -> Optional[LogEntry]:
+        """Schreibt einen Auto-Eintrag aus Snapshot + Maskenwerten.
 
         Gibt None zurück, wenn (noch) keine Messwerte vorliegen.
         """
         measurements = self._live.snapshot()
         if not measurements:
             return None
+        fields = self._conditions_to_fields(conditions, measurements)
         entry = LogEntry.from_snapshot(
             timestamp=utc_now_iso(),
             entry_type="auto",
             measurements=measurements,
             trip_id=trip_id,
-            engine_on=engine_running(measurements),
+            note=(conditions or {}).get("note", ""),
+            **fields,
         )
         self._store.add(entry)
         return entry
@@ -141,7 +193,10 @@ class LogbookService:
 
     def _auto_loop(self) -> None:
         while not self._stop.is_set():
-            entry = self.record_auto(trip_id=self.current_trip_id)
+            conditions = self.conditions_provider() if self.conditions_provider else None
+            entry = self.record_auto(
+                trip_id=self.current_trip_id, conditions=conditions
+            )
             if entry is not None and self._on_auto_entry is not None:
                 self._on_auto_entry(entry)
             # In kleinen Schritten warten, damit stop_auto schnell greift

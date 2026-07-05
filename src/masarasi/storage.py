@@ -24,6 +24,8 @@ MEASUREMENT_COLUMNS = [
     "twd_deg",
     "depth_m",
     "water_temp_c",
+    "log_total_nm",
+    "engine_hours",
 ]
 
 
@@ -49,6 +51,8 @@ class LogEntry:
     twd_deg: Optional[float] = None
     depth_m: Optional[float] = None
     water_temp_c: Optional[float] = None
+    log_total_nm: Optional[float] = None
+    engine_hours: Optional[float] = None
     # Manuelle / abgeleitete Felder
     engine_on: Optional[int] = None      # 1=Motor läuft, 0=aus, None=unbekannt
     mainsail: str = ""                   # Voll / Reff 1 / Reff 2 / Geborgen
@@ -58,6 +62,7 @@ class LogEntry:
     cloud_cover: str = ""                # siehe fields.CLOUD_COVER
     precipitation: str = ""              # siehe fields.PRECIPITATION
     visibility: str = ""                 # siehe fields.VISIBILITY
+    logevent: str = ""                   # Anlass, z.B. "Routineeintrag"
     note: str = ""
     crew: str = ""
     location: str = ""
@@ -80,6 +85,7 @@ class LogEntry:
         cloud_cover: str = "",
         precipitation: str = "",
         visibility: str = "",
+        logevent: str = "",
     ) -> "LogEntry":
         entry = cls(
             timestamp=timestamp,
@@ -96,6 +102,7 @@ class LogEntry:
             cloud_cover=cloud_cover,
             precipitation=precipitation,
             visibility=visibility,
+            logevent=logevent,
         )
         for column in MEASUREMENT_COLUMNS:
             if column in measurements and measurements[column] is not None:
@@ -140,6 +147,7 @@ _MIGRATE_LOG = [
     ("cloud_cover", "TEXT DEFAULT ''"),
     ("precipitation", "TEXT DEFAULT ''"),
     ("visibility", "TEXT DEFAULT ''"),
+    ("logevent", "TEXT DEFAULT ''"),
     ("note", "TEXT DEFAULT ''"),
     ("crew", "TEXT DEFAULT ''"),
     ("location", "TEXT DEFAULT ''"),
@@ -175,6 +183,7 @@ class LogbookStore:
                 "cloud_cover TEXT DEFAULT ''",
                 "precipitation TEXT DEFAULT ''",
                 "visibility TEXT DEFAULT ''",
+                "logevent TEXT DEFAULT ''",
                 "note TEXT DEFAULT ''",
                 "crew TEXT DEFAULT ''",
                 "location TEXT DEFAULT ''",

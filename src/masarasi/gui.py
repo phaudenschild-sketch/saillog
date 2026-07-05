@@ -131,6 +131,16 @@ class Application:
             ttk.Label(cell, text=unit, foreground="#999").pack(anchor="w")
             self._value_labels[key] = value
 
+        # Mittlerer Bereich: Bedingungen + Kartenplotter nebeneinander
+        mid = ttk.Frame(self._root)
+        mid.pack(fill="x", **pad)
+        cond = ttk.LabelFrame(mid, text="Bedingungen (werden bei jedem Log mitgeschrieben)")
+        cond.pack(side="left", fill="both", expand=True)
+        self._build_conditions(cond)
+        plotter = ttk.LabelFrame(mid, text="Kartenplotter (GoFree)")
+        plotter.pack(side="left", fill="both", padx=(8, 0))
+        self._build_plotter(plotter)
+
         # Logging-Steuerung
         controls = ttk.LabelFrame(self._root, text="Logbuch")
         controls.pack(fill="x", **pad)
@@ -148,7 +158,7 @@ class Application:
         self._auto_btn.grid(row=0, column=2, padx=8)
 
         ttk.Button(
-            controls, text="Manueller Eintrag…", command=self._on_manual_entry
+            controls, text="✎ Eintrag speichern", command=self._on_save_entry
         ).grid(row=0, column=3, padx=8)
 
         ttk.Button(controls, text="CSV exportieren", command=self._on_export_csv).grid(
@@ -190,6 +200,131 @@ class Application:
         )
         self._count_label = ttk.Label(bottom, text="")
         self._count_label.pack(side="right")
+
+    # --- Bedingungs-Panel (dauerhafte Maskenwerte) -------------------------
+
+    def _build_conditions(self, parent: ttk.LabelFrame) -> None:
+        self._cond_vars: Dict[str, tk.Variable] = {}
+        self._row = 0
+
+        def add(label, widget):
+            ttk.Label(parent, text=label).grid(
+                row=self._row, column=0, sticky="e", padx=4, pady=2
+            )
+            widget.grid(row=self._row, column=1, sticky="w", padx=4, pady=2)
+            self._row += 1
+
+        self._cond_vars["logevent"] = tk.StringVar(value="Routineeintrag")
+        add("Anlass:", ttk.Combobox(
+            parent, textvariable=self._cond_vars["logevent"], width=22,
+            values=["Routineeintrag", "Wache", "Manöver", "Hafen", "Ankern", "Besonderes"],
+        ))
+        self._cond_vars["engine_mode"] = tk.StringVar(value="automatisch")
+        add("Motor:", ttk.Combobox(
+            parent, textvariable=self._cond_vars["engine_mode"], width=22,
+            state="readonly", values=["automatisch", "ein", "aus"],
+        ))
+        self._cond_vars["mainsail"] = tk.StringVar(value="—")
+        add("Großsegel:", ttk.Combobox(
+            parent, textvariable=self._cond_vars["mainsail"], width=22,
+            state="readonly", values=MAINSAIL_OPTIONS,
+        ))
+        self._cond_vars["genoa"] = tk.StringVar()
+        add("Genua %:", ttk.Spinbox(
+            parent, from_=0, to=100, textvariable=self._cond_vars["genoa"], width=10,
+        ))
+        self._cond_vars["spinnaker"] = tk.BooleanVar(value=False)
+        add("Spinnaker:", ttk.Checkbutton(
+            parent, text="gesetzt", variable=self._cond_vars["spinnaker"],
+        ))
+        self._cond_vars["cloud"] = tk.StringVar(value="—")
+        add("Bewölkung:", ttk.Combobox(
+            parent, textvariable=self._cond_vars["cloud"], width=22,
+            state="readonly", values=CLOUD_COVER_LABELS,
+        ))
+        self._cond_vars["precip"] = tk.StringVar(value="kein")
+        add("Niederschlag:", ttk.Combobox(
+            parent, textvariable=self._cond_vars["precip"], width=22,
+            state="readonly", values=PRECIPITATION,
+        ))
+        self._cond_vars["visibility"] = tk.StringVar(value="—")
+        add("Sicht:", ttk.Combobox(
+            parent, textvariable=self._cond_vars["visibility"], width=22,
+            state="readonly", values=VISIBILITY_LABELS,
+        ))
+        self._cond_vars["wave"] = tk.StringVar()
+        add("Seegang/Welle (m):", ttk.Entry(
+            parent, textvariable=self._cond_vars["wave"], width=12,
+        ))
+        self._cond_vars["note"] = tk.StringVar()
+        add("Bemerkung:", ttk.Entry(
+            parent, textvariable=self._cond_vars["note"], width=30,
+        ))
+
+        # Änderungen sofort in den Thread-sicheren Cache übernehmen,
+        # damit auch der Auto-Log-Thread die aktuellen Werte sieht.
+        for var in self._cond_vars.values():
+            var.trace_add("write", lambda *_: self._sync_conditions())
+        self._sync_conditions()
+        self._logbook.conditions_provider = lambda: dict(self._condition_values)
+
+    def _sync_conditions(self) -> None:
+        v = self._cond_vars
+        self._condition_values = {
+            "engine_mode": v["engine_mode"].get(),
+            "mainsail": v["mainsail"].get() if v["mainsail"].get() != "—" else "",
+            "genoa_percent": _parse_float(v["genoa"].get()),
+            "spinnaker": 1 if v["spinnaker"].get() else 0,
+            "wave_height_m": _parse_float(v["wave"].get()),
+            "cloud_cover": v["cloud"].get() if v["cloud"].get() != "—" else "",
+            "precipitation": v["precip"].get() if v["precip"].get() != "kein" else "",
+            "visibility": v["visibility"].get() if v["visibility"].get() != "—" else "",
+            "logevent": v["logevent"].get().strip(),
+            "note": v["note"].get().strip(),
+        }
+
+    def _on_save_entry(self) -> None:
+        self._sync_conditions()
+        self._logbook.add_current(
+            conditions=self._condition_values,
+            note=self._condition_values.get("note", ""),
+            trip_id=self._logbook.current_trip_id,
+        )
+        self._refresh_logbook()
+
+    # --- Kartenplotter-Panel (GoFree) --------------------------------------
+
+    def _build_plotter(self, parent: ttk.LabelFrame) -> None:
+        self._plotter_img = None
+        self._plotter_label = tk.Label(
+            parent, text="(kein Bild)\n\nGoFree-Screenshot laden",
+            width=42, height=13, background="#1f2d36", foreground="#c8d2d8",
+        )
+        self._plotter_label.pack(padx=6, pady=6)
+        btns = ttk.Frame(parent)
+        btns.pack(fill="x", padx=6, pady=(0, 6))
+        ttk.Button(btns, text="Screenshot laden…", command=self._on_load_plotter).pack(
+            side="left"
+        )
+
+    def _on_load_plotter(self) -> None:
+        path = filedialog.askopenfilename(
+            filetypes=[("Bilder", "*.png *.gif"), ("Alle Dateien", "*.*")]
+        )
+        if not path:
+            return
+        try:
+            img = tk.PhotoImage(file=path)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror(
+                "Bild", f"Konnte das Bild nicht laden (PNG/GIF nötig):\n{exc}"
+            )
+            return
+        factor = max(1, img.width() // 360)
+        if factor > 1:
+            img = img.subsample(factor, factor)
+        self._plotter_img = img  # Referenz halten, sonst wird es entfernt
+        self._plotter_label.config(image=img, text="")
 
     # --- Verbindung ---------------------------------------------------------
 
@@ -319,7 +454,7 @@ class Application:
         self._refresh_logbook()
 
     def _on_new_trip(self) -> None:
-        dialog = _TripStartDialog(self._root)
+        dialog = _TripStartDialog(self._root, self._live.snapshot())
         self._root.wait_window(dialog.top)
         if dialog.result is None:
             return
@@ -333,7 +468,7 @@ class Application:
         trip = self._store.get_trip(tid) if tid else None
         if trip is None or trip.status != "open":
             return
-        dialog = _TripCloseDialog(self._root, trip)
+        dialog = _TripCloseDialog(self._root, trip, self._live.snapshot())
         self._root.wait_window(dialog.top)
         if dialog.result is None:
             return
@@ -609,10 +744,19 @@ class _ManualEntryDialog:
         self.top.destroy()
 
 
-class _TripStartDialog:
-    """Dialog zum Beginnen eines Törns (Start-Kennwerte wie in TripCon)."""
+def _fmt_live(snapshot: Dict[str, float], key: str) -> str:
+    value = (snapshot or {}).get(key)
+    return "" if value is None else f"{value:.1f}"
 
-    def __init__(self, parent: tk.Tk) -> None:
+
+class _TripStartDialog:
+    """Dialog zum Beginnen eines Törns (Start-Kennwerte wie in TripCon).
+
+    Log-Stand und Motorenstunden werden — falls im NMEA-Netz vorhanden —
+    aus den Live-Werten vorbelegt.
+    """
+
+    def __init__(self, parent: tk.Tk, snapshot: Optional[Dict[str, float]] = None) -> None:
         self.result: Optional[Dict] = None
         self.top = tk.Toplevel(parent)
         self.top.title("Neuen Törn beginnen")
@@ -623,21 +767,25 @@ class _TripStartDialog:
 
         self._vars: Dict[str, tk.StringVar] = {}
         rows = [
-            ("name", "Törn-Name:"),
-            ("start_location", "Startort:"),
-            ("start_water_l", "Wasser (Liter):"),
-            ("start_diesel_l", "Diesel (Liter):"),
-            ("start_engine_hours", "Motorenstunden:"),
-            ("start_log_nm", "Log-Stand (Nm):"),
+            ("name", "Törn-Name:", ""),
+            ("start_location", "Startort:", ""),
+            ("start_water_l", "Wasser (Liter):", ""),
+            ("start_diesel_l", "Diesel (Liter):", ""),
+            ("start_engine_hours", "Motorenstunden:", _fmt_live(snapshot, "engine_hours")),
+            ("start_log_nm", "Log-Stand (Nm):", _fmt_live(snapshot, "log_total_nm")),
         ]
-        for i, (key, label) in enumerate(rows):
+        for i, (key, label, default) in enumerate(rows):
             ttk.Label(frame, text=label).grid(row=i, column=0, sticky="e", padx=4, pady=4)
-            var = tk.StringVar()
+            var = tk.StringVar(value=default)
             ttk.Entry(frame, textvariable=var, width=30).grid(row=i, column=1, pady=4)
             self._vars[key] = var
+        if snapshot and (snapshot.get("engine_hours") or snapshot.get("log_total_nm")):
+            ttk.Label(
+                frame, text="(Motorstunden/Log aus NMEA vorbelegt)", foreground="#888"
+            ).grid(row=len(rows), column=0, columnspan=2, sticky="w", pady=(2, 0))
 
         buttons = ttk.Frame(frame)
-        buttons.grid(row=len(rows), column=0, columnspan=2, pady=(10, 0))
+        buttons.grid(row=len(rows) + 1, column=0, columnspan=2, pady=(10, 0))
         ttk.Button(buttons, text="Törn beginnen", command=self._on_save).pack(side="left", padx=4)
         ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
 
@@ -656,7 +804,9 @@ class _TripStartDialog:
 class _TripCloseDialog:
     """Dialog zum Abschließen eines Törns (End-Kennwerte)."""
 
-    def __init__(self, parent: tk.Tk, trip: Trip) -> None:
+    def __init__(
+        self, parent: tk.Tk, trip: Trip, snapshot: Optional[Dict[str, float]] = None
+    ) -> None:
         self.result: Optional[Dict] = None
         self.top = tk.Toplevel(parent)
         self.top.title(f"Törn abschließen: {trip.name or trip.start_location}")
@@ -665,16 +815,18 @@ class _TripCloseDialog:
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
+        # Endwerte bevorzugt aus NMEA (Log/Motorstunden), sonst Startwert
+        live_hours = _fmt_live(snapshot, "engine_hours")
+        live_log = _fmt_live(snapshot, "log_total_nm")
         self._vars: Dict[str, tk.StringVar] = {}
-        # Endwerte mit Startwerten vorbelegen, wo sinnvoll
         rows = [
             ("end_location", "Zielort:", ""),
             ("end_water_l", "Wasser (Liter):", ""),
             ("end_diesel_l", "Diesel (Liter):", ""),
             ("end_engine_hours", "Motorenstunden:",
-             "" if trip.start_engine_hours is None else str(trip.start_engine_hours)),
+             live_hours or ("" if trip.start_engine_hours is None else str(trip.start_engine_hours))),
             ("end_log_nm", "Log-Stand (Nm):",
-             "" if trip.start_log_nm is None else str(trip.start_log_nm)),
+             live_log or ("" if trip.start_log_nm is None else str(trip.start_log_nm))),
         ]
         for i, (key, label, default) in enumerate(rows):
             ttk.Label(frame, text=label).grid(row=i, column=0, sticky="e", padx=4, pady=4)

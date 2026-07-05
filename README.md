@@ -15,13 +15,18 @@ Python.
   (scheinbar & wahr), Kurs, Tiefe, Wassertemperatur, Motordrehzahl/Öldruck
 - ⚙️ **Motor ein/aus** — automatisch aus NMEA erkannt (Drehzahl `RPM`/`XDR`
   oder Öldruck > 0), manuell übersteuerbar
-- ⛵ **Manuelle Felder** pro Eintrag: Großsegel (Voll/Reff 1/Reff 2/geborgen),
-  Genua 0–100 %, Spinnaker ja/nein, Wellenhöhe, Bewölkung, Niederschlag, Sicht
+- ⛵ **Dauerhafte Bedingungs-Maske** (wie TripCon): Anlass, Motor, Großsegel
+  (Voll/Reff 1/Reff 2/geborgen), Genua 0–100 %, Spinnaker, Bewölkung,
+  Niederschlag, Sicht, Seegang/Wellenhöhe, Bemerkung — stehen fest in der
+  Hauptmaske und werden bei **jedem** Log (automatisch **und** manuell)
+  mitgeschrieben; einfach ändern, wenn sich die Bedingungen ändern
+- 📏 **Log-Stand** (`VLW`) und **Motorstunden** aus dem NMEA-Netz gelesen und
+  bei Törnbeginn/-abschluss automatisch vorbelegt
 - 🗺️ **Törns** — Einträge gruppieren; Törn mit Startort, Wasser-/Diesel­menge,
   Motorenstunden und Log-Stand beginnen und am Ende abschließen
+- 🖼️ **Kartenplotter-Feld** (GoFree) für einen Screenshot des Plotters
 - ⏱️ **Automatisches Logging** in einstellbarem Intervall (dem aktiven Törn
-  zugeordnet)
-- ✍️ **Manuelle Einträge** mit Auto-Fill der aktuellen Messwerte
+  zugeordnet, inkl. der Bedingungswerte)
 - 💾 **Speicherung** in einer lokalen SQLite-Datenbank
 - 📤 **Export** als **CSV** und **GPX** (optional pro Törn)
 - 📥 **Import** alter **TripCon**-Logbücher (`.tcdb`)
