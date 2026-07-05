@@ -13,6 +13,7 @@ auf welchem Port NMEA0183-Sätze ankommen und welche Satztypen dabei sind.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import socket
 import struct
@@ -141,6 +142,49 @@ def scan_udp(ports: List[int]) -> None:
         print("  Keine UDP-Broadcasts empfangen.")
 
 
+def _tcp_open(host: str, port: int, timeout: float = 0.3) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def sweep_tcp(host: str, ports: List[int], workers: int = 200) -> List[int]:
+    """Schneller, paralleler Verbindungsscan. Gibt die offenen Ports zurück."""
+    open_ports: List[int] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_tcp_open, host, p): p for p in ports}
+        for fut in concurrent.futures.as_completed(futures):
+            try:
+                if fut.result():
+                    open_ports.append(futures[fut])
+            except Exception:  # noqa: BLE001
+                pass
+    return sorted(open_ports)
+
+
+def scan_sweep(host: str, up_to: int = 10240) -> None:
+    ports = sorted(set(list(range(1, up_to + 1)) +
+                       [10110, 10111, 11000, 39150, 2947, 8080, 8375, 50000, 60001]))
+    print(f"\nBreiter Portscan an {host} ({len(ports)} Ports, ~15–30 s) …")
+    open_ports = sweep_tcp(host, ports)
+    if not open_ports:
+        print("  Keine offenen TCP-Ports gefunden. Ist der PC im selben WLAN wie der")
+        print("  Orca? Stimmt die IP? Muss die Datenausgabe in der Orca-App aktiv sein?")
+        return
+    print(f"  Offene Ports: {', '.join(map(str, open_ports))}\n")
+    for port in open_ports:
+        result = probe_tcp(host, port, listen_seconds=2.5)
+        if result:
+            print(f"  ✓ Port {port}: {_format_types(result)}")
+            print(f"      → In masarasi: Host={host}  Port={port}  Protokoll=tcp")
+        elif result == {}:
+            print(f"  · Port {port}: offen, sendet Daten (aber kein NMEA0183 erkannt)")
+        else:
+            print(f"  · Port {port}: offen, sendet nicht von selbst (evtl. HTTP/API/WebSocket)")
+
+
 def parse_gofree_announcement(data: bytes) -> Optional[Dict]:
     """Parst eine GoFree-Dienstankündigung (JSON). None, wenn kein GoFree."""
     try:
@@ -250,6 +294,10 @@ def main(argv=None) -> int:
         "--gofree", action="store_true",
         help="auf GoFree-Dienstankündigungen von B&G/Navico-MFDs lauschen",
     )
+    parser.add_argument(
+        "--sweep", action="store_true",
+        help="breiter Portscan (alle offenen Ports am Host finden, z.B. Orca)",
+    )
     args = parser.parse_args(argv)
 
     if not args.host and not args.udp and not args.gofree:
@@ -257,6 +305,11 @@ def main(argv=None) -> int:
 
     if args.gofree:
         scan_gofree()
+
+    if args.host and args.sweep:
+        scan_sweep(args.host)
+        print("\nFertig. Die passende Zeile oben in masarasi eintragen und 'Verbinden'.")
+        return 0
 
     tcp_ports = COMMON_TCP_PORTS if args.full else COMMON_TCP_PORTS[:5]
     udp_ports = COMMON_UDP_PORTS
