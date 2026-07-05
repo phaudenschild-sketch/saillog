@@ -132,6 +132,21 @@ class TripconTest(unittest.TestCase):
         self.assertEqual(n2, 2)
         self.assertEqual(store.count(), 2)
 
+    def test_import_creates_and_links_trips(self):
+        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        tripcon.import_into_masarasi(self.conn, db_path)
+        store = LogbookStore(db_path)
+        trips = store.all_trips()
+        self.assertEqual(len(trips), 1)
+        self.assertEqual(trips[0].start_location, "Vulcano")
+        self.assertEqual(trips[0].end_location, "Isola Salina")
+        self.assertEqual(trips[0].status, "closed")
+        # Einträge sind dem Törn zugeordnet
+        self.assertEqual(store.count(trip_id=trips[0].id), 2)
+        # Erneuter Import verdoppelt die Törns nicht
+        tripcon.import_into_masarasi(self.conn, db_path)
+        self.assertEqual(len(store.all_trips()), 1)
+
     def test_gpx_tracks(self):
         out = os.path.join(self.tmp.name, "tracks")
         from pathlib import Path

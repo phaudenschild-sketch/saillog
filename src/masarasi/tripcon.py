@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from masarasi.legacy import image_ext
-from masarasi.storage import LogbookStore, LogEntry
+from masarasi.storage import LogbookStore, LogEntry, Trip
 
 # Messwert-Tabellen mit genau einer Wertspalte: masarasi-Feld -> (Tabelle, Spalte)
 _SINGLE_VALUE_TABLES = {
@@ -141,8 +141,12 @@ def _comments(conn) -> Dict[int, str]:
     return result
 
 
-def build_entries(conn) -> List[LogEntry]:
-    """Baut aus B100_Log + Messwert-Tabellen masarasi-Logbuch-Einträge."""
+def build_entries(conn, trip_id_map: Optional[Dict[int, int]] = None) -> List[LogEntry]:
+    """Baut aus B100_Log + Messwert-Tabellen masarasi-Logbuch-Einträge.
+
+    trip_id_map: {TripCon-Trip-ID: masarasi-Trip-ID} zum Verknüpfen der
+    Einträge mit den importierten Törns.
+    """
     trips = load_trips(conn)
     positions = _pair_map(conn, "VPosition", "Latitude", "Longitude")
     apparent = _pair_map(conn, "VApparentWind", "Direction", "Speed")
@@ -207,6 +211,7 @@ def build_entries(conn) -> List[LogEntry]:
         if not timestamp and not measurements and not note:
             continue
 
+        entry_trip = trip_id_map.get(trip_id) if trip_id_map else None
         entries.append(
             LogEntry.from_snapshot(
                 timestamp=timestamp,
@@ -214,17 +219,75 @@ def build_entries(conn) -> List[LogEntry]:
                 measurements=measurements,
                 note=note,
                 location=location,
+                trip_id=entry_trip,
             )
         )
     return entries
 
 
+def _trip_engine_hours(conn, old_trip_id: int) -> Tuple[Optional[float], Optional[float]]:
+    if not _table_exists(conn, "B112_HoursOfMotoring"):
+        return None, None
+    row = conn.execute(
+        "SELECT MIN(HoursOfMotoring), MAX(HoursOfMotoring) "
+        "FROM B112_HoursOfMotoring WHERE TripID = ?",
+        (old_trip_id,),
+    ).fetchone()
+    return (to_float(row[0]), to_float(row[1])) if row else (None, None)
+
+
+def _trip_log_range(conn, old_trip_id: int) -> Tuple[Optional[float], Optional[float]]:
+    if not (_table_exists(conn, "VTriplog") and _table_exists(conn, "B100_Log")):
+        return None, None
+    row = conn.execute(
+        "SELECT MIN(v.Value), MAX(v.Value) FROM VTriplog v "
+        "JOIN B100_Log l ON v.LogID = l.ID WHERE l.Trip = ?",
+        (old_trip_id,),
+    ).fetchone()
+    return (to_float(row[0]), to_float(row[1])) if row else (None, None)
+
+
+def import_trips(conn, store: LogbookStore) -> Dict[int, int]:
+    """Legt für jeden TripCon-Törn einen masarasi-Törn an (idempotent).
+
+    Gibt {TripCon-Trip-ID: masarasi-Trip-ID} zurück.
+    """
+    existing = {(t.name, t.start_dz): t.id for t in store.all_trips()}
+    mapping: Dict[int, int] = {}
+    for old_id, info in load_trips(conn).items():
+        route = f"{info['from']} → {info['to']}".strip(" →")
+        name = f"TripCon #{old_id}: {route}" if route else f"TripCon #{old_id}"
+        start_dz = to_iso(info["from_dz"])
+        key = (name, start_dz)
+        if key in existing:
+            mapping[old_id] = existing[key]
+            continue
+        eh_start, eh_end = _trip_engine_hours(conn, old_id)
+        log_start, log_end = _trip_log_range(conn, old_id)
+        trip = Trip(
+            name=name,
+            status="closed",
+            start_location=info["from"],
+            start_dz=start_dz,
+            end_location=info["to"],
+            end_dz=to_iso(info["to_dz"]),
+            start_engine_hours=eh_start,
+            end_engine_hours=eh_end,
+            start_log_nm=log_start,
+            end_log_nm=log_end,
+        )
+        store.add_trip(trip)
+        mapping[old_id] = trip.id
+    return mapping
+
+
 def import_into_masarasi(conn, db_path: str, replace: bool = True) -> int:
-    """Importiert alle Einträge in die masarasi-Logbuch-DB. Gibt Anzahl zurück."""
+    """Importiert Törns + Einträge in die masarasi-Logbuch-DB. Gibt Anzahl zurück."""
     store = LogbookStore(db_path)
     if replace:
         store.delete_by_type("tripcon")
-    entries = build_entries(conn)
+    trip_map = import_trips(conn, store)
+    entries = build_entries(conn, trip_id_map=trip_map)
     store.add_many(entries)
     return len(entries)
 

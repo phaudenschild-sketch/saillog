@@ -12,13 +12,19 @@ Python.
 
 - 📡 **Live-Anbindung** ans Gateway per TCP oder UDP (NMEA0183-Stream)
 - 📊 **Live-Dashboard**: Position, SOG/COG, Fahrt durchs Wasser, Wind
-  (scheinbar & wahr), Kurs, Tiefe, Wassertemperatur
-- ⏱️ **Automatisches Logging** in einstellbarem Intervall
+  (scheinbar & wahr), Kurs, Tiefe, Wassertemperatur, Motordrehzahl/Öldruck
+- ⚙️ **Motor ein/aus** — automatisch aus NMEA erkannt (Drehzahl `RPM`/`XDR`
+  oder Öldruck > 0), manuell übersteuerbar
+- ⛵ **Manuelle Felder** pro Eintrag: Großsegel (Voll/Reff 1/Reff 2/geborgen),
+  Genua 0–100 %, Spinnaker ja/nein, Wellenhöhe, Bewölkung, Niederschlag, Sicht
+- 🗺️ **Törns** — Einträge gruppieren; Törn mit Startort, Wasser-/Diesel­menge,
+  Motorenstunden und Log-Stand beginnen und am Ende abschließen
+- ⏱️ **Automatisches Logging** in einstellbarem Intervall (dem aktiven Törn
+  zugeordnet)
 - ✍️ **Manuelle Einträge** mit Auto-Fill der aktuellen Messwerte
-  (Ort/Hafen, Crew, Notizen)
 - 💾 **Speicherung** in einer lokalen SQLite-Datenbank
-- 📤 **Export** als **CSV** (Tabellenkalkulation) und **GPX** (Track für
-  OpenCPN, Google Earth, …)
+- 📤 **Export** als **CSV** und **GPX** (optional pro Törn)
+- 📥 **Import** alter **TripCon**-Logbücher (`.tcdb`)
 - 🧪 **Simulator** zum Testen ohne Boot
 
 ## Voraussetzungen
@@ -167,7 +173,8 @@ masarasi/
 │   ├── app.py                  ← Einstiegspunkt (baut GUI)
 │   ├── gui.py                  ← tkinter-Oberfläche
 │   ├── config.py               ← Einstellungen (~/.masarasi/config.json)
-│   ├── nmea.py                 ← NMEA0183-Parser
+│   ├── fields.py               ← Auswahllisten (Segel, Wetter, Sicht)
+│   ├── nmea.py                 ← NMEA0183-Parser (inkl. Motor RPM/XDR)
 │   ├── source.py               ← TCP/UDP-Netzwerk-Client (Thread)
 │   ├── livedata.py             ← Thread-sicherer Messwert-Speicher
 │   ├── logbook.py              ← Auto-/Manuell-Logging-Dienst

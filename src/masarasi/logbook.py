@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from masarasi.livedata import LiveData
-from masarasi.storage import LogbookStore, LogEntry
+from masarasi.nmea import engine_running
+from masarasi.storage import LogbookStore, LogEntry, Trip
 
 
 def utc_now_iso() -> str:
@@ -28,6 +29,8 @@ class LogbookService:
         self._stop = threading.Event()
         self._interval = 300
         self._on_auto_entry: Optional[Callable[[LogEntry], None]] = None
+        # Aktiver Törn, dem neue Einträge zugeordnet werden (vom GUI gesetzt)
+        self.current_trip_id: Optional[int] = None
 
     # --- manuelle Einträge --------------------------------------------------
 
@@ -37,9 +40,23 @@ class LogbookService:
         crew: str = "",
         location: str = "",
         include_measurements: bool = True,
+        trip_id: Optional[int] = None,
+        engine_on: Optional[int] = None,
+        mainsail: str = "",
+        genoa_percent: Optional[float] = None,
+        spinnaker: Optional[int] = None,
+        wave_height_m: Optional[float] = None,
+        cloud_cover: str = "",
+        precipitation: str = "",
+        visibility: str = "",
     ) -> LogEntry:
-        """Erstellt einen manuellen Eintrag, optional mit aktuellen Messwerten."""
+        """Erstellt einen manuellen Eintrag, optional mit aktuellen Messwerten.
+
+        engine_on: None -> automatisch aus NMEA ableiten (falls möglich).
+        """
         measurements = self._live.snapshot() if include_measurements else {}
+        if engine_on is None:
+            engine_on = engine_running(measurements)
         entry = LogEntry.from_snapshot(
             timestamp=utc_now_iso(),
             entry_type="manual",
@@ -47,13 +64,40 @@ class LogbookService:
             note=note,
             crew=crew,
             location=location,
+            trip_id=trip_id,
+            engine_on=engine_on,
+            mainsail=mainsail,
+            genoa_percent=genoa_percent,
+            spinnaker=spinnaker,
+            wave_height_m=wave_height_m,
+            cloud_cover=cloud_cover,
+            precipitation=precipitation,
+            visibility=visibility,
         )
         self._store.add(entry)
         return entry
 
+    # --- Törns --------------------------------------------------------------
+
+    def start_trip(self, trip: Trip) -> Trip:
+        """Beginnt einen neuen Törn (Startort/Wasser/Diesel/Std/Log)."""
+        if not trip.start_dz:
+            trip.start_dz = utc_now_iso()
+        trip.status = "open"
+        self._store.add_trip(trip)
+        return trip
+
+    def close_trip(self, trip: Trip) -> Trip:
+        """Schließt einen Törn ab (Endwerte setzen, Status = closed)."""
+        if not trip.end_dz:
+            trip.end_dz = utc_now_iso()
+        trip.status = "closed"
+        self._store.update_trip(trip)
+        return trip
+
     # --- automatische Einträge ---------------------------------------------
 
-    def record_auto(self) -> Optional[LogEntry]:
+    def record_auto(self, trip_id: Optional[int] = None) -> Optional[LogEntry]:
         """Schreibt einen Auto-Eintrag aus dem aktuellen Snapshot.
 
         Gibt None zurück, wenn (noch) keine Messwerte vorliegen.
@@ -65,6 +109,8 @@ class LogbookService:
             timestamp=utc_now_iso(),
             entry_type="auto",
             measurements=measurements,
+            trip_id=trip_id,
+            engine_on=engine_running(measurements),
         )
         self._store.add(entry)
         return entry
@@ -95,7 +141,7 @@ class LogbookService:
 
     def _auto_loop(self) -> None:
         while not self._stop.is_set():
-            entry = self.record_auto()
+            entry = self.record_auto(trip_id=self.current_trip_id)
             if entry is not None and self._on_auto_entry is not None:
                 self._on_auto_entry(entry)
             # In kleinen Schritten warten, damit stop_auto schnell greift

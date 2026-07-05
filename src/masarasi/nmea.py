@@ -34,6 +34,8 @@ TWD = "twd_deg"            # True Wind Direction, rechtweisend (Grad)
 TWA = "twa_deg"            # True Wind Angle relativ zum Bug (0-359 Grad)
 DEPTH = "depth_m"          # Wassertiefe (Meter)
 WATER_TEMP = "water_temp_c"  # Wassertemperatur (Grad Celsius)
+ENGINE_RPM = "engine_rpm"   # Motordrehzahl (U/min) — für Motor-Erkennung
+OIL_PRESSURE = "oil_pressure_bar"  # Öldruck (bar) — für Motor-Erkennung
 UTC_TIME = "utc_time"       # Uhrzeit UTC als "hhmmss"
 
 # Reihenfolge & Anzeigenamen für die GUI
@@ -51,6 +53,8 @@ FIELD_LABELS = [
     (TWD, "Windrichtung", "°"),
     (DEPTH, "Tiefe", "m"),
     (WATER_TEMP, "Wassertemp.", "°C"),
+    (ENGINE_RPM, "Motor-Drehzahl", "U/min"),
+    (OIL_PRESSURE, "Öldruck", "bar"),
 ]
 
 
@@ -263,6 +267,39 @@ def _vhw(f):
     }
 
 
+def _rpm(f):
+    # $--RPM,quelle,nummer,drehzahl,steigung,status  (S=Welle, E=Motor)
+    if len(f) > 5 and f[5] and f[5].upper() != "A":
+        return {}
+    rpm = _to_float(f[3]) if len(f) > 3 else None
+    source = (f[1] or "").upper() if len(f) > 1 else ""
+    if rpm is None or source not in ("E", "S", ""):
+        return {}
+    return {ENGINE_RPM: rpm}
+
+
+def _xdr(f):
+    # $--XDR,typ,wert,einheit,id, typ,wert,einheit,id, …  (Gruppen zu 4)
+    result = {}
+    groups = f[1:]
+    for i in range(0, len(groups) - 3, 4):
+        ttype = (groups[i] or "").upper()
+        value = _to_float(groups[i + 1])
+        units = (groups[i + 2] or "").upper()
+        tid = (groups[i + 3] or "").upper()
+        if value is None:
+            continue
+        if ttype == "T":  # Tachometer / Drehzahl
+            if "ENGINE" in tid or "RPM" in tid or units == "R" or not tid:
+                result[ENGINE_RPM] = value
+        elif ttype == "P":  # Druck — nur eindeutig motorbezogenen als Öldruck werten
+            if "OIL" in tid or "ENGINE" in tid:
+                if units == "P":  # Pascal -> bar
+                    value = value / 100000.0
+                result[OIL_PRESSURE] = value
+    return result
+
+
 _HANDLERS = {
     "RMC": _rmc,
     "GGA": _gga,
@@ -277,4 +314,21 @@ _HANDLERS = {
     "HDT": _hdt,
     "HDM": _hdm,
     "VHW": _vhw,
+    "RPM": _rpm,
+    "XDR": _xdr,
 }
+
+
+def engine_running(snapshot: dict) -> Optional[int]:
+    """Leitet Motor ein/aus aus den Live-Werten ab.
+
+    Gibt 1 (läuft), 0 (aus) oder None (keine Motordaten) zurück.
+    Kriterium: Drehzahl > 0 oder Öldruck > 0.
+    """
+    rpm = snapshot.get(ENGINE_RPM)
+    oil = snapshot.get(OIL_PRESSURE)
+    if rpm is None and oil is None:
+        return None
+    if (rpm is not None and rpm > 0) or (oil is not None and oil > 0):
+        return 1
+    return 0

@@ -1,0 +1,178 @@
+"""Tests für die neuen Funktionen: Motor-Erkennung, Felder, Törns."""
+
+import os
+import sqlite3
+import tempfile
+import unittest
+
+from masarasi import nmea
+from masarasi.livedata import LiveData
+from masarasi.logbook import LogbookService
+from masarasi.nmea import NmeaParser, engine_running
+from masarasi.storage import LogbookStore, LogEntry, Trip
+
+
+class EngineNmeaTest(unittest.TestCase):
+    def setUp(self):
+        self.parser = NmeaParser()
+
+    def test_rpm_engine(self):
+        result = self.parser.parse("$ERRPM,E,1,2100.0,10.5,A")
+        self.assertAlmostEqual(result[nmea.ENGINE_RPM], 2100.0)
+
+    def test_rpm_zero(self):
+        result = self.parser.parse("$ERRPM,E,1,0.0,,A")
+        self.assertEqual(result[nmea.ENGINE_RPM], 0.0)
+
+    def test_rpm_invalid_status(self):
+        self.assertEqual(self.parser.parse("$ERRPM,E,1,2100.0,,V"), {})
+
+    def test_xdr_engine_rpm_and_oil(self):
+        result = self.parser.parse("$IIXDR,T,1850,R,ENGINE#0,P,3.2,B,OILENGINE#0")
+        self.assertAlmostEqual(result[nmea.ENGINE_RPM], 1850)
+        self.assertAlmostEqual(result[nmea.OIL_PRESSURE], 3.2)
+
+    def test_xdr_barometer_not_oil(self):
+        # Luftdruck darf NICHT als Öldruck gewertet werden
+        result = self.parser.parse("$IIXDR,P,1.013,B,Barometer")
+        self.assertNotIn(nmea.OIL_PRESSURE, result)
+
+    def test_engine_running_helper(self):
+        self.assertEqual(engine_running({"engine_rpm": 2000}), 1)
+        self.assertEqual(engine_running({"engine_rpm": 0}), 0)
+        self.assertEqual(engine_running({"oil_pressure_bar": 3.0}), 1)
+        self.assertIsNone(engine_running({"sog_kn": 5.0}))
+
+
+class StorageFieldsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = os.path.join(self.tmp.name, "log.sqlite3")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_new_fields_roundtrip(self):
+        store = LogbookStore(self.db)
+        entry = LogEntry.from_snapshot(
+            timestamp="2026-07-05T10:00:00Z",
+            entry_type="manual",
+            measurements={"lat": 47.5, "lon": 9.4},
+            engine_on=1,
+            mainsail="Reff 1",
+            genoa_percent=80.0,
+            spinnaker=1,
+            wave_height_m=1.5,
+            cloud_cover="wolkig",
+            precipitation="Regen",
+            visibility="mässig",
+        )
+        store.add(entry)
+        loaded = store.all()[0]
+        self.assertEqual(loaded.engine_on, 1)
+        self.assertEqual(loaded.mainsail, "Reff 1")
+        self.assertEqual(loaded.genoa_percent, 80.0)
+        self.assertEqual(loaded.spinnaker, 1)
+        self.assertEqual(loaded.wave_height_m, 1.5)
+        self.assertEqual(loaded.cloud_cover, "wolkig")
+        self.assertEqual(loaded.precipitation, "Regen")
+        self.assertEqual(loaded.visibility, "mässig")
+
+    def test_migration_from_old_schema(self):
+        # Alte DB nur mit den ursprünglichen Spalten anlegen
+        conn = sqlite3.connect(self.db)
+        conn.execute(
+            "CREATE TABLE log_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "timestamp TEXT NOT NULL, entry_type TEXT, lat REAL, lon REAL, "
+            "note TEXT, crew TEXT, location TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO log_entries (timestamp, entry_type, lat, lon, note) "
+            "VALUES ('2020-01-01T00:00:00Z','manual',47.0,9.0,'alt')"
+        )
+        conn.commit()
+        conn.close()
+        # LogbookStore muss die fehlenden Spalten ergänzen und lesen können
+        store = LogbookStore(self.db)
+        entries = store.all()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].note, "alt")
+        self.assertIsNone(entries[0].mainsail or None)
+        # Neuer Eintrag mit neuen Feldern funktioniert
+        store.add(LogEntry(timestamp="2026-01-01T00:00:00Z", mainsail="Voll"))
+        self.assertEqual(store.count(), 2)
+
+
+class TripsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = LogbookStore(os.path.join(self.tmp.name, "log.sqlite3"))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_trip_lifecycle(self):
+        trip = Trip(name="Ägäis", start_location="Kos", start_dz="2026-06-01T08:00:00Z",
+                    start_water_l=200, start_diesel_l=80, start_engine_hours=450.0,
+                    start_log_nm=31000.0)
+        self.store.add_trip(trip)
+        self.assertIsNotNone(trip.id)
+        self.assertEqual(self.store.open_trip().id, trip.id)
+
+        # Einträge dem Törn zuordnen
+        self.store.add(LogEntry(timestamp="2026-06-01T09:00:00Z", trip_id=trip.id))
+        self.store.add(LogEntry(timestamp="2026-06-01T10:00:00Z", trip_id=trip.id))
+        self.store.add(LogEntry(timestamp="2026-06-05T10:00:00Z"))  # ohne Törn
+        self.assertEqual(self.store.count(trip_id=trip.id), 2)
+        self.assertEqual(self.store.count(), 3)
+
+        # Abschließen
+        trip.end_location = "Rhodos"
+        trip.end_dz = "2026-06-08T18:00:00Z"
+        trip.status = "closed"
+        self.store.update_trip(trip)
+        self.assertIsNone(self.store.open_trip())
+        loaded = self.store.get_trip(trip.id)
+        self.assertEqual(loaded.end_location, "Rhodos")
+        self.assertEqual(loaded.status, "closed")
+        self.assertEqual(loaded.start_engine_hours, 450.0)
+
+    def test_delete_trip_unassigns_entries(self):
+        trip = Trip(name="Test", start_dz="2026-06-01T08:00:00Z")
+        self.store.add_trip(trip)
+        self.store.add(LogEntry(timestamp="2026-06-01T09:00:00Z", trip_id=trip.id))
+        self.store.delete_trip(trip.id)
+        self.assertIsNone(self.store.get_trip(trip.id))
+        self.assertIsNone(self.store.all()[0].trip_id)
+
+
+class LogbookServiceTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = LogbookStore(os.path.join(self.tmp.name, "log.sqlite3"))
+        self.live = LiveData()
+        self.service = LogbookService(self.store, self.live)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_manual_derives_engine_on(self):
+        self.live.update({"engine_rpm": 1800.0, "lat": 47.0, "lon": 9.0})
+        entry = self.service.add_manual(note="Motor an")
+        self.assertEqual(entry.engine_on, 1)
+
+    def test_manual_engine_override(self):
+        self.live.update({"engine_rpm": 1800.0})
+        entry = self.service.add_manual(engine_on=0)
+        self.assertEqual(entry.engine_on, 0)
+
+    def test_auto_entry_uses_current_trip(self):
+        trip = self.service.start_trip(Trip(name="X", start_location="A"))
+        self.service.current_trip_id = trip.id
+        self.live.update({"lat": 47.0, "lon": 9.0})
+        entry = self.service.record_auto(trip_id=self.service.current_trip_id)
+        self.assertEqual(entry.trip_id, trip.id)
+
+
+if __name__ == "__main__":
+    unittest.main()

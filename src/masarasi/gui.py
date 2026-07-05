@@ -8,6 +8,14 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, Optional
 
 from masarasi.config import Config
+from masarasi.fields import (
+    CLOUD_COVER_LABELS,
+    MAINSAIL_OPTIONS,
+    PRECIPITATION,
+    VISIBILITY_LABELS,
+    cloud_hint,
+    visibility_hint,
+)
 from masarasi.livedata import LiveData
 from masarasi.logbook import LogbookService
 from masarasi.nmea import FIELD_LABELS
@@ -18,7 +26,7 @@ from masarasi.source import (
     STATUS_ERROR,
     NmeaSource,
 )
-from masarasi.storage import LogbookStore
+from masarasi.storage import LogbookStore, Trip
 
 _STATUS_TEXT = {
     STATUS_DISCONNECTED: ("getrennt", "#888888"),
@@ -43,12 +51,15 @@ class Application:
         # Ringpuffer für die Rohdaten-Anzeige (Thread-sicher via deque.append)
         self._raw_buffer: Deque[str] = deque(maxlen=500)
         self._raw_window: Optional["_RawMonitor"] = None
+        # Törn-Auswahl: Anzeigetext -> Trip-ID (None = keinem Törn zugeordnet)
+        self._trip_choices: Dict[str, Optional[int]] = {}
 
         root.title("masarasi — Segel-Logbuch")
-        root.geometry("880x680")
-        root.minsize(720, 560)
+        root.geometry("920x780")
+        root.minsize(760, 600)
 
         self._build_ui()
+        self._refresh_trips()
         self._refresh_logbook()
         self._schedule_live_update()
 
@@ -87,6 +98,24 @@ class Application:
 
         self._status_label = tk.Label(top, text="getrennt", fg="#888888")
         self._status_label.grid(row=0, column=8, padx=8)
+
+        # Törn-Leiste
+        trip_bar = ttk.LabelFrame(self._root, text="Törn")
+        trip_bar.pack(fill="x", **pad)
+        ttk.Label(trip_bar, text="Aktiver Törn:").grid(row=0, column=0, sticky="e", padx=4, pady=6)
+        self._trip_var = tk.StringVar()
+        self._trip_combo = ttk.Combobox(
+            trip_bar, textvariable=self._trip_var, width=42, state="readonly"
+        )
+        self._trip_combo.grid(row=0, column=1, padx=4)
+        self._trip_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_trip_selected())
+        ttk.Button(trip_bar, text="Neuer Törn…", command=self._on_new_trip).grid(
+            row=0, column=2, padx=6
+        )
+        self._close_trip_btn = ttk.Button(
+            trip_bar, text="Törn abschließen…", command=self._on_close_trip
+        )
+        self._close_trip_btn.grid(row=0, column=3, padx=4)
 
         # Live-Daten-Dashboard
         dash = ttk.LabelFrame(self._root, text="Aktuelle Messwerte")
@@ -133,15 +162,15 @@ class Application:
         table_frame = ttk.Frame(self._root)
         table_frame.pack(fill="both", expand=True, **pad)
 
-        cols = ("time", "type", "pos", "sog", "cog", "wind", "depth", "note")
+        cols = ("time", "type", "pos", "sog", "wind", "depth", "motor", "segel", "note")
         headers = {
             "time": "Zeit (UTC)", "type": "Typ", "pos": "Position",
-            "sog": "SOG", "cog": "COG", "wind": "Wind", "depth": "Tiefe",
-            "note": "Notiz",
+            "sog": "SOG", "wind": "Wind", "depth": "Tiefe",
+            "motor": "Motor", "segel": "Segel", "note": "Notiz",
         }
         widths = {
-            "time": 150, "type": 60, "pos": 160, "sog": 55, "cog": 55,
-            "wind": 110, "depth": 60, "note": 200,
+            "time": 150, "type": 60, "pos": 150, "sog": 50,
+            "wind": 100, "depth": 55, "motor": 50, "segel": 140, "note": 170,
         }
         self._tree = ttk.Treeview(table_frame, columns=cols, show="headings")
         for col in cols:
@@ -250,6 +279,70 @@ class Application:
     def _on_auto_entry(self, _entry) -> None:
         self._root.after(0, self._refresh_logbook)
 
+    # --- Törns --------------------------------------------------------------
+
+    def _refresh_trips(self) -> None:
+        trips = self._store.all_trips(newest_first=True)
+        self._trip_choices = {"— (kein Törn)": None}
+        open_display = None
+        for t in trips:
+            route = f"{t.start_location or '?'} → {t.end_location or '…'}"
+            status = "offen" if t.status == "open" else "abgeschlossen"
+            disp = f"#{t.id} {t.name or route}  [{status}]"
+            self._trip_choices[disp] = t.id
+            if t.status == "open" and open_display is None:
+                open_display = disp
+        self._trip_combo["values"] = list(self._trip_choices.keys())
+
+        active_id = self._logbook.current_trip_id
+        if active_id is None and open_display is not None:
+            self._trip_var.set(open_display)
+            self._logbook.current_trip_id = self._trip_choices[open_display]
+        else:
+            disp = next(
+                (d for d, i in self._trip_choices.items() if i == active_id),
+                "— (kein Törn)",
+            )
+            self._trip_var.set(disp)
+        self._update_close_button()
+
+    def _update_close_button(self) -> None:
+        tid = self._logbook.current_trip_id
+        trip = self._store.get_trip(tid) if tid else None
+        self._close_trip_btn.config(
+            state="normal" if trip and trip.status == "open" else "disabled"
+        )
+
+    def _on_trip_selected(self) -> None:
+        self._logbook.current_trip_id = self._trip_choices.get(self._trip_var.get())
+        self._update_close_button()
+        self._refresh_logbook()
+
+    def _on_new_trip(self) -> None:
+        dialog = _TripStartDialog(self._root)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        trip = self._logbook.start_trip(Trip(**dialog.result))
+        self._logbook.current_trip_id = trip.id
+        self._refresh_trips()
+        self._refresh_logbook()
+
+    def _on_close_trip(self) -> None:
+        tid = self._logbook.current_trip_id
+        trip = self._store.get_trip(tid) if tid else None
+        if trip is None or trip.status != "open":
+            return
+        dialog = _TripCloseDialog(self._root, trip)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        for key, value in dialog.result.items():
+            setattr(trip, key, value)
+        self._logbook.close_trip(trip)
+        self._refresh_trips()
+        self._refresh_logbook()
+
     # --- manuelle Einträge --------------------------------------------------
 
     def _on_manual_entry(self) -> None:
@@ -257,10 +350,20 @@ class Application:
         self._root.wait_window(dialog.top)
         if dialog.result is None:
             return
+        r = dialog.result
         self._logbook.add_manual(
-            note=dialog.result["note"],
-            crew=dialog.result["crew"],
-            location=dialog.result["location"],
+            note=r["note"],
+            crew=r["crew"],
+            location=r["location"],
+            trip_id=self._logbook.current_trip_id,
+            engine_on=r["engine_on"],
+            mainsail=r["mainsail"],
+            genoa_percent=r["genoa_percent"],
+            spinnaker=r["spinnaker"],
+            wave_height_m=r["wave_height_m"],
+            cloud_cover=r["cloud_cover"],
+            precipitation=r["precipitation"],
+            visibility=r["visibility"],
         )
         self._refresh_logbook()
 
@@ -269,13 +372,22 @@ class Application:
     def _refresh_logbook(self) -> None:
         for item in self._tree.get_children():
             self._tree.delete(item)
-        for entry in self._store.all(limit=5000, newest_first=True):
+        trip_id = self._logbook.current_trip_id
+        for entry in self._store.all(limit=5000, newest_first=True, trip_id=trip_id):
             pos = ""
             if entry.lat is not None and entry.lon is not None:
                 pos = f"{entry.lat:.4f}, {entry.lon:.4f}"
             wind = ""
             if entry.aws_kn is not None:
                 wind = f"{entry.aws_kn:.0f}kn @ {entry.awa_deg or 0:.0f}°"
+            motor = "ein" if entry.engine_on == 1 else ("aus" if entry.engine_on == 0 else "")
+            sail_parts = []
+            if entry.mainsail and entry.mainsail != "—":
+                sail_parts.append(entry.mainsail)
+            if entry.genoa_percent is not None:
+                sail_parts.append(f"Genua {entry.genoa_percent:.0f}%")
+            if entry.spinnaker:
+                sail_parts.append("Spi")
             self._tree.insert(
                 "", "end", iid=str(entry.id),
                 values=(
@@ -283,13 +395,16 @@ class Application:
                     entry.entry_type,
                     pos,
                     "" if entry.sog_kn is None else f"{entry.sog_kn:.1f}",
-                    "" if entry.cog_deg is None else f"{entry.cog_deg:.0f}",
                     wind,
                     "" if entry.depth_m is None else f"{entry.depth_m:.1f}",
+                    motor,
+                    ", ".join(sail_parts),
                     entry.note,
                 ),
             )
-        self._count_label.config(text=f"{self._store.count()} Einträge")
+        total = self._store.count(trip_id=trip_id)
+        scope = "im Törn" if trip_id else "gesamt"
+        self._count_label.config(text=f"{total} Einträge ({scope})")
 
     def _on_delete_entry(self) -> None:
         selection = self._tree.selection()
@@ -310,7 +425,7 @@ class Application:
         )
         if not path:
             return
-        count = self._store.export_csv(path)
+        count = self._store.export_csv(path, trip_id=self._logbook.current_trip_id)
         messagebox.showinfo("Export", f"{count} Einträge nach CSV exportiert.")
 
     def _on_export_gpx(self) -> None:
@@ -320,7 +435,7 @@ class Application:
         )
         if not path:
             return
-        count = self._store.export_gpx(path)
+        count = self._store.export_gpx(path, trip_id=self._logbook.current_trip_id)
         messagebox.showinfo("Export", f"{count} Positionspunkte nach GPX exportiert.")
 
     # --- Schließen ----------------------------------------------------------
@@ -332,11 +447,21 @@ class Application:
         self._root.destroy()
 
 
+def _parse_float(text: str) -> Optional[float]:
+    text = (text or "").strip().replace(",", ".")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 class _ManualEntryDialog:
     """Dialog für einen manuellen Logbuch-Eintrag mit Auto-Fill."""
 
     def __init__(self, parent: tk.Tk, snapshot: Dict[str, float]) -> None:
-        self.result: Optional[Dict[str, str]] = None
+        self.result: Optional[Dict] = None
         self.top = tk.Toplevel(parent)
         self.top.title("Manueller Eintrag")
         self.top.transient(parent)
@@ -345,47 +470,237 @@ class _ManualEntryDialog:
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
-        info = "Aktuelle Messwerte werden automatisch übernommen."
-        if snapshot:
-            parts = []
-            if "lat" in snapshot and "lon" in snapshot:
-                parts.append(f"Pos {snapshot['lat']:.4f}, {snapshot['lon']:.4f}")
-            if "sog_kn" in snapshot:
-                parts.append(f"SOG {snapshot['sog_kn']:.1f}kn")
-            if "aws_kn" in snapshot:
-                parts.append(f"Wind {snapshot['aws_kn']:.0f}kn")
-            if parts:
-                info = " · ".join(parts)
-        else:
-            info = "Keine Live-Messwerte verfügbar (nur Text wird gespeichert)."
+        parts = []
+        if "lat" in snapshot and "lon" in snapshot:
+            parts.append(f"Pos {snapshot['lat']:.4f}, {snapshot['lon']:.4f}")
+        if "sog_kn" in snapshot:
+            parts.append(f"SOG {snapshot['sog_kn']:.1f}kn")
+        if "aws_kn" in snapshot:
+            parts.append(f"Wind {snapshot['aws_kn']:.0f}kn")
+        if snapshot.get("engine_rpm") is not None:
+            parts.append(f"Motor {snapshot['engine_rpm']:.0f} U/min")
+        info = " · ".join(parts) if parts else "Keine Live-Messwerte (nur Text wird gespeichert)."
         ttk.Label(frame, text=info, foreground="#555").grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10)
+            row=0, column=0, columnspan=4, sticky="w", pady=(0, 10)
         )
 
-        ttk.Label(frame, text="Ort / Hafen:").grid(row=1, column=0, sticky="e", pady=4)
+        row = 1
+
+        def add_label(text, r, c=0):
+            ttk.Label(frame, text=text).grid(row=r, column=c, sticky="e", padx=4, pady=3)
+
+        # Ort / Crew
+        add_label("Ort / Hafen:", row)
         self._location = tk.StringVar()
-        ttk.Entry(frame, textvariable=self._location, width=40).grid(row=1, column=1, pady=4)
-
-        ttk.Label(frame, text="Crew:").grid(row=2, column=0, sticky="e", pady=4)
+        ttk.Entry(frame, textvariable=self._location, width=28).grid(row=row, column=1, pady=3, sticky="w")
+        add_label("Crew:", row, 2)
         self._crew = tk.StringVar()
-        ttk.Entry(frame, textvariable=self._crew, width=40).grid(row=2, column=1, pady=4)
+        ttk.Entry(frame, textvariable=self._crew, width=22).grid(row=row, column=3, pady=3, sticky="w")
+        row += 1
 
-        ttk.Label(frame, text="Notiz:").grid(row=3, column=0, sticky="ne", pady=4)
-        self._note = tk.Text(frame, width=40, height=6)
-        self._note.grid(row=3, column=1, pady=4)
+        # Motor
+        add_label("Motor:", row)
+        auto = snapshot.get("engine_rpm")
+        auto_hint = ""
+        if auto is not None:
+            auto_hint = f" (erkannt: {'ein' if auto > 0 else 'aus'})"
+        self._engine = tk.StringVar(value="automatisch")
+        ttk.Combobox(
+            frame, textvariable=self._engine, width=25, state="readonly",
+            values=["automatisch", "ein", "aus"],
+        ).grid(row=row, column=1, pady=3, sticky="w")
+        ttk.Label(frame, text=auto_hint, foreground="#888").grid(row=row, column=2, columnspan=2, sticky="w")
+        row += 1
+
+        # Großsegel / Genua / Spinnaker
+        add_label("Großsegel:", row)
+        self._mainsail = tk.StringVar(value="—")
+        ttk.Combobox(
+            frame, textvariable=self._mainsail, width=25, state="readonly",
+            values=MAINSAIL_OPTIONS,
+        ).grid(row=row, column=1, pady=3, sticky="w")
+        add_label("Genua %:", row, 2)
+        self._genoa = tk.StringVar()
+        ttk.Spinbox(frame, from_=0, to=100, textvariable=self._genoa, width=8).grid(
+            row=row, column=3, pady=3, sticky="w"
+        )
+        row += 1
+
+        add_label("Spinnaker:", row)
+        self._spinnaker = tk.BooleanVar(value=False)
+        ttk.Checkbutton(frame, text="gesetzt", variable=self._spinnaker).grid(
+            row=row, column=1, sticky="w", pady=3
+        )
+        row += 1
+
+        # Wetter
+        add_label("Wellenhöhe (m):", row)
+        self._wave = tk.StringVar()
+        ttk.Entry(frame, textvariable=self._wave, width=10).grid(row=row, column=1, pady=3, sticky="w")
+        row += 1
+
+        add_label("Bewölkung:", row)
+        self._cloud = tk.StringVar(value="—")
+        self._cloud_combo = ttk.Combobox(
+            frame, textvariable=self._cloud, width=25, state="readonly",
+            values=CLOUD_COVER_LABELS,
+        )
+        self._cloud_combo.grid(row=row, column=1, pady=3, sticky="w")
+        self._cloud_hint = ttk.Label(frame, text="", foreground="#888")
+        self._cloud_hint.grid(row=row, column=2, columnspan=2, sticky="w")
+        self._cloud_combo.bind(
+            "<<ComboboxSelected>>",
+            lambda _e: self._cloud_hint.config(text=cloud_hint(self._cloud.get())),
+        )
+        row += 1
+
+        add_label("Niederschlag:", row)
+        self._precip = tk.StringVar(value="kein")
+        ttk.Combobox(
+            frame, textvariable=self._precip, width=25, state="readonly",
+            values=PRECIPITATION,
+        ).grid(row=row, column=1, pady=3, sticky="w")
+        row += 1
+
+        add_label("Sicht:", row)
+        self._visibility = tk.StringVar(value="—")
+        self._vis_combo = ttk.Combobox(
+            frame, textvariable=self._visibility, width=25, state="readonly",
+            values=VISIBILITY_LABELS,
+        )
+        self._vis_combo.grid(row=row, column=1, pady=3, sticky="w")
+        self._vis_hint = ttk.Label(frame, text="", foreground="#888")
+        self._vis_hint.grid(row=row, column=2, columnspan=2, sticky="w")
+        self._vis_combo.bind(
+            "<<ComboboxSelected>>",
+            lambda _e: self._vis_hint.config(text=visibility_hint(self._visibility.get())),
+        )
+        row += 1
+
+        # Notiz
+        ttk.Label(frame, text="Notiz:").grid(row=row, column=0, sticky="ne", padx=4, pady=3)
+        self._note = tk.Text(frame, width=52, height=5)
+        self._note.grid(row=row, column=1, columnspan=3, pady=3, sticky="w")
+        row += 1
 
         buttons = ttk.Frame(frame)
-        buttons.grid(row=4, column=0, columnspan=2, pady=(10, 0))
+        buttons.grid(row=row, column=0, columnspan=4, pady=(10, 0))
         ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
         ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
 
         self._note.focus_set()
 
     def _on_save(self) -> None:
+        engine_map = {"automatisch": None, "ein": 1, "aus": 0}
+        genoa = _parse_float(self._genoa.get())
         self.result = {
             "note": self._note.get("1.0", "end").strip(),
             "crew": self._crew.get().strip(),
             "location": self._location.get().strip(),
+            "engine_on": engine_map.get(self._engine.get()),
+            "mainsail": self._mainsail.get() if self._mainsail.get() != "—" else "",
+            "genoa_percent": genoa,
+            "spinnaker": 1 if self._spinnaker.get() else 0,
+            "wave_height_m": _parse_float(self._wave.get()),
+            "cloud_cover": self._cloud.get() if self._cloud.get() != "—" else "",
+            "precipitation": self._precip.get() if self._precip.get() != "kein" else "",
+            "visibility": self._visibility.get() if self._visibility.get() != "—" else "",
+        }
+        self.top.destroy()
+
+
+class _TripStartDialog:
+    """Dialog zum Beginnen eines Törns (Start-Kennwerte wie in TripCon)."""
+
+    def __init__(self, parent: tk.Tk) -> None:
+        self.result: Optional[Dict] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Neuen Törn beginnen")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        self._vars: Dict[str, tk.StringVar] = {}
+        rows = [
+            ("name", "Törn-Name:"),
+            ("start_location", "Startort:"),
+            ("start_water_l", "Wasser (Liter):"),
+            ("start_diesel_l", "Diesel (Liter):"),
+            ("start_engine_hours", "Motorenstunden:"),
+            ("start_log_nm", "Log-Stand (Nm):"),
+        ]
+        for i, (key, label) in enumerate(rows):
+            ttk.Label(frame, text=label).grid(row=i, column=0, sticky="e", padx=4, pady=4)
+            var = tk.StringVar()
+            ttk.Entry(frame, textvariable=var, width=30).grid(row=i, column=1, pady=4)
+            self._vars[key] = var
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=len(rows), column=0, columnspan=2, pady=(10, 0))
+        ttk.Button(buttons, text="Törn beginnen", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _on_save(self) -> None:
+        self.result = {
+            "name": self._vars["name"].get().strip(),
+            "start_location": self._vars["start_location"].get().strip(),
+            "start_water_l": _parse_float(self._vars["start_water_l"].get()),
+            "start_diesel_l": _parse_float(self._vars["start_diesel_l"].get()),
+            "start_engine_hours": _parse_float(self._vars["start_engine_hours"].get()),
+            "start_log_nm": _parse_float(self._vars["start_log_nm"].get()),
+        }
+        self.top.destroy()
+
+
+class _TripCloseDialog:
+    """Dialog zum Abschließen eines Törns (End-Kennwerte)."""
+
+    def __init__(self, parent: tk.Tk, trip: Trip) -> None:
+        self.result: Optional[Dict] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title(f"Törn abschließen: {trip.name or trip.start_location}")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        self._vars: Dict[str, tk.StringVar] = {}
+        # Endwerte mit Startwerten vorbelegen, wo sinnvoll
+        rows = [
+            ("end_location", "Zielort:", ""),
+            ("end_water_l", "Wasser (Liter):", ""),
+            ("end_diesel_l", "Diesel (Liter):", ""),
+            ("end_engine_hours", "Motorenstunden:",
+             "" if trip.start_engine_hours is None else str(trip.start_engine_hours)),
+            ("end_log_nm", "Log-Stand (Nm):",
+             "" if trip.start_log_nm is None else str(trip.start_log_nm)),
+        ]
+        for i, (key, label, default) in enumerate(rows):
+            ttk.Label(frame, text=label).grid(row=i, column=0, sticky="e", padx=4, pady=4)
+            var = tk.StringVar(value=default)
+            ttk.Entry(frame, textvariable=var, width=30).grid(row=i, column=1, pady=4)
+            self._vars[key] = var
+
+        ttk.Label(frame, text="Abschluss-Notiz:").grid(
+            row=len(rows), column=0, sticky="ne", padx=4, pady=4
+        )
+        self._note = tk.Text(frame, width=32, height=4)
+        self._note.grid(row=len(rows), column=1, pady=4)
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=len(rows) + 1, column=0, columnspan=2, pady=(10, 0))
+        ttk.Button(buttons, text="Törn abschließen", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _on_save(self) -> None:
+        self.result = {
+            "end_location": self._vars["end_location"].get().strip(),
+            "end_water_l": _parse_float(self._vars["end_water_l"].get()),
+            "end_diesel_l": _parse_float(self._vars["end_diesel_l"].get()),
+            "end_engine_hours": _parse_float(self._vars["end_engine_hours"].get()),
+            "end_log_nm": _parse_float(self._vars["end_log_nm"].get()),
+            "note": self._note.get("1.0", "end").strip(),
         }
         self.top.destroy()
 
