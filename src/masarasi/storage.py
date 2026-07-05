@@ -213,6 +213,13 @@ class LogbookStore:
             conn.execute(f"CREATE TABLE IF NOT EXISTS log_entries (\n{log_columns}\n)")
             conn.execute(f"CREATE TABLE IF NOT EXISTS trips (\n{trip_columns}\n)")
             conn.execute(
+                "CREATE TABLE IF NOT EXISTS entry_images (\n"
+                "  entry_id INTEGER PRIMARY KEY,\n"
+                "  image BLOB NOT NULL,\n"
+                "  mime TEXT DEFAULT 'image/png',\n"
+                "  created_dz TEXT DEFAULT ''\n)"
+            )
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_log_timestamp "
                 "ON log_entries(timestamp)"
             )
@@ -254,6 +261,11 @@ class LogbookStore:
     def delete_by_type(self, entry_type: str) -> int:
         """Löscht alle Einträge eines Typs (z.B. vor erneutem Import)."""
         with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM entry_images WHERE entry_id IN "
+                "(SELECT id FROM log_entries WHERE entry_type = ?)",
+                (entry_type,),
+            )
             cursor = conn.execute(
                 "DELETE FROM log_entries WHERE entry_type = ?", (entry_type,)
             )
@@ -280,7 +292,48 @@ class LogbookStore:
 
     def delete(self, entry_id: int) -> None:
         with self._connect() as conn:
+            conn.execute("DELETE FROM entry_images WHERE entry_id = ?", (entry_id,))
             conn.execute("DELETE FROM log_entries WHERE id = ?", (entry_id,))
+
+    # --- Bilder pro Eintrag (z.B. Kartenplotter-Screenshots) ---------------
+
+    def set_image(self, entry_id: int, data: bytes, mime: str = "image/png",
+                  created_dz: str = "") -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO entry_images (entry_id, image, mime, created_dz) "
+                "VALUES (?, ?, ?, ?)",
+                (entry_id, sqlite3.Binary(data), mime, created_dz),
+            )
+
+    def get_image(self, entry_id: int) -> Optional[bytes]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT image FROM entry_images WHERE entry_id = ?", (entry_id,)
+            ).fetchone()
+        return bytes(row[0]) if row else None
+
+    def entries_with_images(self) -> set:
+        with self._connect() as conn:
+            return {r[0] for r in conn.execute("SELECT entry_id FROM entry_images")}
+
+    def export_entry_images(self, out_dir: str) -> int:
+        """Schreibt alle Eintrags-Bilder als Dateien (nach Zeitstempel benannt)."""
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        count = 0
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT i.entry_id, i.image, i.mime, e.timestamp "
+                "FROM entry_images i LEFT JOIN log_entries e ON e.id = i.entry_id"
+            ).fetchall()
+        for entry_id, image, mime, timestamp in rows:
+            ext = "jpg" if mime and "jpeg" in mime else "png"
+            stamp = (timestamp or "").replace(":", "").replace("-", "").replace("T", "_")
+            name = f"{stamp}_{entry_id}.{ext}" if stamp else f"eintrag_{entry_id}.{ext}"
+            (out / name).write_bytes(bytes(image))
+            count += 1
+        return count
 
     def count(self, trip_id: Optional[int] = None) -> int:
         with self._connect() as conn:

@@ -18,6 +18,10 @@ dependencies = []
 dev = [
     "pytest>=7.0",
 ]
+# Nur für die automatische Kartenplotter-Bildschirmaufnahme
+screenshot = [
+    "pillow>=9.0",
+]
 
 [project.scripts]
 masarasi = "masarasi.app:main"

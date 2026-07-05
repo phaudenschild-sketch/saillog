@@ -24,7 +24,10 @@ Python.
   bei Törnbeginn/-abschluss automatisch vorbelegt
 - 🗺️ **Törns** — Einträge gruppieren; Törn mit Startort, Wasser-/Diesel­menge,
   Motorenstunden und Log-Stand beginnen und am Ende abschließen
-- 🖼️ **Kartenplotter-Feld** (GoFree) für einen Screenshot des Plotters
+- 🖼️ **Kartenplotter-Feld** (GoFree): erfasst automatisch einen frei
+  wählbaren **Bildschirmausschnitt** (z.B. das GoFree-Remote-Fenster), zeigt
+  ihn an und **speichert das Bild zu jedem Logbuch-Eintrag** (abrufbar per
+  Doppelklick, als Ordner exportierbar). Auto-Aufnahme benötigt `pillow`.
 - ⏱️ **Automatisches Logging** in einstellbarem Intervall (dem aktiven Törn
   zugeordnet, inkl. der Bedingungswerte)
 - 💾 **Speicherung** in einer lokalen SQLite-Datenbank
@@ -36,6 +39,9 @@ Python.
 
 - Python 3.9 oder neuer (mit tkinter — bei den offiziellen Windows-Installern
   standardmäßig dabei)
+- **Optional** `pillow` (nur für die automatische Kartenplotter-Aufnahme):
+  `pip install pillow`. Ohne Pillow läuft alles andere unverändert; das
+  Plotterbild lässt sich dann nur manuell laden.
 
 ## Starten
 
@@ -185,6 +191,7 @@ masarasi/
 │   ├── logbook.py              ← Auto-/Manuell-Logging-Dienst
 │   ├── storage.py              ← SQLite + CSV/GPX-Export
 │   ├── discover.py             ← Quellen-Scanner (Orca Core, B&G, …)
+│   ├── plotter_capture.py      ← Bildschirmausschnitt-Aufnahme (GoFree, optional)
 │   ├── legacy.py               ← Analyse alter Sicherungen + Bildextraktion
 │   ├── tripcon.py              ← Import alter TripCon-Logbücher (.tcdb)
 │   └── simulator.py            ← NMEA0183-Testsimulator

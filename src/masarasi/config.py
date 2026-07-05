@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 def _app_dir() -> Path:
@@ -41,6 +41,10 @@ class Config:
 
     # Bootsangaben (für Auto-Fill manueller Einträge)
     boat_name: str = ""
+
+    # Kartenplotter-Bildschirmausschnitt (GoFree): [links, oben, rechts, unten]
+    plotter_region: Optional[list] = None
+    plotter_interval_seconds: int = 15
 
     @classmethod
     def load(cls, path: Path = CONFIG_PATH) -> "Config":
