@@ -39,7 +39,12 @@ OIL_PRESSURE = "oil_pressure_bar"  # Öldruck (bar) — für Motor-Erkennung
 ENGINE_HOURS = "engine_hours"  # Motorbetriebsstunden (h)
 ENGINE_TEMP = "engine_temp_c"  # Motor-/Kühlwassertemperatur (°C)
 ALT_VOLTAGE = "alternator_v"  # Lichtmaschinen-/Bordspannung (V) — Motor an/aus
-LOG_TOTAL = "log_total_nm"   # Logstand / Gesamtdistanz durchs Wasser (Nm)
+LOG_TOTAL = "log_total_nm"   # Logstand / Gesamtdistanz (Nm)
+AIR_TEMP = "air_temp_c"      # Lufttemperatur (°C)
+BARO = "baro_mbar"           # Luftdruck (mbar)
+HEEL = "heel_deg"            # Krängung (Grad, + = Steuerbord)
+TRIM = "trim_deg"            # Trimm/Längsneigung (Grad)
+RUDDER = "rudder_deg"        # Ruderlage (Grad)
 UTC_TIME = "utc_time"       # Uhrzeit UTC als "hhmmss"
 
 # Reihenfolge & Anzeigenamen für die GUI
@@ -57,6 +62,9 @@ FIELD_LABELS = [
     (TWD, "Windrichtung", "°"),
     (DEPTH, "Tiefe", "m"),
     (WATER_TEMP, "Wassertemp.", "°C"),
+    (AIR_TEMP, "Lufttemperatur", "°C"),
+    (BARO, "Luftdruck", "mbar"),
+    (HEEL, "Krängung", "°"),
     (LOG_TOTAL, "Log", "NM"),
     (ENGINE_RPM, "Motor-Drehzahl", "U/min"),
     (ENGINE_TEMP, "Motortemperatur", "°C"),
@@ -276,8 +284,13 @@ def _vhw(f):
 
 
 def _vlw(f):
-    # $--VLW,gesamt,N,seit_reset,N  — Gesamtdistanz durchs Wasser (Logstand)
-    return {LOG_TOTAL: _to_float(f[1])}
+    # $--VLW,wasser_gesamt,N,wasser_reset,N,grund_gesamt,N,grund_reset,N
+    # Manche Geräte (z.B. B&G) lassen die Wasser-Gesamtdistanz leer -> dann
+    # die Grund-Gesamtdistanz (Feld 5) als Logstand nehmen.
+    total_water = _to_float(f[1]) if len(f) > 1 else None
+    total_ground = _to_float(f[5]) if len(f) > 5 else None
+    value = total_water if total_water is not None else total_ground
+    return {LOG_TOTAL: value}
 
 
 def _rpm(f):
@@ -306,18 +319,29 @@ def _xdr(f):
         tid = (groups[i + 3] or "").upper()
         if value is None:
             continue
-        if ttype == "T":  # Tachometer -> Motordrehzahl
-            result[ENGINE_RPM] = value
-        elif ttype == "C":  # Temperatur -> nur motorbezogene als Motortemperatur
-            if any(k in tid for k in _ENGINE_HINTS):
+        if ttype == "C":  # Temperatur
+            if "AIR" in tid:
+                result[AIR_TEMP] = value
+            elif any(k in tid for k in _ENGINE_HINTS):
                 result[ENGINE_TEMP] = value
-        elif ttype == "P":  # Druck -> Öldruck (motorbezogen)
-            if "OIL" in tid or "ENG" in tid:
+        elif ttype == "P":  # Druck
+            if "BARO" in tid:
+                # B = bar -> mbar (×1000); P = Pascal -> mbar (÷100)
+                result[BARO] = value / 100.0 if units == "P" else value * 1000.0
+            elif "OIL" in tid or "ENG" in tid:
                 if units == "P":  # Pascal -> bar
                     value = value / 100000.0
                 result[OIL_PRESSURE] = value
+        elif ttype == "A":  # Winkel
+            if "HEEL" in tid:
+                result[HEEL] = value
+            elif "TRIM" in tid:
+                result[TRIM] = value
+            elif "RUDD" in tid:
+                result[RUDDER] = value
+        elif ttype == "T":  # Tachometer -> Motordrehzahl
+            result[ENGINE_RPM] = value
         elif ttype == "U":  # Spannung -> Lichtmaschine/Bordspannung
-            # Motor-/Lade-Spannung bevorzugen, sonst als Fallback übernehmen
             if any(k in tid for k in _ALT_HINTS) or ALT_VOLTAGE not in result:
                 result[ALT_VOLTAGE] = value
         elif ttype == "G":  # generischer Wert -> Motorbetriebsstunden

@@ -67,6 +67,25 @@ class EngineNmeaTest(unittest.TestCase):
         result = self.parser.parse("$IIXDR,T,1850.0,R,#0")
         self.assertAlmostEqual(result[nmea.ENGINE_RPM], 1850.0)
 
+    def test_real_bg_xdr(self):
+        # Echter B&G-Satz: Luft, Krängung, Trimm, Luftdruck, Ruder
+        line = ("$IIXDR,C,28.9,C,AIRTEMP,A,-0.9,D,HEEL,A,0.3,D,TRIM,"
+                "P,1.021,B,BARO,A,32.2,D,RUDDER*0C")
+        r = self.parser.parse(line)
+        self.assertAlmostEqual(r[nmea.AIR_TEMP], 28.9)
+        self.assertAlmostEqual(r[nmea.HEEL], -0.9)
+        self.assertAlmostEqual(r[nmea.TRIM], 0.3)
+        self.assertAlmostEqual(r[nmea.BARO], 1021.0)
+        self.assertAlmostEqual(r[nmea.RUDDER], 32.2)
+        # In diesem Satz stecken KEINE Motordaten
+        self.assertNotIn(nmea.ENGINE_TEMP, r)
+        self.assertNotIn(nmea.ENGINE_RPM, r)
+
+    def test_real_bg_vlw_ground_fallback(self):
+        # Echter B&G-Satz: Wasser-Gesamt leer -> Grund-Gesamt (Feld 5) als Log
+        r = self.parser.parse("$SDVLW,,N,1203.2,N,1431.3,N,1431.8,N*4D")
+        self.assertAlmostEqual(r[nmea.LOG_TOTAL], 1431.3)
+
     def test_vlw_log(self):
         result = self.parser.parse("$VWVLW,305.70,N,12.3,N")
         self.assertAlmostEqual(result[nmea.LOG_TOTAL], 305.70)

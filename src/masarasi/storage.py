@@ -28,6 +28,11 @@ MEASUREMENT_COLUMNS = [
     "engine_hours",
     "engine_temp_c",
     "alternator_v",
+    "air_temp_c",
+    "baro_mbar",
+    "heel_deg",
+    "trim_deg",
+    "rudder_deg",
 ]
 
 
@@ -57,6 +62,11 @@ class LogEntry:
     engine_hours: Optional[float] = None
     engine_temp_c: Optional[float] = None
     alternator_v: Optional[float] = None
+    air_temp_c: Optional[float] = None
+    baro_mbar: Optional[float] = None
+    heel_deg: Optional[float] = None
+    trim_deg: Optional[float] = None
+    rudder_deg: Optional[float] = None
     # Manuelle / abgeleitete Felder
     engine_on: Optional[int] = None      # 1=Motor läuft, 0=aus, None=unbekannt
     mainsail: str = ""                   # Voll / Reff 1 / Reff 2 / Geborgen
