@@ -117,6 +117,40 @@ RMC, GGA, GLL (Position/Zeit) · VTG, VHW (SOG/COG, Fahrt d. Wasser) ·
 MWV, MWD (scheinbarer & wahrer Wind) · DPT, DBT (Tiefe) · MTW
 (Wassertemperatur) · HDG, HDT, HDM (Steuerkurs).
 
+## Altes TripCon-Logbuch importieren
+
+Eine TripCon-Sicherung (`.tcdb`) ist eine SQLite-Datenbank. masarasi kann
+sie **lokal** auslesen und wieder zugänglich machen — die Datei muss
+nirgends hochgeladen werden.
+
+**Struktur ansehen** (Formate, Tabellen, Bilder):
+```bash
+python inspect_backup.py "C:\Pfad\TripCon_JJJJMMTT.tcdb"
+```
+
+**Törns exportieren + Bilder extrahieren** in einen Ordner:
+```bash
+python import_tripcon.py "C:\Pfad\TripCon_JJJJMMTT.tcdb" --out "C:\claude\tripcon-export"
+```
+Erzeugt:
+- `logbuch.csv` — alle Einträge mit Messwerten
+- `tracks/…gpx` — ein GPS-Track pro Törn (für OpenCPN/Google Earth)
+- `bilder/plotter/`, `bilder/wetter/`, `bilder/schiffe/`, `bilder/crew/`
+  — alle eingebetteten Bilder (u.a. die Kartenplotter-Screenshots)
+
+**Zusätzlich in die masarasi-App importieren** (erscheint im Logbuch):
+```bash
+python import_tripcon.py "C:\Pfad\TripCon_JJJJMMTT.tcdb" --out "C:\claude\tripcon-export" --into-app
+```
+Die alten Einträge bekommen den Typ `tripcon`; ein erneuter Import ersetzt
+sie (keine Dubletten).
+
+**Hinweise zum TripCon-Format** (DB-Version 366): Koordinaten sind in
+Dezimal-Bogenminuten gespeichert (Grad = Wert / 60); Törns in
+`B105_Trips`, Einträge in `B100_Log`, Messwerte in den `V…`-Tabellen
+(je über `LogID`), Track in `B111_TrackInfo`, Bilder als BLOB in
+`B104_BinDat`.
+
 ## Tests
 
 ```bash
@@ -139,6 +173,8 @@ masarasi/
 │   ├── logbook.py              ← Auto-/Manuell-Logging-Dienst
 │   ├── storage.py              ← SQLite + CSV/GPX-Export
 │   ├── discover.py             ← Quellen-Scanner (Orca Core, B&G, …)
+│   ├── legacy.py               ← Analyse alter Sicherungen + Bildextraktion
+│   ├── tripcon.py              ← Import alter TripCon-Logbücher (.tcdb)
 │   └── simulator.py            ← NMEA0183-Testsimulator
 └── tests/
 ```

@@ -269,7 +269,7 @@ class Application:
     def _refresh_logbook(self) -> None:
         for item in self._tree.get_children():
             self._tree.delete(item)
-        for entry in self._store.all(limit=500, newest_first=True):
+        for entry in self._store.all(limit=5000, newest_first=True):
             pos = ""
             if entry.lat is not None and entry.lon is not None:
                 pos = f"{entry.lat:.4f}, {entry.lon:.4f}"

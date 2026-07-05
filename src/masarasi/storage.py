@@ -121,6 +121,26 @@ class LogbookStore:
             entry.id = cursor.lastrowid
         return entry.id
 
+    def add_many(self, entries: List[LogEntry]) -> int:
+        """Fügt viele Einträge in einer Transaktion ein (für Importe)."""
+        cols = [c for c in _COLUMN_NAMES if c != "id"]
+        placeholders = ", ".join("?" for _ in cols)
+        rows = [[getattr(e, c) for c in cols] for e in entries]
+        with self._connect() as conn:
+            conn.executemany(
+                f"INSERT INTO log_entries ({', '.join(cols)}) VALUES ({placeholders})",
+                rows,
+            )
+        return len(rows)
+
+    def delete_by_type(self, entry_type: str) -> int:
+        """Löscht alle Einträge eines Typs (z.B. vor erneutem Import)."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM log_entries WHERE entry_type = ?", (entry_type,)
+            )
+            return cursor.rowcount
+
     def all(self, limit: Optional[int] = None, newest_first: bool = True) -> List[LogEntry]:
         order = "DESC" if newest_first else "ASC"
         query = f"SELECT * FROM log_entries ORDER BY timestamp {order}, id {order}"

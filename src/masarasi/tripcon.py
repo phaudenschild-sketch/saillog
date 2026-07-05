@@ -1,0 +1,334 @@
+"""Import alter TripCon-Logbücher (.tcdb) in masarasi.
+
+Eine TripCon-Sicherung ist eine SQLite-Datenbank. Dieses Modul liest die
+Törns, Logbuch-Einträge, Messwerte, Kommentare, GPS-Tracks und Bilder aus
+und macht sie wieder zugänglich:
+
+- Export als CSV (alle Einträge mit Messwerten)
+- GPX-Track pro Törn (aus B111_TrackInfo)
+- Extraktion aller Bilder (Kartenplotter-Screenshots, Wetter, Schiff, Crew)
+- optionaler Import in die masarasi-Logbuch-Datenbank (zeigt sich in der App)
+
+Wichtige Schema-Erkenntnisse (TripCon DB-Version 366):
+- Koordinaten sind in DEZIMAL-BOGENMINUTEN gespeichert -> Grad = Wert / 60
+- Zeitstempel "YYYY-MM-DD HH:MM:SS.fffZ" -> ISO "YYYY-MM-DDTHH:MM:SSZ"
+- Messwerte hängen über LogID an B100_Log; Position/Wind haben zwei Spalten
+"""
+
+from __future__ import annotations
+
+import csv
+import re
+import sqlite3
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+from masarasi.legacy import image_ext
+from masarasi.storage import LogbookStore, LogEntry
+
+# Messwert-Tabellen mit genau einer Wertspalte: masarasi-Feld -> (Tabelle, Spalte)
+_SINGLE_VALUE_TABLES = {
+    "sog_kn": ("VSpeedOverGround", "Value"),
+    "cog_deg": ("VCourseOverGround", "Value"),
+    "stw_kn": ("VSpeedThroughWater", "Value"),
+    "depth_m": ("VWaterDepth", "Value"),
+    "water_temp_c": ("VWaterTemperature", "Value"),
+}
+
+
+# --- Hilfsfunktionen --------------------------------------------------------
+
+def coord_to_degrees(value) -> Optional[float]:
+    """Wandelt TripCon-Koordinate (Dezimal-Bogenminuten) in Grad um."""
+    f = to_float(value)
+    return None if f is None else f / 60.0
+
+
+def to_float(value) -> Optional[float]:
+    """Robustes float-Parsen (Komma oder Punkt, None/leer -> None)."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text.replace(",", "."))
+    except ValueError:
+        return None
+
+
+def to_iso(dz: Optional[str]) -> str:
+    """TripCon-Zeitstempel -> ISO-8601 mit 'Z'. Leer -> ''."""
+    if not dz:
+        return ""
+    s = str(dz).strip().rstrip("Z").strip()
+    if not s:
+        return ""
+    if "." in s:
+        s = s.split(".", 1)[0]
+    s = s.replace(" ", "T")
+    return s + "Z"
+
+
+def _safe_name(text: str) -> str:
+    text = (text or "").strip() or "unbenannt"
+    return re.sub(r"[^0-9A-Za-zÄÖÜäöüß _-]", "_", text)[:60]
+
+
+def connect(path: str) -> sqlite3.Connection:
+    """Öffnet die TripCon-DB schreibgeschützt."""
+    conn = sqlite3.connect(f"file:{Path(path).expanduser()}?mode=ro", uri=True)
+    return conn
+
+
+def _table_exists(conn, name: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        ).fetchone()
+        is not None
+    )
+
+
+# --- Törns & Einträge -------------------------------------------------------
+
+def load_trips(conn) -> Dict[int, Dict[str, str]]:
+    """{Trip-ID: {from, to, from_dz, to_dz}} aus B105_Trips."""
+    trips: Dict[int, Dict[str, str]] = {}
+    for row in conn.execute(
+        "SELECT ID, FromLocation, FromDZ, ToLocation, ToDZ FROM B105_Trips"
+    ):
+        trips[row[0]] = {
+            "from": row[1] or "",
+            "from_dz": row[2] or "",
+            "to": row[3] or "",
+            "to_dz": row[4] or "",
+        }
+    return trips
+
+
+def _single_map(conn, table: str, column: str) -> Dict[int, float]:
+    result: Dict[int, float] = {}
+    if not _table_exists(conn, table):
+        return result
+    for log_id, value in conn.execute(f"SELECT LogID, {column} FROM {table}"):
+        f = to_float(value)
+        if log_id is not None and f is not None:
+            result[log_id] = f
+    return result
+
+
+def _pair_map(conn, table: str, col_a: str, col_b: str) -> Dict[int, Tuple]:
+    result: Dict[int, Tuple] = {}
+    if not _table_exists(conn, table):
+        return result
+    for log_id, a, b in conn.execute(f"SELECT LogID, {col_a}, {col_b} FROM {table}"):
+        result[log_id] = (to_float(a), to_float(b))
+    return result
+
+
+def _comments(conn) -> Dict[int, str]:
+    result: Dict[int, str] = {}
+    if not _table_exists(conn, "B103_Comment"):
+        return result
+    for log_id, comment in conn.execute("SELECT LogID, Comment FROM B103_Comment"):
+        if log_id is not None and comment:
+            text = comment.decode("utf-8", "replace") if isinstance(comment, bytes) else str(comment)
+            if text.strip():
+                result[log_id] = text.strip()
+    return result
+
+
+def build_entries(conn) -> List[LogEntry]:
+    """Baut aus B100_Log + Messwert-Tabellen masarasi-Logbuch-Einträge."""
+    trips = load_trips(conn)
+    positions = _pair_map(conn, "VPosition", "Latitude", "Longitude")
+    apparent = _pair_map(conn, "VApparentWind", "Direction", "Speed")
+    true_wind = _pair_map(conn, "VTrueWind", "Direction", "Speed")
+    comments = _comments(conn)
+    singles = {
+        field: _single_map(conn, table, col)
+        for field, (table, col) in _SINGLE_VALUE_TABLES.items()
+    }
+    air_temp = _single_map(conn, "VAirTemperature", "Value")
+    air_press = _single_map(conn, "VAirPressure", "Value")
+
+    entries: List[LogEntry] = []
+    for log_id, trip_id, trip_dz, create_dz in conn.execute(
+        "SELECT ID, Trip, TripDZ, CreateDZ FROM B100_Log ORDER BY TripDZ, ID"
+    ):
+        measurements: Dict[str, float] = {}
+
+        pos = positions.get(log_id)
+        if pos:
+            lat = coord_to_degrees(pos[0])
+            lon = coord_to_degrees(pos[1])
+            if lat is not None:
+                measurements["lat"] = lat
+            if lon is not None:
+                measurements["lon"] = lon
+
+        for field, mapping in singles.items():
+            if log_id in mapping:
+                measurements[field] = mapping[log_id]
+
+        if log_id in apparent:
+            awd, aws = apparent[log_id]
+            if awd is not None:
+                measurements["awa_deg"] = awd
+            if aws is not None:
+                measurements["aws_kn"] = aws
+        if log_id in true_wind:
+            twd, tws = true_wind[log_id]
+            if twd is not None:
+                measurements["twd_deg"] = twd
+            if tws is not None:
+                measurements["tws_kn"] = tws
+
+        # Zusatzinfos, die masarasi nicht als eigenes Feld hat -> in die Notiz
+        extras = []
+        if log_id in air_temp:
+            extras.append(f"Luft {air_temp[log_id]:.0f}°C")
+        if log_id in air_press:
+            extras.append(f"{air_press[log_id]:.0f} hPa")
+        note = comments.get(log_id, "")
+        if extras:
+            note = (note + "  [" + ", ".join(extras) + "]").strip()
+
+        trip = trips.get(trip_id, {})
+        location = ""
+        if trip.get("from") or trip.get("to"):
+            location = f"{trip.get('from', '')} → {trip.get('to', '')}".strip(" →")
+
+        timestamp = to_iso(trip_dz) or to_iso(create_dz)
+        # Einträge ohne Zeit und ohne Messwerte überspringen
+        if not timestamp and not measurements and not note:
+            continue
+
+        entries.append(
+            LogEntry.from_snapshot(
+                timestamp=timestamp,
+                entry_type="tripcon",
+                measurements=measurements,
+                note=note,
+                location=location,
+            )
+        )
+    return entries
+
+
+def import_into_masarasi(conn, db_path: str, replace: bool = True) -> int:
+    """Importiert alle Einträge in die masarasi-Logbuch-DB. Gibt Anzahl zurück."""
+    store = LogbookStore(db_path)
+    if replace:
+        store.delete_by_type("tripcon")
+    entries = build_entries(conn)
+    store.add_many(entries)
+    return len(entries)
+
+
+# --- CSV --------------------------------------------------------------------
+
+def export_csv(entries: List[LogEntry], path: str) -> int:
+    from masarasi.storage import _COLUMN_NAMES
+
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle, delimiter=";")
+        writer.writerow(_COLUMN_NAMES)
+        for entry in entries:
+            writer.writerow([getattr(entry, c) for c in _COLUMN_NAMES])
+    return len(entries)
+
+
+# --- GPX-Tracks pro Törn ----------------------------------------------------
+
+def export_gpx_tracks(conn, trips: Dict[int, Dict[str, str]], out_dir: Path) -> int:
+    """Schreibt je Törn einen GPX-Track aus B111_TrackInfo. Gibt Dateizahl zurück."""
+    if not _table_exists(conn, "B111_TrackInfo"):
+        return 0
+    out_dir.mkdir(parents=True, exist_ok=True)
+    from xml.sax.saxutils import escape
+
+    files = 0
+    current_trip = None
+    handle = None
+
+    def close_track():
+        nonlocal handle
+        if handle is not None:
+            handle.write("    </trkseg>\n  </trk>\n</gpx>\n")
+            handle.close()
+            handle = None
+
+    for trip_id, lat_raw, lon_raw, create_dz in conn.execute(
+        "SELECT Trip, Latitude, Longitude, CreateDZ FROM B111_TrackInfo "
+        "ORDER BY Trip, ID"
+    ):
+        lat = coord_to_degrees(lat_raw)
+        lon = coord_to_degrees(lon_raw)
+        if lat is None or lon is None:
+            continue
+        if trip_id != current_trip:
+            close_track()
+            current_trip = trip_id
+            trip = trips.get(trip_id, {})
+            label = _safe_name(f"Trip{trip_id}_{trip.get('from', '')}-{trip.get('to', '')}")
+            path = out_dir / f"{label}.gpx"
+            handle = open(path, "w", encoding="utf-8")
+            name = escape(f"{trip.get('from', '')} → {trip.get('to', '')}".strip(" →") or f"Törn {trip_id}")
+            handle.write(
+                '<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<gpx version="1.1" creator="masarasi" '
+                'xmlns="http://www.topografix.com/GPX/1/1">\n'
+                f"  <trk>\n    <name>{name}</name>\n    <trkseg>\n"
+            )
+            files += 1
+        handle.write(f'      <trkpt lat="{lat:.6f}" lon="{lon:.6f}">')
+        iso = to_iso(create_dz)
+        if iso:
+            handle.write(f"<time>{iso}</time>")
+        handle.write("</trkpt>\n")
+    close_track()
+    return files
+
+
+# --- Bilder -----------------------------------------------------------------
+
+_IMAGE_SOURCES = [
+    # (Tabelle, ID-Spalte, BLOB-Spalte, Unterordner, optionale Namensspalte)
+    ("B104_BinDat", "ID", "Value", "plotter", "CreateDZ"),
+    ("B109_Weather", "ID", "Value", "wetter", "Filename"),
+    ("S003_Ships", "ID", "Picture", "schiffe", "ShipName"),
+    ("S006_Persons", "ID", "Picture", "crew", "LastName"),
+]
+
+
+def extract_images(conn, out_dir: Path) -> Dict[str, int]:
+    """Extrahiert alle Bilder nach Unterordnern. Gibt {ordner: anzahl} zurück."""
+    counts: Dict[str, int] = {}
+    for table, id_col, blob_col, subdir, name_col in _IMAGE_SOURCES:
+        if not _table_exists(conn, table):
+            continue
+        target = out_dir / subdir
+        n = 0
+        query = f"SELECT {id_col}, {blob_col}, {name_col} FROM {table}"
+        try:
+            cursor = conn.execute(query)
+        except sqlite3.Error:
+            continue
+        for row_id, blob, name in cursor:
+            if not isinstance(blob, (bytes, bytearray)):
+                continue
+            ext = image_ext(bytes(blob[:16]))
+            if not ext:
+                continue
+            target.mkdir(parents=True, exist_ok=True)
+            label = _safe_name(str(name)) if name else ""
+            fname = f"{row_id:06d}_{label}.{ext}" if label else f"{row_id:06d}.{ext}"
+            (target / fname).write_bytes(blob)
+            n += 1
+        if n:
+            counts[subdir] = n
+    return counts
