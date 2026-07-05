@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "masarasi"
+version = "0.1.0"
+description = "Segel-Logbuch mit NMEA2000/NMEA0183-Anbindung über WLAN/LAN-Gateway."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+# Keine externen Abhängigkeiten — nur die Python-Standardbibliothek
+# (socket, sqlite3, tkinter, csv). Auf Windows 11 genügt eine
+# Standard-Python-Installation.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+masarasi = "masarasi.app:main"
+masarasi-sim = "masarasi.simulator:main"
+masarasi-discover = "masarasi.discover:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
