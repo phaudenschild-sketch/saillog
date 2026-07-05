@@ -22,6 +22,10 @@ dev = [
 screenshot = [
     "pillow>=9.0",
 ]
+# Nur für den seriellen Anschluss (z.B. Maretron USB100 am COM-Port)
+serial = [
+    "pyserial>=3.5",
+]
 
 [project.scripts]
 masarasi = "masarasi.app:main"

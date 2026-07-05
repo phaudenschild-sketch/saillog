@@ -86,10 +86,12 @@ class Application:
 
         ttk.Label(top, text="Protokoll:").grid(row=0, column=4, sticky="e", padx=4)
         self._proto_var = tk.StringVar(value=self._config.protocol)
-        ttk.Combobox(
-            top, textvariable=self._proto_var, values=["tcp", "udp"],
-            width=5, state="readonly",
-        ).grid(row=0, column=5, padx=4)
+        proto = ttk.Combobox(
+            top, textvariable=self._proto_var, values=["tcp", "udp", "serial"],
+            width=7, state="readonly",
+        )
+        proto.grid(row=0, column=5, padx=4)
+        proto.bind("<<ComboboxSelected>>", lambda _e: self._update_conn_hint())
 
         self._connect_btn = ttk.Button(top, text="Verbinden", command=self._on_connect)
         self._connect_btn.grid(row=0, column=6, padx=8)
@@ -100,6 +102,10 @@ class Application:
 
         self._status_label = tk.Label(top, text="getrennt", fg="#888888")
         self._status_label.grid(row=0, column=8, padx=8)
+
+        self._conn_hint = ttk.Label(top, text="", foreground="#888")
+        self._conn_hint.grid(row=1, column=0, columnspan=9, sticky="w", padx=6)
+        self._update_conn_hint()
 
         # Törn-Leiste
         trip_bar = ttk.LabelFrame(self._root, text="Törn")
@@ -409,6 +415,15 @@ class Application:
         )
         self._source.start()
         self._connect_btn.config(text="Trennen")
+
+    def _update_conn_hint(self) -> None:
+        if self._proto_var.get() == "serial":
+            self._conn_hint.config(
+                text="Seriell (z.B. Maretron USB100): Host = COM-Port (z.B. COM5), "
+                     "Port = Baudrate (z.B. 115200) · benötigt pyserial"
+            )
+        else:
+            self._conn_hint.config(text="")
 
     def _on_show_raw(self) -> None:
         """Öffnet das Fenster mit den rohen NMEA-Sätzen."""

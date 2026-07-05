@@ -86,6 +86,19 @@ B&G-Plotter geben NMEA0183 übers WLAN meist per **TCP (~Port 2053)** oder
 als **UDP-Broadcast** aus. Aktiviere am Plotter unter *Einstellungen →
 Netzwerk/WLAN* die NMEA-über-IP-Ausgabe. Host = IP des Plotters.
 
+### Maretron USB100 (NMEA2000 → NMEA0183 über USB)
+
+Ein Maretron USB100 hängt am NMEA2000-Bus und wandelt die PGNs in
+NMEA0183 um — **inklusive Motordaten** (Drehzahl per `RPM`, Öldruck,
+Kühlwassertemperatur, Lichtmaschinen­spannung und Betriebsstunden als
+proprietäre Sätze). Er erscheint am PC als **COM-Port**.
+
+1. `pip install pyserial`
+2. COM-Port im Windows-Geräte-Manager ablesen (z.B. `COM5`)
+3. In masarasi: **Protokoll = serial**, **Host = COM-Port** (`COM5`),
+   **Port = Baudrate** (Standard `115200`) → **Verbinden**
+4. **Rohdaten…** öffnen und prüfen, welche Sätze ankommen
+
 ### Quelle automatisch finden (empfohlen am Boot)
 
 Wenn du IP/Port nicht kennst, finde sie mit dem Discovery-Scanner:

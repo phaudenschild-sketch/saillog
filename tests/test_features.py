@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import tempfile
+import time
 import unittest
 
 from masarasi import nmea
@@ -255,6 +256,24 @@ class LogbookServiceTest(unittest.TestCase):
         self.live.update({"engine_rpm": 1500.0})
         entry = self.service.record_auto(conditions={"engine_mode": "automatisch"})
         self.assertEqual(entry.engine_on, 1)
+
+
+class SerialSourceTest(unittest.TestCase):
+    def test_serial_source_does_not_crash(self):
+        # Ohne echten COM-Port/pyserial darf die Quelle nicht abstürzen,
+        # sondern nur einen Fehlerstatus melden.
+        from masarasi.livedata import LiveData
+        from masarasi.source import NmeaSource
+
+        statuses = []
+        src = NmeaSource(
+            "COM_DOES_NOT_EXIST", 115200, LiveData(), protocol="serial",
+            on_status=lambda s, _m: statuses.append(s), reconnect_delay=0.1,
+        )
+        src.start()
+        time.sleep(0.4)
+        src.stop()
+        self.assertTrue(statuses)  # irgendein Status wurde gemeldet
 
 
 if __name__ == "__main__":

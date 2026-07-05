@@ -90,6 +90,8 @@ class NmeaSource:
             try:
                 if self._protocol == "udp":
                     self._run_udp()
+                elif self._protocol == "serial":
+                    self._run_serial()
                 else:
                     self._run_tcp()
             except OSError as exc:
@@ -99,6 +101,36 @@ class NmeaSource:
             # Vor dem Reconnect kurz warten
             self._stop.wait(self._reconnect_delay)
         self._set_status(STATUS_DISCONNECTED, "getrennt")
+
+    def _run_serial(self) -> None:
+        # Serieller COM-Port (z.B. Maretron USB100). Host = COM-Port, Port = Baud.
+        try:
+            import serial  # pyserial
+        except ImportError:
+            self._set_status(
+                STATUS_ERROR, "pyserial fehlt — 'pip install pyserial'"
+            )
+            self._stop.wait(5.0)
+            return
+        self._set_status(
+            STATUS_CONNECTING, f"öffne {self._host} @ {self._port} Baud"
+        )
+        ser = serial.Serial(self._host, self._port, timeout=1.0)
+        self._sock = ser  # zum Schließen in stop()
+        try:
+            self._set_status(STATUS_CONNECTED, "verbunden (seriell)")
+            buffer = b""
+            while not self._stop.is_set():
+                chunk = ser.read(256)
+                if chunk:
+                    buffer += chunk
+                    buffer = self._consume(buffer)
+        finally:
+            self._sock = None
+            try:
+                ser.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     def _run_tcp(self) -> None:
         self._set_status(STATUS_CONNECTING, f"verbinde mit {self._host}:{self._port}")
