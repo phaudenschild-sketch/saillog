@@ -309,77 +309,30 @@ class Application:
 
     def _build_plotter(self, parent: ttk.LabelFrame) -> None:
         self._plotter_img = None            # tk.PhotoImage (Referenz halten)
-        self._latest_plotter_png: Optional[bytes] = None  # letzter Screenshot
-        self._capture_enabled = False
+        self._latest_plotter_png: Optional[bytes] = None  # wartet auf nächsten Eintrag
+        self._capture_enabled = False       # (Auto-Aufnahme derzeit nicht genutzt)
         self._plotter_label = tk.Label(
             parent,
-            text="(kein Bild)\n\nScreenshot per 'Laden…'\noder Bildschirmausschnitt",
+            text="(kein Bild)\n\nPlotter-Screenshot laden —\nwird an den nächsten Eintrag gehängt",
             width=42, height=12, background="#1f2d36", foreground="#c8d2d8",
         )
         self._plotter_label.pack(padx=6, pady=6)
 
         btns = ttk.Frame(parent)
         btns.pack(fill="x", padx=6, pady=(0, 2))
-        ttk.Button(btns, text="Bereich festlegen…", command=self._on_set_region).pack(
+        ttk.Button(btns, text="Screenshot laden…", command=self._on_load_plotter).pack(
             side="left"
         )
-        self._capture_btn = ttk.Button(
-            btns, text="Auto-Aufnahme ▶", command=self._on_toggle_capture
+        ttk.Button(btns, text="Entfernen", command=self._on_clear_plotter).pack(
+            side="left", padx=4
         )
-        self._capture_btn.pack(side="left", padx=4)
-        ttk.Button(btns, text="Laden…", command=self._on_load_plotter).pack(side="left")
 
-        self._plotter_hint = ttk.Label(parent, text="", foreground="#888")
+        self._plotter_hint = ttk.Label(
+            parent, text="Kein Bild geladen.", foreground="#888"
+        )
         self._plotter_hint.pack(anchor="w", padx=6, pady=(0, 6))
         if not plotter_capture.available():
-            self._plotter_hint.config(
-                text="Auto-Aufnahme benötigt Pillow: pip install pillow"
-            )
-        elif not self._config.plotter_region:
-            self._plotter_hint.config(text="Noch kein Bereich festgelegt.")
-        else:
-            self._plotter_hint.config(text="Bereich gesetzt — Auto-Aufnahme bereit.")
-
-    def _on_set_region(self) -> None:
-        _RegionSelector(self._root, self._set_region)
-
-    def _set_region(self, region) -> None:
-        self._config.plotter_region = list(region)
-        self._config.save()
-        self._plotter_hint.config(text="Bereich gesetzt — Auto-Aufnahme bereit.")
-        # Sofort ein Vorschaubild aufnehmen
-        png = plotter_capture.grab_png(self._config.plotter_region)
-        if png:
-            self._latest_plotter_png = png
-            self._show_plotter_png(png)
-
-    def _on_toggle_capture(self) -> None:
-        if not plotter_capture.available():
-            messagebox.showinfo(
-                "Pillow nötig",
-                "Für die automatische Aufnahme bitte Pillow installieren:\n\n"
-                "    pip install pillow",
-            )
-            return
-        if not self._config.plotter_region:
-            messagebox.showinfo("Bereich", "Bitte zuerst 'Bereich festlegen…'.")
-            return
-        self._capture_enabled = not self._capture_enabled
-        self._capture_btn.config(
-            text="Auto-Aufnahme ⏸" if self._capture_enabled else "Auto-Aufnahme ▶"
-        )
-        if self._capture_enabled:
-            self._capture_tick()
-
-    def _capture_tick(self) -> None:
-        if not self._capture_enabled:
-            return
-        png = plotter_capture.grab_png(self._config.plotter_region)
-        if png:
-            self._latest_plotter_png = png
-            self._show_plotter_png(png)
-        interval = max(3, int(self._config.plotter_interval_seconds)) * 1000
-        self._root.after(interval, self._capture_tick)
+            self._plotter_hint.config(text="Hinweis: JPG-Screenshots brauchen Pillow.")
 
     def _show_plotter_png(self, png: bytes) -> None:
         try:
@@ -394,20 +347,29 @@ class Application:
 
     def _on_load_plotter(self) -> None:
         path = filedialog.askopenfilename(
-            filetypes=[("Bilder", "*.png *.gif"), ("Alle Dateien", "*.*")]
+            filetypes=[("Bilder", "*.png *.gif *.jpg *.jpeg *.bmp"), ("Alle Dateien", "*.*")]
         )
         if not path:
             return
-        try:
-            with open(path, "rb") as handle:
-                png = handle.read()
-            self._show_plotter_png(png)
-        except Exception as exc:  # noqa: BLE001
+        png = plotter_capture.load_image_as_png(path)
+        if png is None:
             messagebox.showerror(
-                "Bild", f"Konnte das Bild nicht laden (PNG/GIF nötig):\n{exc}"
+                "Bild",
+                "Konnte das Bild nicht laden.\n\nPNG/GIF gehen direkt; für JPG/BMP "
+                "bitte Pillow installieren:\n    pip install pillow",
             )
             return
         self._latest_plotter_png = png
+        self._show_plotter_png(png)
+        self._plotter_hint.config(text="Bild wird an den nächsten Eintrag gehängt.")
+
+    def _on_clear_plotter(self) -> None:
+        self._latest_plotter_png = None
+        self._plotter_img = None
+        self._plotter_label.config(
+            image="", text="(kein Bild)\n\nPlotter-Screenshot laden"
+        )
+        self._plotter_hint.config(text="Kein Bild geladen.")
 
     # --- Verbindung ---------------------------------------------------------
 

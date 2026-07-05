@@ -25,6 +25,36 @@ def available() -> bool:
     return _HAVE_PIL
 
 
+def load_image_as_png(path: str) -> Optional[bytes]:
+    """Lädt eine Bilddatei und gibt sie als PNG-Bytes zurück.
+
+    Mit Pillow werden beliebige Formate (JPG, PNG, GIF, BMP …) gelesen und in
+    PNG umgewandelt. Ohne Pillow werden nur PNG/GIF akzeptiert (die tkinter
+    direkt anzeigen kann); alles andere ergibt None.
+    """
+    try:
+        with open(path, "rb") as handle:
+            raw = handle.read()
+    except OSError:
+        return None
+    if _HAVE_PIL:
+        try:
+            from PIL import Image  # type: ignore
+
+            import io as _io
+
+            with Image.open(_io.BytesIO(raw)) as img:
+                buffer = _io.BytesIO()
+                img.convert("RGB").save(buffer, format="PNG")
+                return buffer.getvalue()
+        except Exception:  # noqa: BLE001
+            return None
+    # Ohne Pillow: nur direkt anzeigbare Formate durchreichen
+    if raw[:8] == b"\x89PNG\r\n\x1a\n" or raw[:6] in (b"GIF87a", b"GIF89a"):
+        return raw
+    return None
+
+
 def grab_png(region: Optional[Sequence[int]]) -> Optional[bytes]:
     """Erfasst den Bereich [links, oben, rechts, unten] als PNG-Bytes.
 

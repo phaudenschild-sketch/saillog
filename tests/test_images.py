@@ -80,6 +80,25 @@ class CaptureModuleTest(unittest.TestCase):
         self.assertIsNone(plotter_capture.grab_png([0, 0, 0, 0]))
         self.assertIsNone(plotter_capture.grab_png([10, 10, 12]))  # falsche Länge
 
+    def test_load_png_passthrough(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "a.png")
+        with open(path, "wb") as h:
+            h.write(_png())
+        # PNG geht immer (auch ohne Pillow)
+        self.assertEqual(plotter_capture.load_image_as_png(path), _png())
+
+    def test_load_jpg_without_pillow_returns_none(self):
+        if plotter_capture.available():
+            self.skipTest("Pillow installiert — JPG würde konvertiert")
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "a.jpg")
+        with open(path, "wb") as h:
+            h.write(b"\xff\xd8\xff\xe0" + b"\x00" * 40)  # JPEG-Signatur
+        self.assertIsNone(plotter_capture.load_image_as_png(path))
+
 
 if __name__ == "__main__":
     unittest.main()

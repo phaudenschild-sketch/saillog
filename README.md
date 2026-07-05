@@ -24,12 +24,12 @@ Python.
   bei Törnbeginn/-abschluss automatisch vorbelegt
 - 🗺️ **Törns** — Einträge gruppieren; Törn mit Startort, Wasser-/Diesel­menge,
   Motorenstunden und Log-Stand beginnen und am Ende abschließen
-- 🖼️ **Kartenplotter-Feld**: Screenshot per „Laden…" oder — falls der
-  Plotter als normales Fenster am PC sichtbar ist — als **Bildschirm­aus­schnitt**
-  (Pillow). Das Bild wird **zu jedem Logbuch-Eintrag gespeichert** (Doppel­klick
-  zum Ansehen, Ordner-Export). Hinweis: Das **Live-Mirroring vom B&G-Plotter**
-  läuft über einen **lizenzierten Navico-Videokanal (GoFree Tier 3)** und ist
-  ohne Navico-Lizenz nicht zugänglich — siehe „GoFree" unten.
+- 🖼️ **Kartenplotter-Feld**: Plotter-**Screenshot laden** (PNG/GIF direkt;
+  JPG/BMP mit Pillow) — das Bild wird **an den nächsten Logbuch-Eintrag
+  gehängt** (Doppelklick zum Ansehen, Ordner-Export). Hinweis: Das
+  **Live-Mirroring vom B&G-Plotter** läuft über einen **lizenzierten
+  Navico-Videokanal (GoFree Tier 3)** und ist ohne Lizenz nicht zugänglich —
+  siehe „GoFree" unten.
 - ⏱️ **Automatisches Logging** in einstellbarem Intervall (dem aktiven Törn
   zugeordnet, inkl. der Bedingungswerte)
 - 💾 **Speicherung** in einer lokalen SQLite-Datenbank
