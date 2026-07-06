@@ -8,6 +8,9 @@ Das Programm nutzt **nur die Python-Standardbibliothek** — keine externen
 Pakete, keine Installations-Hürden. Auf Windows 11 reicht ein normales
 Python.
 
+> **Weiterarbeit / aktueller Stand:** siehe [`docs/STATUS.md`](docs/STATUS.md)
+> — Hardware-Karte des Boots, erledigte Features und offene nächste Schritte.
+
 ## Funktionen
 
 - 📡 **Live-Anbindung** ans Gateway per TCP oder UDP (NMEA0183-Stream)
