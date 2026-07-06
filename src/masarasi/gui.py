@@ -19,7 +19,7 @@ from masarasi.fields import (
     visibility_hint,
 )
 from masarasi.livedata import LiveData
-from masarasi.logbook import LogbookService
+from masarasi.logbook import LogbookService, utc_now_iso
 from masarasi.nmea import FIELD_LABELS
 from masarasi.source import (
     STATUS_CONNECTED,
@@ -172,14 +172,14 @@ class Application:
         table_frame = ttk.Frame(self._root)
         table_frame.pack(fill="both", expand=True, **pad)
 
-        cols = ("time", "type", "pos", "sog", "wind", "depth", "motor", "segel", "img", "note")
+        cols = ("time", "ed", "type", "pos", "sog", "wind", "depth", "motor", "segel", "img", "note")
         headers = {
-            "time": "Zeit (UTC)", "type": "Typ", "pos": "Position",
+            "time": "Zeit (UTC)", "ed": "✎", "type": "Typ", "pos": "Position",
             "sog": "SOG", "wind": "Wind", "depth": "Tiefe",
             "motor": "Motor", "segel": "Segel", "img": "📷", "note": "Notiz",
         }
         widths = {
-            "time": 150, "type": 60, "pos": 150, "sog": 50,
+            "time": 150, "ed": 26, "type": 60, "pos": 150, "sog": 50,
             "wind": 100, "depth": 55, "motor": 50, "segel": 130, "img": 30, "note": 150,
         }
         self._tree = ttk.Treeview(table_frame, columns=cols, show="headings")
@@ -192,12 +192,19 @@ class Application:
         scroll.pack(side="right", fill="y")
 
         self._tree.bind("<Delete>", lambda _e: self._on_delete_entry())
-        self._tree.bind("<Double-1>", lambda _e: self._on_view_image())
+        self._tree.bind("<Double-1>", lambda _e: self._on_edit_entry())
 
         bottom = ttk.Frame(self._root)
         bottom.pack(fill="x", **pad)
+        ttk.Button(bottom, text="Bearbeiten…", command=self._on_edit_entry).pack(side="left")
         ttk.Button(bottom, text="Eintrag löschen", command=self._on_delete_entry).pack(
-            side="left"
+            side="left", padx=4
+        )
+        ttk.Button(bottom, text="Bild ansehen", command=self._on_view_image).pack(
+            side="left", padx=4
+        )
+        ttk.Label(bottom, text="(Doppelklick = bearbeiten)", foreground="#999").pack(
+            side="left", padx=8
         )
         self._count_label = ttk.Label(bottom, text="")
         self._count_label.pack(side="right")
@@ -625,6 +632,7 @@ class Application:
                 "", "end", iid=str(entry.id),
                 values=(
                     entry.timestamp,
+                    "✎" if entry.edited == 1 else "",
                     entry.entry_type,
                     pos,
                     "" if entry.sog_kn is None else f"{entry.sog_kn:.1f}",
@@ -668,6 +676,24 @@ class Application:
         label = tk.Label(win, image=img)
         label.image = img  # Referenz halten
         label.pack()
+
+    def _on_edit_entry(self) -> None:
+        selection = self._tree.selection()
+        if not selection:
+            return
+        entry = self._store.get(int(selection[0]))
+        if entry is None:
+            return
+        dialog = _EditEntryDialog(self._root, entry)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        for key, value in dialog.result.items():
+            setattr(entry, key, value)
+        entry.edited = 1
+        entry.edited_dz = utc_now_iso()
+        self._store.update(entry)
+        self._refresh_logbook()
 
     # --- Export -------------------------------------------------------------
 
@@ -716,6 +742,128 @@ def _parse_float(text: str) -> Optional[float]:
         return float(text)
     except ValueError:
         return None
+
+
+class _EditEntryDialog:
+    """Dialog zum Bearbeiten eines bestehenden Logbuch-Eintrags.
+
+    Messwerte (Position, Wind …) werden nur informativ angezeigt; geändert
+    werden die manuellen Felder, Zeit und Notiz.
+    """
+
+    _ENGINE = {None: "—", 1: "ein", 0: "aus"}
+
+    def __init__(self, parent: tk.Tk, entry) -> None:
+        self.result: Optional[Dict] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title(f"Eintrag bearbeiten (#{entry.id})")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        info = []
+        if entry.lat is not None and entry.lon is not None:
+            info.append(f"Pos {entry.lat:.4f}, {entry.lon:.4f}")
+        if entry.sog_kn is not None:
+            info.append(f"SOG {entry.sog_kn:.1f} kn")
+        if entry.depth_m is not None:
+            info.append(f"Tiefe {entry.depth_m:.1f} m")
+        info.append(f"Typ: {entry.entry_type}")
+        ttk.Label(frame, text="  ·  ".join(info),
+                  foreground="#555").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 8))
+
+        r = 1
+
+        def lab(text, row, col=0):
+            ttk.Label(frame, text=text).grid(row=row, column=col, sticky="e", padx=4, pady=2)
+
+        lab("Zeit (UTC):", r)
+        self._ts = tk.StringVar(value=entry.timestamp)
+        ttk.Entry(frame, textvariable=self._ts, width=24).grid(row=r, column=1, sticky="w")
+        lab("Anlass:", r, 2)
+        self._logevent = tk.StringVar(value=entry.logevent)
+        ttk.Combobox(frame, textvariable=self._logevent, width=18,
+                     values=["Routineeintrag", "Wache", "Manöver", "Hafen", "Ankern",
+                             "Besonderes"]).grid(row=r, column=3, sticky="w")
+        r += 1
+
+        lab("Motor:", r)
+        self._engine = tk.StringVar(value=self._ENGINE.get(entry.engine_on, "—"))
+        ttk.Combobox(frame, textvariable=self._engine, width=18, state="readonly",
+                     values=["—", "ein", "aus"]).grid(row=r, column=1, sticky="w")
+        lab("Großsegel:", r, 2)
+        self._mainsail = tk.StringVar(value=entry.mainsail or "—")
+        ttk.Combobox(frame, textvariable=self._mainsail, width=18, state="readonly",
+                     values=MAINSAIL_OPTIONS).grid(row=r, column=3, sticky="w")
+        r += 1
+
+        lab("Genua %:", r)
+        self._genoa = tk.StringVar(value="" if entry.genoa_percent is None else f"{entry.genoa_percent:g}")
+        ttk.Spinbox(frame, from_=0, to=100, textvariable=self._genoa, width=8).grid(
+            row=r, column=1, sticky="w")
+        lab("Spinnaker:", r, 2)
+        self._spinnaker = tk.BooleanVar(value=bool(entry.spinnaker))
+        ttk.Checkbutton(frame, text="gesetzt", variable=self._spinnaker).grid(
+            row=r, column=3, sticky="w")
+        r += 1
+
+        lab("Bewölkung:", r)
+        self._cloud = tk.StringVar(value=entry.cloud_cover or "—")
+        ttk.Combobox(frame, textvariable=self._cloud, width=18, state="readonly",
+                     values=CLOUD_COVER_LABELS).grid(row=r, column=1, sticky="w")
+        lab("Niederschlag:", r, 2)
+        self._precip = tk.StringVar(value=entry.precipitation or "kein")
+        ttk.Combobox(frame, textvariable=self._precip, width=18, state="readonly",
+                     values=PRECIPITATION).grid(row=r, column=3, sticky="w")
+        r += 1
+
+        lab("Sicht:", r)
+        self._visibility = tk.StringVar(value=entry.visibility or "—")
+        ttk.Combobox(frame, textvariable=self._visibility, width=18, state="readonly",
+                     values=VISIBILITY_LABELS).grid(row=r, column=1, sticky="w")
+        lab("Seegang (m):", r, 2)
+        self._wave = tk.StringVar(value="" if entry.wave_height_m is None else f"{entry.wave_height_m:g}")
+        ttk.Entry(frame, textvariable=self._wave, width=10).grid(row=r, column=3, sticky="w")
+        r += 1
+
+        lab("Ort / Hafen:", r)
+        self._location = tk.StringVar(value=entry.location)
+        ttk.Entry(frame, textvariable=self._location, width=24).grid(row=r, column=1, sticky="w")
+        lab("Crew:", r, 2)
+        self._crew = tk.StringVar(value=entry.crew)
+        ttk.Entry(frame, textvariable=self._crew, width=18).grid(row=r, column=3, sticky="w")
+        r += 1
+
+        ttk.Label(frame, text="Notiz:").grid(row=r, column=0, sticky="ne", padx=4, pady=2)
+        self._note = tk.Text(frame, width=52, height=4)
+        self._note.insert("1.0", entry.note or "")
+        self._note.grid(row=r, column=1, columnspan=3, sticky="w", pady=2)
+        r += 1
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=r, column=0, columnspan=4, pady=(10, 0))
+        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _on_save(self) -> None:
+        engine_map = {"—": None, "ein": 1, "aus": 0}
+        self.result = {
+            "timestamp": self._ts.get().strip(),
+            "logevent": self._logevent.get().strip(),
+            "engine_on": engine_map.get(self._engine.get()),
+            "mainsail": self._mainsail.get() if self._mainsail.get() != "—" else "",
+            "genoa_percent": _parse_float(self._genoa.get()),
+            "spinnaker": 1 if self._spinnaker.get() else 0,
+            "cloud_cover": self._cloud.get() if self._cloud.get() != "—" else "",
+            "precipitation": self._precip.get() if self._precip.get() != "kein" else "",
+            "visibility": self._visibility.get() if self._visibility.get() != "—" else "",
+            "wave_height_m": _parse_float(self._wave.get()),
+            "location": self._location.get().strip(),
+            "crew": self._crew.get().strip(),
+            "note": self._note.get("1.0", "end").strip(),
+        }
+        self.top.destroy()
 
 
 class _ManualEntryDialog:

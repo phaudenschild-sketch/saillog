@@ -77,6 +77,8 @@ class LogEntry:
     precipitation: str = ""              # siehe fields.PRECIPITATION
     visibility: str = ""                 # siehe fields.VISIBILITY
     logevent: str = ""                   # Anlass, z.B. "Routineeintrag"
+    edited: Optional[int] = None         # 1 = nachträglich bearbeitet
+    edited_dz: str = ""                  # Zeitpunkt der Bearbeitung (ISO)
     note: str = ""
     crew: str = ""
     location: str = ""
@@ -162,6 +164,8 @@ _MIGRATE_LOG = [
     ("precipitation", "TEXT DEFAULT ''"),
     ("visibility", "TEXT DEFAULT ''"),
     ("logevent", "TEXT DEFAULT ''"),
+    ("edited", "INTEGER"),
+    ("edited_dz", "TEXT DEFAULT ''"),
     ("note", "TEXT DEFAULT ''"),
     ("crew", "TEXT DEFAULT ''"),
     ("location", "TEXT DEFAULT ''"),
@@ -198,6 +202,8 @@ class LogbookStore:
                 "precipitation TEXT DEFAULT ''",
                 "visibility TEXT DEFAULT ''",
                 "logevent TEXT DEFAULT ''",
+                "edited INTEGER",
+                "edited_dz TEXT DEFAULT ''",
                 "note TEXT DEFAULT ''",
                 "crew TEXT DEFAULT ''",
                 "location TEXT DEFAULT ''",
@@ -259,6 +265,21 @@ class LogbookStore:
             )
             entry.id = cursor.lastrowid
         return entry.id
+
+    def update(self, entry: LogEntry) -> None:
+        """Aktualisiert einen bestehenden Eintrag (alle Felder außer id)."""
+        cols = [c for c in _COLUMN_NAMES if c != "id"]
+        assignments = ", ".join(f"{c} = ?" for c in cols)
+        values = [getattr(entry, c) for c in cols] + [entry.id]
+        with self._connect() as conn:
+            conn.execute(f"UPDATE log_entries SET {assignments} WHERE id = ?", values)
+
+    def get(self, entry_id: int) -> Optional[LogEntry]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM log_entries WHERE id = ?", (entry_id,)
+            ).fetchone()
+        return self._row_to_entry(row) if row else None
 
     def add_many(self, entries: List[LogEntry]) -> int:
         """Fügt viele Einträge in einer Transaktion ein (für Importe)."""

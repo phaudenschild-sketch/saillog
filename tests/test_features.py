@@ -96,6 +96,37 @@ class EngineNmeaTest(unittest.TestCase):
         self.assertAlmostEqual(result[nmea.ENGINE_HOURS], 1234.5)
 
 
+class EditEntryTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        from masarasi.storage import LogbookStore
+        self.store = LogbookStore(os.path.join(self.tmp.name, "log.sqlite3"))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_update_and_get(self):
+        from masarasi.storage import LogEntry
+        e = LogEntry.from_snapshot("2026-07-05T10:00:00Z", "manual",
+                                   {"lat": 47.5, "lon": 9.4}, note="alt")
+        self.store.add(e)
+        loaded = self.store.get(e.id)
+        self.assertEqual(loaded.note, "alt")
+        self.assertIsNone(loaded.edited)
+        # bearbeiten
+        loaded.note = "korrigiert"
+        loaded.mainsail = "Reff 2"
+        loaded.edited = 1
+        loaded.edited_dz = "2026-07-06T12:00:00Z"
+        self.store.update(loaded)
+        again = self.store.get(e.id)
+        self.assertEqual(again.note, "korrigiert")
+        self.assertEqual(again.mainsail, "Reff 2")
+        self.assertEqual(again.edited, 1)
+        # Messwerte unverändert
+        self.assertEqual(again.lat, 47.5)
+
+
 class StorageFieldsTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

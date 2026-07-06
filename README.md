@@ -32,6 +32,8 @@ Python.
   siehe „GoFree" unten.
 - ⏱️ **Automatisches Logging** in einstellbarem Intervall (dem aktiven Törn
   zugeordnet, inkl. der Bedingungswerte)
+- ✏️ **Einträge bearbeiten & löschen** — Doppelklick öffnet den Eintrag;
+  geänderte Einträge werden mit einem **✎-Marker** gekennzeichnet
 - 💾 **Speicherung** in einer lokalen SQLite-Datenbank
 - 📤 **Export** als **CSV** und **GPX** (optional pro Törn)
 - 📥 **Import** alter **TripCon**-Logbücher (`.tcdb`)
