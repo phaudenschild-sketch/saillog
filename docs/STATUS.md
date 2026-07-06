@@ -25,7 +25,7 @@ Konfiguration & Datenbank liegen unter `~/.masarasi/`
 |---|---|---|
 | **B&G Zeus** (Plotter) | TCP `192.168.9.224:10110` | Position, SOG/COG, Wind (MWV/MWD), Tiefe, Wassertemp, Kurs (HDG/VHW), **Log** (VLW, Grunddistanz-Fallback), Lufttemp/**Luftdruck**/Krängung/Trimm/Ruder (XDR), AIS. **Keine Motordaten.** |
 | **Maretron USB100** | seriell `COM11 @ 115200` | NMEA2000→0183: **Drehzahl** (`IIRPM`), **Kühlwassertemperatur**, **Lichtmaschinenspannung**, **Motorstunden** (aus `$PMAREPD`), **Log** (`IIVLW`). Öldruck-Feld leer (kein Sensor). |
-| **Orca Core** | `192.168.9.100` | N2K-Gateway; auf Standardports bisher nichts gefunden. `discover.py 192.168.9.100 --sweep` noch offen. |
+| **Orca Core** | `192.168.9.100` | **Geparkt.** Proprietär: kein NMEA0183, sondern HTTP-Status (8080/8085/8090) + WebSocket 9000 (`Server: Python/websockets`). WS sendet nach Connect nur `{"event":"imuBegin"}`, streamt Daten erst nach einem unbekannten App-`subscribe`. Nicht erschlossen (Aufwand ≫ Nutzen, Daten bereits über B&G/Maretron vorhanden). Diagnose: `orca_probe.py`. |
 | **PredictWind DataHub** | `192.168.9.113` | Multiplexer; aktuell nicht nötig. |
 
 **Mehrquellen-Betrieb:** In der App unter „Quellen…" B&G (TCP) **und** Maretron
@@ -61,12 +61,12 @@ daher **manuell laden** (Feld „Kartenplotter").
    sinnvoll gefüllt ist. Falls nicht: je 2 Zeilen aus `B100_Log` (Spalte
    `LogEvent`), `S005_ParamValue`, `S000_Translation` → Mapping in
    `src/masarasi/tripcon.py` (`_resolve_code`) anpassen.
-2. **Orca Core erkunden (optional):** `python discover.py 192.168.9.100 --sweep`
-   → prüfen, ob dort noch etwas Nützliches liegt (Motordaten kommen bereits
-   vollständig vom Maretron).
-3. **Optional:** TripCon-Plotterbilder (`…/bilder/plotter/`) an die importierten
+2. **Optional:** TripCon-Plotterbilder (`…/bilder/plotter/`) an die importierten
    Einträge hängen; CSV-Export wahlweise in Lokalzeit; weitere Zeitzonen;
    Rate-of-Turn (`ROT`) / Ruderlage-Anzeige.
+
+*(Orca Core: untersucht und geparkt — proprietäres WebSocket-Protokoll,
+kein Nutzen; siehe Hardware-Tabelle.)*
 
 ### Erledigt (Motordaten, Juli 2026)
 Maretron `$PMAREPD` dekodiert → Kühlwassertemperatur, Lichtmaschinenspannung,
