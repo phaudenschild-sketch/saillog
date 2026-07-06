@@ -164,6 +164,52 @@ def sweep_tcp(host: str, ports: List[int], workers: int = 200) -> List[int]:
     return sorted(open_ports)
 
 
+def _printable(data: bytes, limit: int = 120) -> str:
+    text = "".join(chr(b) if 32 <= b < 127 else "." for b in data[:limit])
+    return text + ("…" if len(data) > limit else "")
+
+
+def _raw_preview(host: str, port: int, seconds: float = 2.0, limit: int = 256) -> bytes:
+    """Liest, was ein Port von selbst sendet (ohne Anfrage)."""
+    try:
+        with socket.create_connection((host, port), timeout=2.0) as sock:
+            sock.settimeout(seconds)
+            data = b""
+            try:
+                while len(data) < limit:
+                    chunk = sock.recv(limit - len(data))
+                    if not chunk:
+                        break
+                    data += chunk
+            except socket.timeout:
+                pass
+            return data
+    except OSError:
+        return b""
+
+
+def _http_probe(host: str, port: int, timeout: float = 2.0) -> bytes:
+    """Schickt ein HTTP GET und liest die Antwort (Statuszeile/Header)."""
+    try:
+        with socket.create_connection((host, port), timeout=2.0) as sock:
+            sock.settimeout(timeout)
+            sock.sendall(
+                b"GET / HTTP/1.0\r\nHost: " + host.encode() + b"\r\n\r\n"
+            )
+            data = b""
+            try:
+                while len(data) < 400:
+                    chunk = sock.recv(400 - len(data))
+                    if not chunk:
+                        break
+                    data += chunk
+            except socket.timeout:
+                pass
+            return data
+    except OSError:
+        return b""
+
+
 def scan_sweep(host: str, up_to: int = 10240) -> None:
     ports = sorted(set(list(range(1, up_to + 1)) +
                        [10110, 10111, 11000, 39150, 2947, 8080, 8375, 50000, 60001]))
@@ -179,10 +225,27 @@ def scan_sweep(host: str, up_to: int = 10240) -> None:
         if result:
             print(f"  ✓ Port {port}: {_format_types(result)}")
             print(f"      → In masarasi: Host={host}  Port={port}  Protokoll=tcp")
-        elif result == {}:
-            print(f"  · Port {port}: offen, sendet Daten (aber kein NMEA0183 erkannt)")
+            continue
+        if result == {}:
+            # Sendet von selbst Daten, aber kein NMEA0183 -> Rohvorschau zeigen
+            raw = _raw_preview(host, port)
+            print(f"  · Port {port}: sendet Daten, kein NMEA0183. Vorschau:")
+            print(f"      {_printable(raw)}")
+            continue
+        # Sendet nicht von selbst -> HTTP/API prüfen
+        http = _http_probe(host, port)
+        if http[:4] in (b"HTTP",):
+            first = http.split(b"\r\n", 1)[0].decode("ascii", "ignore")
+            server = ""
+            for line in http.split(b"\r\n"):
+                if line.lower().startswith(b"server:"):
+                    server = line.decode("ascii", "ignore")
+                    break
+            print(f"  · Port {port}: HTTP-Server/API — {first}   {server}".rstrip())
+        elif http:
+            print(f"  · Port {port}: antwortet auf Anfrage. Vorschau: {_printable(http)}")
         else:
-            print(f"  · Port {port}: offen, sendet nicht von selbst (evtl. HTTP/API/WebSocket)")
+            print(f"  · Port {port}: offen, still (evtl. WebSocket/proprietär)")
 
 
 def parse_gofree_announcement(data: bytes) -> Optional[Dict]:
