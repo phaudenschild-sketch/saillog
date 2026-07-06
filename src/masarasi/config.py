@@ -50,6 +50,10 @@ class Config:
     plotter_region: Optional[list] = None
     plotter_interval_seconds: int = 15
 
+    # Anzeige-Zeitzone: "system" (Rechnerzeit) oder "fixed" mit festem Versatz
+    timezone_mode: str = "system"
+    timezone_offset_hours: float = 0.0
+
     @classmethod
     def load(cls, path: Path = CONFIG_PATH) -> "Config":
         """Lädt die Konfiguration oder gibt Standardwerte zurück."""

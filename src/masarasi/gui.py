@@ -8,7 +8,7 @@ from collections import deque
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, Optional
 
-from masarasi import plotter_capture
+from masarasi import plotter_capture, timeutil
 from masarasi.config import Config
 from masarasi.fields import (
     CLOUD_COVER_LABELS,
@@ -168,19 +168,29 @@ class Application:
             row=0, column=6, padx=4
         )
 
+        ttk.Label(controls, text="Zeitzone:").grid(row=0, column=7, sticky="e", padx=(16, 2))
+        self._tz_var = tk.StringVar(value=self._tz_current_choice())
+        tz = ttk.Combobox(
+            controls, textvariable=self._tz_var, width=12, state="readonly",
+            values=["System", "UTC", "UTC+1", "UTC+2", "UTC+3", "UTC+4", "UTC-1", "UTC-2"],
+        )
+        tz.grid(row=0, column=8, padx=2)
+        tz.bind("<<ComboboxSelected>>", lambda _e: self._on_tz_change())
+
         # Logbuch-Tabelle
         table_frame = ttk.Frame(self._root)
         table_frame.pack(fill="both", expand=True, **pad)
 
-        cols = ("time", "ed", "type", "pos", "sog", "wind", "depth", "motor", "segel", "img", "note")
+        cols = ("time", "ed", "anlass", "type", "pos", "sog", "wind", "depth",
+                "motor", "segel", "img", "note")
         headers = {
-            "time": "Zeit (UTC)", "ed": "✎", "type": "Typ", "pos": "Position",
-            "sog": "SOG", "wind": "Wind", "depth": "Tiefe",
+            "time": "Zeit", "ed": "✎", "anlass": "Anlass", "type": "Typ",
+            "pos": "Position", "sog": "SOG", "wind": "Wind", "depth": "Tiefe",
             "motor": "Motor", "segel": "Segel", "img": "📷", "note": "Notiz",
         }
         widths = {
-            "time": 150, "ed": 26, "type": 60, "pos": 150, "sog": 50,
-            "wind": 100, "depth": 55, "motor": 50, "segel": 130, "img": 30, "note": 150,
+            "time": 145, "ed": 26, "anlass": 100, "type": 58, "pos": 140, "sog": 48,
+            "wind": 95, "depth": 52, "motor": 46, "segel": 120, "img": 28, "note": 130,
         }
         self._tree = ttk.Treeview(table_frame, columns=cols, show="headings")
         for col in cols:
@@ -606,6 +616,33 @@ class Application:
         )
         self._refresh_logbook()
 
+    # --- Zeitzone -----------------------------------------------------------
+
+    def _tz_offset(self) -> float:
+        return timeutil.effective_offset(
+            self._config.timezone_mode, self._config.timezone_offset_hours
+        )
+
+    def _tz_current_choice(self) -> str:
+        if self._config.timezone_mode == "system":
+            return "System"
+        h = self._config.timezone_offset_hours
+        if h == 0:
+            return "UTC"
+        return f"UTC{'+' if h >= 0 else '-'}{int(abs(h))}"
+
+    def _on_tz_change(self) -> None:
+        choice = self._tz_var.get()
+        if choice == "System":
+            self._config.timezone_mode = "system"
+        else:
+            self._config.timezone_mode = "fixed"
+            self._config.timezone_offset_hours = 0.0 if choice == "UTC" else float(
+                choice.replace("UTC", "")
+            )
+        self._config.save()
+        self._refresh_logbook()
+
     # --- Logbuch-Tabelle ----------------------------------------------------
 
     def _refresh_logbook(self) -> None:
@@ -613,6 +650,8 @@ class Application:
             self._tree.delete(item)
         trip_id = self._logbook.current_trip_id
         with_images = self._store.entries_with_images()
+        offset = self._tz_offset()
+        self._tree.heading("time", text=f"Zeit ({timeutil.label(self._config.timezone_mode, self._config.timezone_offset_hours)})")
         for entry in self._store.all(limit=5000, newest_first=True, trip_id=trip_id):
             pos = ""
             if entry.lat is not None and entry.lon is not None:
@@ -631,8 +670,9 @@ class Application:
             self._tree.insert(
                 "", "end", iid=str(entry.id),
                 values=(
-                    entry.timestamp,
+                    timeutil.to_display(entry.timestamp, offset),
                     "✎" if entry.edited == 1 else "",
+                    entry.logevent,
                     entry.entry_type,
                     pos,
                     "" if entry.sog_kn is None else f"{entry.sog_kn:.1f}",
@@ -684,11 +724,17 @@ class Application:
         entry = self._store.get(int(selection[0]))
         if entry is None:
             return
-        dialog = _EditEntryDialog(self._root, entry)
+        offset = self._tz_offset()
+        ts_display = timeutil.to_display(entry.timestamp, offset)
+        dialog = _EditEntryDialog(self._root, entry, ts_display)
         self._root.wait_window(dialog.top)
         if dialog.result is None:
             return
-        for key, value in dialog.result.items():
+        result = dict(dialog.result)
+        new_ts = timeutil.from_display(result.pop("timestamp", ""), offset)
+        if new_ts:
+            entry.timestamp = new_ts
+        for key, value in result.items():
             setattr(entry, key, value)
         entry.edited = 1
         entry.edited_dz = utc_now_iso()
@@ -753,7 +799,7 @@ class _EditEntryDialog:
 
     _ENGINE = {None: "—", 1: "ein", 0: "aus"}
 
-    def __init__(self, parent: tk.Tk, entry) -> None:
+    def __init__(self, parent: tk.Tk, entry, ts_display: str = "") -> None:
         self.result: Optional[Dict] = None
         self.top = tk.Toplevel(parent)
         self.top.title(f"Eintrag bearbeiten (#{entry.id})")
@@ -778,8 +824,8 @@ class _EditEntryDialog:
         def lab(text, row, col=0):
             ttk.Label(frame, text=text).grid(row=row, column=col, sticky="e", padx=4, pady=2)
 
-        lab("Zeit (UTC):", r)
-        self._ts = tk.StringVar(value=entry.timestamp)
+        lab("Zeit (lokal):", r)
+        self._ts = tk.StringVar(value=ts_display or entry.timestamp)
         ttk.Entry(frame, textvariable=self._ts, width=24).grid(row=r, column=1, sticky="w")
         lab("Anlass:", r, 2)
         self._logevent = tk.StringVar(value=entry.logevent)

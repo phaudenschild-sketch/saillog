@@ -34,6 +34,9 @@ Python.
   zugeordnet, inkl. der Bedingungswerte)
 - ✏️ **Einträge bearbeiten & löschen** — Doppelklick öffnet den Eintrag;
   geänderte Einträge werden mit einem **✎-Marker** gekennzeichnet
+- 🕐 **Zeitzone** einstellbar (Systemzeit oder fester UTC-Versatz); intern
+  wird UTC gespeichert, angezeigt in deiner Zone — Spalte **Anlass** in der
+  Tabelle
 - 💾 **Speicherung** in einer lokalen SQLite-Datenbank
 - 📤 **Export** als **CSV** und **GPX** (optional pro Törn)
 - 📥 **Import** alter **TripCon**-Logbücher (`.tcdb`)
