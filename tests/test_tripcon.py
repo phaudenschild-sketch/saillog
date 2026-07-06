@@ -33,9 +33,21 @@ def _build_tripcon_db(path: str) -> None:
     c.execute("CREATE TABLE B105_Trips (ID INTEGER, FromLocation TEXT, FromDZ TEXT, ToLocation TEXT, ToDZ TEXT)")
     c.execute("INSERT INTO B105_Trips VALUES (37,'Vulcano','2013-07-14 07:55:00.000Z','Isola Salina','2013-07-14 10:45:00.000Z')")
 
-    c.execute("CREATE TABLE B100_Log (ID INTEGER, Trip INTEGER, TripDZ TEXT, CreateDZ TEXT)")
-    c.execute("INSERT INTO B100_Log VALUES (1362,37,'2013-07-14 08:15:00.000Z','')")
-    c.execute("INSERT INTO B100_Log VALUES (1363,37,'2013-07-14 08:30:00.000Z','')")
+    c.execute("CREATE TABLE B100_Log (ID INTEGER, Trip INTEGER, TripDZ TEXT, CreateDZ TEXT, "
+              "LogEvent INTEGER, Clouds INTEGER, Precipitation INTEGER, Sight INTEGER)")
+    c.execute("INSERT INTO B100_Log VALUES (1362,37,'2013-07-14 08:15:00.000Z','',137,NULL,NULL,138)")
+    c.execute("INSERT INTO B100_Log VALUES (1363,37,'2013-07-14 08:30:00.000Z','',NULL,NULL,NULL,NULL)")
+
+    # LogEvent/Sicht sind codierte ParamValue-IDs -> Text über zwei Tabellen
+    c.execute("CREATE TABLE S005_ParamValue (ID INTEGER, MasterID INTEGER, LabelID INTEGER, PID INTEGER)")
+    c.execute("INSERT INTO S005_ParamValue VALUES (137,0,500,2)")   # LogEvent 137 -> Label 500
+    c.execute("INSERT INTO S005_ParamValue VALUES (138,0,501,3)")   # Sicht   138 -> Label 501
+    c.execute("CREATE TABLE S000_Translation (LangID INTEGER, LabelID INTEGER, Label TEXT, Comment TEXT)")
+    # Deutsch (142) hat die meisten Einträge -> Hauptsprache
+    c.execute("INSERT INTO S000_Translation VALUES (142,500,'Manöver','')")
+    c.execute("INSERT INTO S000_Translation VALUES (142,501,'sehr gut (20 NM)','')")
+    c.execute("INSERT INTO S000_Translation VALUES (142,502,'Sonstiges','')")
+    c.execute("INSERT INTO S000_Translation VALUES (7,500,'Maneuver','')")  # Englisch, weniger Einträge
 
     # Koordinaten in Dezimal-Bogenminuten (2305.0' = 38.4167°)
     c.execute("CREATE TABLE VPosition (LogID INTEGER, Latitude REAL, Longitude REAL, AutoRecord INTEGER)")
@@ -120,6 +132,9 @@ class TripconTest(unittest.TestCase):
         self.assertIn("Ablegen bei Sonne", e.note)
         self.assertIn("23°C", e.note)   # Lufttemperatur in der Notiz
         self.assertIn("1016 hPa", e.note)
+        # Codierte Felder aufgelöst (deutsche Hauptsprache)
+        self.assertEqual(e.logevent, "Manöver")           # LogEvent 137 -> Label 500
+        self.assertEqual(e.visibility, "sehr gut (20 NM)")  # Sicht 138 -> Label 501
 
     def test_import_into_masarasi(self):
         db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")

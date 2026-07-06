@@ -141,6 +141,56 @@ def _comments(conn) -> Dict[int, str]:
     return result
 
 
+def _primary_language(conn) -> Optional[int]:
+    """LangID mit den meisten Übersetzungen (i.d.R. die aktive Sprache)."""
+    if not _table_exists(conn, "S000_Translation"):
+        return None
+    rows = conn.execute(
+        "SELECT LangID, COUNT(*) FROM S000_Translation GROUP BY LangID "
+        "ORDER BY COUNT(*) DESC"
+    ).fetchall()
+    return rows[0][0] if rows else None
+
+
+def _label_texts(conn) -> Dict[int, str]:
+    """{LabelID: Text} in der Hauptsprache."""
+    if not _table_exists(conn, "S000_Translation"):
+        return {}
+    lang = _primary_language(conn)
+    result: Dict[int, str] = {}
+    query = "SELECT LabelID, Label FROM S000_Translation"
+    params: tuple = ()
+    if lang is not None:
+        query += " WHERE LangID = ?"
+        params = (lang,)
+    for label_id, label in conn.execute(query, params):
+        if isinstance(label, bytes):
+            label = label.decode("utf-8", "replace")
+        result[label_id] = label
+    return result
+
+
+def _paramvalue_labelids(conn) -> Dict[int, int]:
+    """{ParamValue.ID: LabelID} zum Auflösen von codierten Feldern (z.B. LogEvent)."""
+    if not _table_exists(conn, "S005_ParamValue"):
+        return {}
+    return {
+        row[0]: row[1]
+        for row in conn.execute("SELECT ID, LabelID FROM S005_ParamValue")
+        if row[1] is not None
+    }
+
+
+def _resolve_code(code, pv_labels: Dict[int, int], texts: Dict[int, str]) -> str:
+    """Löst eine ParamValue-ID (z.B. LogEvent) in ihren Text auf."""
+    if code is None:
+        return ""
+    label_id = pv_labels.get(code)
+    if label_id is None:
+        return ""
+    return texts.get(label_id, "")
+
+
 def build_entries(conn, trip_id_map: Optional[Dict[int, int]] = None) -> List[LogEntry]:
     """Baut aus B100_Log + Messwert-Tabellen masarasi-Logbuch-Einträge.
 
@@ -159,9 +209,14 @@ def build_entries(conn, trip_id_map: Optional[Dict[int, int]] = None) -> List[Lo
     air_temp = _single_map(conn, "VAirTemperature", "Value")
     air_press = _single_map(conn, "VAirPressure", "Value")
 
+    # Codierte Felder auflösen: LogEvent (Anlass), Bewölkung, Niederschlag, Sicht
+    pv_labels = _paramvalue_labelids(conn)
+    texts = _label_texts(conn)
+
     entries: List[LogEntry] = []
-    for log_id, trip_id, trip_dz, create_dz in conn.execute(
-        "SELECT ID, Trip, TripDZ, CreateDZ FROM B100_Log ORDER BY TripDZ, ID"
+    for log_id, trip_id, trip_dz, create_dz, logevent_code, clouds, precip, sight in conn.execute(
+        "SELECT ID, Trip, TripDZ, CreateDZ, LogEvent, Clouds, Precipitation, Sight "
+        "FROM B100_Log ORDER BY TripDZ, ID"
     ):
         measurements: Dict[str, float] = {}
 
@@ -220,6 +275,10 @@ def build_entries(conn, trip_id_map: Optional[Dict[int, int]] = None) -> List[Lo
                 note=note,
                 location=location,
                 trip_id=entry_trip,
+                logevent=_resolve_code(logevent_code, pv_labels, texts),
+                cloud_cover=_resolve_code(clouds, pv_labels, texts),
+                precipitation=_resolve_code(precip, pv_labels, texts),
+                visibility=_resolve_code(sight, pv_labels, texts),
             )
         )
     return entries
