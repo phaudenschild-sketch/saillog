@@ -110,6 +110,10 @@ class Application:
             trip_bar, text="Törn abschließen…", command=self._on_close_trip
         )
         self._close_trip_btn.grid(row=0, column=3, padx=4)
+        self._trip_dist_label = ttk.Label(
+            trip_bar, text="", foreground="#1a5a8a", font=("TkDefaultFont", 10, "bold")
+        )
+        self._trip_dist_label.grid(row=0, column=4, padx=12)
 
         # Hauptzeile: Messwerte | Bedingungen | Kartenplotter nebeneinander
         main_row = ttk.Frame(self._root)
@@ -503,6 +507,20 @@ class Application:
             else:
                 text = f"{value:.5f}" if key in ("lat", "lon") else f"{value:.1f}"
                 self._value_labels[key].config(text=f"{text} {unit}", fg="#111111")
+        self._update_trip_distance(snapshot)
+
+    def _update_trip_distance(self, snapshot) -> None:
+        """Strecke im aktiven Törn = Gesamtlog − Log-Stand bei Törnbeginn."""
+        start = getattr(self, "_active_trip_start_log", None)
+        total = snapshot.get("log_total_nm")
+        if self._logbook.current_trip_id is None:
+            self._trip_dist_label.config(text="")
+        elif start is None:
+            self._trip_dist_label.config(text="Strecke Törn: — (kein Start-Log)")
+        elif total is None:
+            self._trip_dist_label.config(text="Strecke Törn: … (kein Log-Signal)")
+        else:
+            self._trip_dist_label.config(text=f"Strecke Törn: {max(0.0, total - start):.1f} NM")
 
     # --- Auto-Logging -------------------------------------------------------
 
@@ -561,10 +579,12 @@ class Application:
         self._close_trip_btn.config(
             state="normal" if trip and trip.status == "open" else "disabled"
         )
+        # Log-Stand bei Törnbeginn cachen (für die Strecke im Törn)
+        self._active_trip_start_log = trip.start_log_nm if trip else None
 
     def _on_trip_selected(self) -> None:
         self._logbook.current_trip_id = self._trip_choices.get(self._trip_var.get())
-        self._update_close_button()
+        self._update_close_button()  # aktualisiert auch den Törn-Start-Log-Cache
         self._refresh_logbook()
 
     def _on_new_trip(self) -> None:

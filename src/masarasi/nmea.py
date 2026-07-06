@@ -65,11 +65,10 @@ FIELD_LABELS = [
     (AIR_TEMP, "Lufttemperatur", "°C"),
     (BARO, "Luftdruck", "mbar"),
     (HEEL, "Krängung", "°"),
-    (LOG_TOTAL, "Log", "NM"),
+    (LOG_TOTAL, "Gesamtlog", "NM"),
     (ENGINE_RPM, "Motor-Drehzahl", "U/min"),
     (ENGINE_TEMP, "Motortemperatur", "°C"),
     (ALT_VOLTAGE, "Lichtmaschine", "V"),
-    (OIL_PRESSURE, "Öldruck", "bar"),
     (ENGINE_HOURS, "Motorstunden", "h"),
 ]
 

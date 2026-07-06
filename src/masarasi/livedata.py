@@ -6,6 +6,10 @@ import threading
 import time
 from typing import Dict, Optional
 
+# Kumulative Werte, die nur wachsen (z.B. der Gesamtlog): kleinere Werte von
+# Zweit-/Reset-Quellen werden ignoriert, solange der Höchstwert aktuell ist.
+_MONOTONIC_MAX = {"log_total_nm"}
+
 
 class LiveData:
     """Hält die aktuellsten Messwerte inkl. Zeitstempel.
@@ -29,6 +33,13 @@ class LiveData:
             now = time.time()
         with self._lock:
             for key, value in values.items():
+                if key in _MONOTONIC_MAX and key in self._values:
+                    fresh = (now - self._timestamps[key]) <= self._stale_after
+                    try:
+                        if fresh and value < self._values[key]:
+                            continue  # kleineren Ausreißer/Reset ignorieren
+                    except TypeError:
+                        pass
                 self._values[key] = value
                 self._timestamps[key] = now
             self._last_update = now

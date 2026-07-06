@@ -38,6 +38,22 @@ class LiveDataTest(unittest.TestCase):
         live.update({"sog_kn": 6.0}, now=2.0)
         self.assertEqual(live.get("sog_kn", now=2.5), 6.0)
 
+    def test_log_total_is_monotonic_max(self):
+        # Gesamtlog: kleinere Ausreißer/Reset-Werte werden ignoriert
+        live = LiveData()
+        live.update({"log_total_nm": 4029.3}, now=1.0)
+        live.update({"log_total_nm": 2.055}, now=1.5)   # zweite Quelle / Reset
+        live.update({"log_total_nm": 1434.0}, now=2.0)  # Grunddistanz
+        self.assertAlmostEqual(live.get("log_total_nm", now=2.5), 4029.3)
+        live.update({"log_total_nm": 4030.1}, now=3.0)  # wachsend -> übernommen
+        self.assertAlmostEqual(live.get("log_total_nm", now=3.5), 4030.1)
+
+    def test_log_total_resets_after_stale(self):
+        live = LiveData(stale_after=10.0)
+        live.update({"log_total_nm": 4029.3}, now=1.0)
+        live.update({"log_total_nm": 5.0}, now=100.0)   # nach Veralten neu
+        self.assertAlmostEqual(live.get("log_total_nm", now=100.5), 5.0)
+
 
 if __name__ == "__main__":
     unittest.main()
