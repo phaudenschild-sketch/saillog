@@ -24,7 +24,7 @@ Konfiguration & Datenbank liegen unter `~/.masarasi/`
 | Gerät | Anbindung in masarasi | Liefert |
 |---|---|---|
 | **B&G Zeus** (Plotter) | TCP `192.168.9.224:10110` | Position, SOG/COG, Wind (MWV/MWD), Tiefe, Wassertemp, Kurs (HDG/VHW), **Log** (VLW, Grunddistanz-Fallback), Lufttemp/**Luftdruck**/Krängung/Trimm/Ruder (XDR), AIS. **Keine Motordaten.** |
-| **Maretron USB100** | seriell `COM11 @ 115200` | NMEA2000→0183: **Drehzahl** (RPM), **Lichtmaschinenspannung** (→ Motor an/aus). Öldruck/Kühlwassertemp/Motorstunden kommen als **proprietäre `$P…`-Sätze** — **noch nicht dekodiert**. |
+| **Maretron USB100** | seriell `COM11 @ 115200` | NMEA2000→0183: **Drehzahl** (`IIRPM`), **Kühlwassertemperatur**, **Lichtmaschinenspannung**, **Motorstunden** (aus `$PMAREPD`), **Log** (`IIVLW`). Öldruck-Feld leer (kein Sensor). |
 | **Orca Core** | `192.168.9.100` | N2K-Gateway; auf Standardports bisher nichts gefunden. `discover.py 192.168.9.100 --sweep` noch offen. |
 | **PredictWind DataHub** | `192.168.9.113` | Multiplexer; aktuell nicht nötig. |
 
@@ -57,17 +57,21 @@ daher **manuell laden** (Feld „Kartenplotter").
 
 ## Offene Punkte / nächste Schritte
 
-1. **Maretron `$P…`-Sätze dekodieren** → Öldruck, Kühlwassertemperatur,
-   Motorstunden automatisch ins Logbuch. *Benötigt:* ein paar echte `$P…`-
-   Rohzeilen aus dem Rohdaten-Fenster (Motor läuft). Parser: `src/masarasi/nmea.py`.
-2. **Orca Core erkunden:** `python discover.py 192.168.9.100 --sweep --gofree --udp`
-   → prüfen, ob dort zusätzliche/Motordaten erreichbar sind.
-3. **TripCon-Anlass verifizieren:** nach Neu-Import prüfen, ob die Anlass-Spalte
+1. **TripCon-Anlass verifizieren:** nach Neu-Import prüfen, ob die Anlass-Spalte
    sinnvoll gefüllt ist. Falls nicht: je 2 Zeilen aus `B100_Log` (Spalte
    `LogEvent`), `S005_ParamValue`, `S000_Translation` → Mapping in
    `src/masarasi/tripcon.py` (`_resolve_code`) anpassen.
-4. **Optional:** TripCon-Plotterbilder (`…/bilder/plotter/`) an die importierten
-   Einträge hängen; CSV-Export wahlweise in Lokalzeit; weitere Zeitzonen.
+2. **Orca Core erkunden (optional):** `python discover.py 192.168.9.100 --sweep`
+   → prüfen, ob dort noch etwas Nützliches liegt (Motordaten kommen bereits
+   vollständig vom Maretron).
+3. **Optional:** TripCon-Plotterbilder (`…/bilder/plotter/`) an die importierten
+   Einträge hängen; CSV-Export wahlweise in Lokalzeit; weitere Zeitzonen;
+   Rate-of-Turn (`ROT`) / Ruderlage-Anzeige.
+
+### Erledigt (Motordaten, Juli 2026)
+Maretron `$PMAREPD` dekodiert → Kühlwassertemperatur, Lichtmaschinenspannung,
+Motorstunden; `IIRPM` → Drehzahl; `ENV_ATMOS_P`/`ENV_OUTAIR_T`-XDR ergänzt.
+Motor-an/aus nutzt jetzt vorrangig die Drehzahl.
 
 ## Architektur (Kurz)
 

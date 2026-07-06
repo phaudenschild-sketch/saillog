@@ -45,11 +45,32 @@ class EngineNmeaTest(unittest.TestCase):
         self.assertIsNone(engine_running({"sog_kn": 5.0}))
 
     def test_engine_running_from_voltage(self):
-        # Lichtmaschinen-Spannung ist das bevorzugte Kriterium
+        # Ohne Drehzahl entscheidet die Lichtmaschinen-Spannung
         self.assertEqual(engine_running({"alternator_v": 14.2}), 1)
         self.assertEqual(engine_running({"alternator_v": 12.6}), 0)
-        # Spannung schlägt Drehzahl (falls beide da)
-        self.assertEqual(engine_running({"alternator_v": 12.5, "engine_rpm": 0}), 0)
+        # Drehzahl hat Vorrang: rpm>0 -> läuft, auch bei niedriger Spannung
+        self.assertEqual(engine_running({"alternator_v": 12.5, "engine_rpm": 1538}), 1)
+        self.assertEqual(engine_running({"alternator_v": 13.5, "engine_rpm": 0}), 0)
+
+    def test_maretron_pmarepd(self):
+        # Echte Maretron-Zeile: Kühlwasser 90.8°C, Bord 13.1V, Motorstunden 181.9h
+        r = self.parser.parse("$PMAREPD,0,,,90.8,13.1,-0.1,181.9,,,0,0,-1,-1,A*01")
+        self.assertAlmostEqual(r[nmea.ENGINE_TEMP], 90.8)
+        self.assertAlmostEqual(r[nmea.ALT_VOLTAGE], 13.1)
+        self.assertAlmostEqual(r[nmea.ENGINE_HOURS], 181.9)
+        self.assertNotIn(nmea.OIL_PRESSURE, r)   # Öldruck-Feld leer (kein Sensor)
+
+    def test_maretron_rpm(self):
+        r = self.parser.parse("$IIRPM,E,0,1538,,A*58")
+        self.assertAlmostEqual(r[nmea.ENGINE_RPM], 1538)
+
+    def test_xdr_atmos_pressure(self):
+        r = self.parser.parse("$IIXDR,P,101900,P,ENV_ATMOS_P")
+        self.assertAlmostEqual(r[nmea.BARO], 1019.0)   # Pascal -> mbar
+
+    def test_xdr_env_outair(self):
+        r = self.parser.parse("$IIXDR,C,28.5,C,ENV_OUTAIR_T")
+        self.assertAlmostEqual(r[nmea.AIR_TEMP], 28.5)
 
     def test_xdr_voltage(self):
         result = self.parser.parse("$IIXDR,U,14.2,V,ALTERNATOR")

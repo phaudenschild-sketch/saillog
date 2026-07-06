@@ -325,7 +325,7 @@ def _xdr(f):
             elif any(k in tid for k in _ENGINE_HINTS):
                 result[ENGINE_TEMP] = value
         elif ttype == "P":  # Druck
-            if "BARO" in tid:
+            if "BARO" in tid or "ATMOS" in tid:
                 # B = bar -> mbar (×1000); P = Pascal -> mbar (÷100)
                 result[BARO] = value / 100.0 if units == "P" else value * 1000.0
             elif "OIL" in tid or "ENG" in tid:
@@ -350,6 +350,28 @@ def _xdr(f):
     return result
 
 
+def _pmarepd(f):
+    # Maretron proprietär: $PMAREPD,instanz,oeldruck,oeltemp,kuehlwassertemp,
+    # spannung,verbrauch,motorstunden,kuehldruck,kraftstoffdruck,…,status
+    # (Feldreihenfolge folgt NMEA2000-PGN 127489)
+    if not f or not f[0].startswith("PMAR"):
+        return {}
+    result = {}
+    temp = _to_float(f[4]) if len(f) > 4 else None
+    volt = _to_float(f[5]) if len(f) > 5 else None
+    hours = _to_float(f[7]) if len(f) > 7 else None
+    oil = _to_float(f[2]) if len(f) > 2 else None
+    if temp is not None:
+        result[ENGINE_TEMP] = temp
+    if volt is not None:
+        result[ALT_VOLTAGE] = volt
+    if hours is not None:
+        result[ENGINE_HOURS] = hours
+    if oil is not None:            # Öldruck (kPa) -> bar; oft leer (kein Sensor)
+        result[OIL_PRESSURE] = oil / 100.0
+    return result
+
+
 _HANDLERS = {
     "RMC": _rmc,
     "GGA": _gga,
@@ -367,6 +389,7 @@ _HANDLERS = {
     "VLW": _vlw,
     "RPM": _rpm,
     "XDR": _xdr,
+    "EPD": _pmarepd,   # Maretron $PMAREPD (Motorparameter)
 }
 
 
@@ -378,17 +401,16 @@ def engine_running(snapshot: dict) -> Optional[int]:
     """Leitet Motor ein/aus aus den Live-Werten ab.
 
     Gibt 1 (läuft), 0 (aus) oder None (keine Motordaten) zurück.
-    Bevorzugtes Kriterium: Lichtmaschinen-/Bordspannung über ~13 V (die
-    Lichtmaschine lädt nur bei laufendem Motor). Ersatzweise Drehzahl bzw.
-    Öldruck > 0.
+    Reihenfolge: Drehzahl (direktestes Signal) > Lichtmaschinen-/Bordspannung
+    (≥ ~13 V, Lichtmaschine lädt nur bei laufendem Motor) > Öldruck.
     """
+    rpm = snapshot.get(ENGINE_RPM)
+    if rpm is not None:
+        return 1 if rpm > 0 else 0
     volts = snapshot.get(ALT_VOLTAGE)
     if volts is not None:
         return 1 if volts >= ENGINE_VOLTAGE_THRESHOLD else 0
-    rpm = snapshot.get(ENGINE_RPM)
     oil = snapshot.get(OIL_PRESSURE)
-    if rpm is None and oil is None:
-        return None
-    if (rpm is not None and rpm > 0) or (oil is not None and oil > 0):
-        return 1
-    return 0
+    if oil is not None:
+        return 1 if oil > 0 else 0
+    return None
