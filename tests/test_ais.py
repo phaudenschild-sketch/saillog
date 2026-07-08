@@ -62,6 +62,21 @@ class DecoderTest(unittest.TestCase):
         self.assertEqual(msg["mmsi"], 369190000)
         self.assertEqual(msg["name"], "MT.MITCHELL")
 
+    def test_multipart_with_mismatched_sequence_ids(self):
+        # Echte Wetherdock-easyTRX2-Sätze: die beiden Teile tragen
+        # unterschiedliche Sequenz-IDs (hier 0 und 1) — die Zusammensetzung
+        # muss trotzdem gelingen (Schlüssel = Funkkanal, nicht Sequenz-ID).
+        targets = AisTargets()
+        decoder = AisDecoder(targets)
+        self.assertIsNone(decoder.add_sentence(
+            "!AIVDM,2,1,0,,53SPsH000003T7G3G00mV1L5T00000000000000t00d800@P06ll5@000000,0*55"
+        ))
+        msg = decoder.add_sentence("!AIVDM,2,2,1,,00000000003,2*67")
+        self.assertIsNotNone(msg)
+        self.assertEqual(msg["type"], 5)
+        self.assertEqual(msg["mmsi"], 238566240)
+        self.assertEqual(msg["name"], "MY WAY")
+
     def test_name_and_position_merge_on_same_target(self):
         targets = AisTargets()
         decoder = AisDecoder(targets)

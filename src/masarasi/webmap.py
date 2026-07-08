@@ -187,17 +187,22 @@ function dot(color, size) {
                      iconAnchor: [size/2, size/2] });
 }
 
-function dir(t) {                       // beste verfügbare Richtung
-  if (t.heading != null && t.heading < 360) return t.heading;
+function dir(t) {                       // Ausrichtung des Pfeils
+  // Kurs über Grund (COG) zuerst — das entspricht der COG-Spalte im Plotter/
+  // AIS-Empfänger. Heading (Bugrichtung) nur als Ausweichwert.
   if (t.cog != null) return t.cog;
+  if (t.heading != null && t.heading < 360) return t.heading;
   return null;
 }
 function label(t) {
   const name = t.name || ('MMSI ' + (t.mmsi || '?'));
   const sog = (t.sog != null) ? t.sog.toFixed(1) + ' kn' : '–';
   const cog = (t.cog != null) ? Math.round(t.cog) + '°' : '–';
+  const hdg = (t.heading != null && t.heading < 360) ? Math.round(t.heading) + '°' : '–';
   return '<b>' + name + '</b><br>MMSI ' + (t.mmsi || '?') +
-         '<br>SOG ' + sog + '  ·  COG ' + cog;
+         '<br>SOG ' + sog +
+         '<br>COG (Kurs) ' + cog +
+         '<br>Heading (Bug) ' + hdg;
 }
 
 async function refresh() {

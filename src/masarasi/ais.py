@@ -149,15 +149,22 @@ class AisDecoder:
             return None
         payload = f[5]
 
-        if frags == 1:
+        if frags <= 1:
             return self._decode(payload, now)
 
-        key = f[3] or "_"
-        buf = self._parts.setdefault(key, {})
+        # Mehrteiler zusammensetzen. Schlüssel ist der Funkkanal (f[4]); die
+        # Sequenz-ID (f[3]) wird bewusst NICHT genutzt: manche Geräte (z.B.
+        # Wetherdock easyTRX2) vergeben sie je Satz neu, sodass die Teile
+        # eines Mehrteilers unterschiedliche IDs tragen. Da die Teile in der
+        # Praxis unmittelbar aufeinanderfolgen, reicht das Sammeln je Kanal.
+        channel = f[4] or "_"
+        buf = self._parts.setdefault(channel, {})
+        if num == 1:
+            buf.clear()  # ein neuer Mehrteiler beginnt
         buf[num] = payload
-        if len(buf) >= frags:
-            full = "".join(buf.get(i, "") for i in range(1, frags + 1))
-            self._parts.pop(key, None)
+        if all(i in buf for i in range(1, frags + 1)):
+            full = "".join(buf[i] for i in range(1, frags + 1))
+            self._parts.pop(channel, None)
             return self._decode(full, now)
         return None
 
