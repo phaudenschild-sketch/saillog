@@ -1,0 +1,172 @@
+"""AIS-Decoder für masarasi.
+
+Dekodiert NMEA-`!AIVDM`/`!AIVDO`-Sätze (Einzel- und Mehrteiler) und pflegt
+eine Liste der AIS-Ziele (Position, COG, SOG, Heading, Name). Reine
+Standardbibliothek.
+
+Unterstützte Nachrichtentypen:
+  1,2,3  Klasse-A-Positionsmeldung
+  18,19  Klasse-B-Positionsmeldung (19 zusätzlich mit Name)
+  5      Klasse-A-Schiffsdaten (Name, Rufzeichen, Typ)
+  24     Klasse-B-Schiffsdaten (Name)
+"""
+
+from __future__ import annotations
+
+import threading
+import time
+from typing import Dict, List, Optional
+
+# AIS 6-bit-ASCII-Zeichensatz (für Namen/Rufzeichen)
+_SIXBIT = "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_ !\"#$%&'()*+,-./0123456789:;<=>?"
+
+
+def _dearmor(payload: str) -> str:
+    """Wandelt die 6-bit-armored Nutzlast in einen Bit-String."""
+    bits = []
+    for ch in payload:
+        v = ord(ch) - 48
+        if v > 40:
+            v -= 8
+        if v < 0 or v > 63:
+            return ""
+        bits.append(format(v, "06b"))
+    return "".join(bits)
+
+
+def _u(bits: str, a: int, z: int) -> int:
+    return int(bits[a:z], 2)
+
+
+def _s(bits: str, a: int, z: int) -> int:
+    v = int(bits[a:z], 2)
+    return v - (1 << (z - a)) if bits[a] == "1" else v
+
+
+def _text(bits: str, a: int, z: int) -> str:
+    out = []
+    for i in range(a, min(z, len(bits) - 5), 6):
+        out.append(_SIXBIT[int(bits[i:i + 6], 2)])
+    return "".join(out).split("@")[0].strip()
+
+
+def decode_payload(payload: str) -> Optional[Dict]:
+    """Dekodiert eine (ggf. zusammengesetzte) AIS-Nutzlast in ein dict."""
+    bits = _dearmor(payload)
+    if len(bits) < 38:
+        return None
+    msg_type = _u(bits, 0, 6)
+    mmsi = _u(bits, 8, 38)
+    result: Dict = {"type": msg_type, "mmsi": mmsi}
+
+    if msg_type in (1, 2, 3) and len(bits) >= 137:
+        result.update(_position(bits, sog=(50, 60), lon=(61, 89), lat=(89, 116),
+                                cog=(116, 128), hdg=(128, 137)))
+    elif msg_type == 18 and len(bits) >= 133:
+        result.update(_position(bits, sog=(46, 56), lon=(57, 85), lat=(85, 112),
+                                cog=(112, 124), hdg=(124, 133)))
+    elif msg_type == 19 and len(bits) >= 263:
+        result.update(_position(bits, sog=(46, 56), lon=(57, 85), lat=(85, 112),
+                                cog=(112, 124), hdg=(124, 133)))
+        result["name"] = _text(bits, 143, 263)
+    elif msg_type == 5 and len(bits) >= 232:
+        result["name"] = _text(bits, 112, 232)
+        result["callsign"] = _text(bits, 70, 112)
+    elif msg_type == 24 and len(bits) >= 40:
+        part = _u(bits, 38, 40)
+        if part == 0 and len(bits) >= 160:
+            result["name"] = _text(bits, 40, 160)
+    else:
+        return result  # Typ erkannt, aber nicht weiter dekodiert
+    return result
+
+
+def _position(bits, sog, lon, lat, cog, hdg) -> Dict:
+    out: Dict = {}
+    s = _u(bits, *sog) / 10.0
+    out["sog"] = None if s > 102.2 else s
+    lon_v = _s(bits, *lon) / 600000.0
+    lat_v = _s(bits, *lat) / 600000.0
+    out["lon"] = None if abs(lon_v) > 180 else lon_v
+    out["lat"] = None if abs(lat_v) > 90 else lat_v
+    c = _u(bits, *cog) / 10.0
+    out["cog"] = None if c >= 360 else c
+    h = _u(bits, *hdg)
+    out["heading"] = None if h == 511 else h
+    return out
+
+
+class AisTargets:
+    """Thread-sichere Liste der AIS-Ziele (Schlüssel: MMSI)."""
+
+    def __init__(self, max_age: float = 600.0) -> None:
+        self._lock = threading.Lock()
+        self._targets: Dict[int, Dict] = {}
+        self._max_age = max_age
+
+    def update(self, mmsi: int, fields: Dict, now: Optional[float] = None) -> None:
+        if now is None:
+            now = time.time()
+        with self._lock:
+            rec = self._targets.setdefault(mmsi, {"mmsi": mmsi})
+            for key, value in fields.items():
+                if value is not None:
+                    rec[key] = value
+            rec["last_seen"] = now
+
+    def all(self, now: Optional[float] = None) -> List[Dict]:
+        if now is None:
+            now = time.time()
+        with self._lock:
+            return [
+                dict(rec) for rec in self._targets.values()
+                if now - rec.get("last_seen", 0) <= self._max_age
+            ]
+
+    def count(self, now: Optional[float] = None) -> int:
+        return len(self.all(now))
+
+
+class AisDecoder:
+    """Nimmt `!AIVDM`-Zeilen entgegen und aktualisiert die Zielliste."""
+
+    def __init__(self, targets: AisTargets) -> None:
+        self._targets = targets
+        self._parts: Dict[str, Dict[int, str]] = {}
+
+    def add_sentence(self, line: str, now: Optional[float] = None) -> Optional[Dict]:
+        line = line.strip()
+        if not (line.startswith("!AIVDM") or line.startswith("!AIVDO")):
+            return None
+        star = line.rfind("*")
+        body = line[:star] if star != -1 else line
+        f = body.split(",")
+        if len(f) < 7:
+            return None
+        try:
+            frags, num = int(f[1]), int(f[2])
+        except ValueError:
+            return None
+        payload = f[5]
+
+        if frags == 1:
+            return self._decode(payload, now)
+
+        key = f[3] or "_"
+        buf = self._parts.setdefault(key, {})
+        buf[num] = payload
+        if len(buf) >= frags:
+            full = "".join(buf.get(i, "") for i in range(1, frags + 1))
+            self._parts.pop(key, None)
+            return self._decode(full, now)
+        return None
+
+    def _decode(self, payload: str, now: Optional[float]) -> Optional[Dict]:
+        msg = decode_payload(payload)
+        if not msg or not msg.get("mmsi"):
+            return None
+        fields = {k: msg[k] for k in ("lat", "lon", "sog", "cog", "heading",
+                                       "name", "callsign") if k in msg}
+        if fields:
+            self._targets.update(msg["mmsi"], fields, now=now)
+        return msg

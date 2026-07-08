@@ -1,0 +1,266 @@
+"""Lokaler Kartenserver für masarasi — AIS-Ziele + Törn auf einer Karte.
+
+Startet einen kleinen HTTP-Server (nur an 127.0.0.1 gebunden), der eine
+Leaflet-Karte mit OpenFreeMap-Vektorkacheln ausliefert. Die Seite fragt
+regelmäßig `/data.json` ab und zeichnet:
+
+  * das eigene Schiff (Position, Kurs über Grund bzw. Heading),
+  * alle AIS-Ziele (mit echter Richtung, Name, MMSI, SOG/COG),
+  * den Track des ausgewählten Törns.
+
+Der Server selbst ist reine Standardbibliothek. Die Karte lädt Leaflet und
+die OpenFreeMap-Vektorkacheln aus dem Netz (an Bord über Starlink verfügbar);
+ohne Internet bleibt der Kartenhintergrund leer, Schiffe und Track werden
+aber trotzdem gezeichnet.
+"""
+
+from __future__ import annotations
+
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Callable, Dict, List, Optional
+
+# Signaturen der Datenlieferanten (werden von der GUI gestellt)
+OwnProvider = Callable[[], Optional[Dict]]
+TargetsProvider = Callable[[], List[Dict]]
+TrackProvider = Callable[[], Dict]
+
+
+class _Handler(BaseHTTPRequestHandler):
+    """Bedient „/" (Karte) und „/data.json" (Live-Daten)."""
+
+    def log_message(self, *args) -> None:  # keine Konsolenausgabe
+        pass
+
+    def do_GET(self) -> None:  # noqa: N802 (von BaseHTTPRequestHandler vorgegeben)
+        path = self.path.split("?", 1)[0]
+        if path in ("/", "/index.html"):
+            self._send(_PAGE.encode("utf-8"), "text/html; charset=utf-8")
+        elif path == "/data.json":
+            data = self.server.masarasi_data()  # type: ignore[attr-defined]
+            self._send(json.dumps(data).encode("utf-8"), "application/json",
+                       cache=False)
+        else:
+            self.send_error(404, "not found")
+
+    def _send(self, body: bytes, content_type: str, cache: bool = True) -> None:
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            if not cache:
+                self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+
+class MapServer:
+    """Lokaler HTTP-Server für die AIS-/Törn-Karte."""
+
+    def __init__(
+        self,
+        own_provider: OwnProvider,
+        targets_provider: TargetsProvider,
+        track_provider: TrackProvider,
+        host: str = "127.0.0.1",
+        port: int = 0,
+    ) -> None:
+        self._own_provider = own_provider
+        self._targets_provider = targets_provider
+        self._track_provider = track_provider
+        self._host = host
+        self._port = port
+        self._httpd: Optional[ThreadingHTTPServer] = None
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        if self._httpd is not None:
+            return
+        httpd = ThreadingHTTPServer((self._host, self._port), _Handler)
+        httpd.daemon_threads = True
+        # Datenfunktion an den Server hängen, damit der Handler drankommt.
+        httpd.masarasi_data = self._data  # type: ignore[attr-defined]
+        self._httpd = httpd
+        self._port = httpd.server_address[1]
+        self._thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self._httpd is not None:
+            self._httpd.shutdown()
+            self._httpd.server_close()
+            self._httpd = None
+
+    @property
+    def url(self) -> str:
+        return f"http://{self._host}:{self._port}/"
+
+    # --- Datenaufbereitung --------------------------------------------------
+
+    def _data(self) -> Dict:
+        return {
+            "own": self._own_provider(),
+            "targets": self._targets_view(),
+            "track": self._track_provider(),
+        }
+
+    def _targets_view(self) -> List[Dict]:
+        out: List[Dict] = []
+        for rec in self._targets_provider():
+            lat, lon = rec.get("lat"), rec.get("lon")
+            if lat is None or lon is None:
+                continue
+            out.append({
+                "mmsi": rec.get("mmsi"),
+                "name": rec.get("name", ""),
+                "lat": lat,
+                "lon": lon,
+                "cog": rec.get("cog"),
+                "heading": rec.get("heading"),
+                "sog": rec.get("sog"),
+            })
+        return out
+
+
+# --- HTML-Seite (Leaflet + OpenFreeMap) ------------------------------------
+
+_PAGE = r"""<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>masarasi — AIS-Karte</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+  html, body { height: 100%; margin: 0; }
+  #map { position: absolute; inset: 0; background: #a5c9e0; }
+  #info {
+    position: absolute; top: 10px; right: 10px; z-index: 500;
+    background: rgba(255,255,255,.9); padding: 6px 10px; border-radius: 6px;
+    font: 13px/1.4 system-ui, sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  }
+  .lbl { font: 11px system-ui, sans-serif; color: #063; white-space: nowrap;
+         text-shadow: 0 0 2px #fff, 0 0 2px #fff; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="info">AIS-Ziele: <span id="cnt">0</span></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
+<script>
+const map = L.map('map', { center: [43.5, 16.0], zoom: 9 });
+// OpenFreeMap-Vektorkacheln als Leaflet-Ebene (falls verfügbar).
+try {
+  L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/liberty' }).addTo(map);
+} catch (e) {
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { attribution: '© OpenStreetMap' }).addTo(map);
+}
+
+const trackLayer = L.layerGroup().addTo(map);
+const shipLayer  = L.layerGroup().addTo(map);
+const markers = {};       // mmsi -> Leaflet-Marker
+let ownMarker = null;
+let didFit = false;
+
+// Pfeil-Icon: zeigt nach oben (Norden), per CSS um `deg` gedreht.
+function arrow(deg, color, size) {
+  const r = (deg == null) ? 0 : deg;
+  const html =
+    '<div style="transform:rotate(' + r + 'deg);width:' + size + 'px;height:' + size + 'px">' +
+    '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
+    '<polygon points="12,1 20,22 12,17 4,22" fill="' + color +
+    '" stroke="#003" stroke-width="1.3"/></svg></div>';
+  return L.divIcon({ html: html, className: '', iconSize: [size, size],
+                     iconAnchor: [size/2, size/2] });
+}
+function dot(color, size) {
+  const html = '<div style="width:' + size + 'px;height:' + size +
+    'px;border-radius:50%;background:' + color + ';border:1.3px solid #003"></div>';
+  return L.divIcon({ html: html, className: '', iconSize: [size, size],
+                     iconAnchor: [size/2, size/2] });
+}
+
+function dir(t) {                       // beste verfügbare Richtung
+  if (t.heading != null && t.heading < 360) return t.heading;
+  if (t.cog != null) return t.cog;
+  return null;
+}
+function label(t) {
+  const name = t.name || ('MMSI ' + (t.mmsi || '?'));
+  const sog = (t.sog != null) ? t.sog.toFixed(1) + ' kn' : '–';
+  const cog = (t.cog != null) ? Math.round(t.cog) + '°' : '–';
+  return '<b>' + name + '</b><br>MMSI ' + (t.mmsi || '?') +
+         '<br>SOG ' + sog + '  ·  COG ' + cog;
+}
+
+async function refresh() {
+  let d;
+  try { d = await (await fetch('data.json', { cache: 'no-store' })).json(); }
+  catch (e) { return; }
+
+  // AIS-Ziele
+  const seen = {};
+  (d.targets || []).forEach(function (t) {
+    seen[t.mmsi] = true;
+    const deg = dir(t);
+    const icon = (deg == null) ? dot('#159c3f', 12) : arrow(deg, '#159c3f', 26);
+    let m = markers[t.mmsi];
+    if (!m) {
+      m = L.marker([t.lat, t.lon], { icon: icon }).addTo(shipLayer);
+      m.bindPopup('');
+      m.bindTooltip('', { permanent: true, direction: 'right',
+                          offset: [10, 0], className: 'lbl' });
+      markers[t.mmsi] = m;
+    } else {
+      m.setLatLng([t.lat, t.lon]); m.setIcon(icon);
+    }
+    m.setPopupContent(label(t));
+    m.setTooltipContent(t.name || String(t.mmsi || ''));
+  });
+  // verschwundene Ziele entfernen
+  Object.keys(markers).forEach(function (k) {
+    if (!seen[k]) { shipLayer.removeLayer(markers[k]); delete markers[k]; }
+  });
+  document.getElementById('cnt').textContent = (d.targets || []).length;
+
+  // Eigenes Schiff
+  if (d.own && d.own.lat != null) {
+    const deg = (d.own.heading != null) ? d.own.heading : d.own.cog;
+    const icon = arrow(deg, '#1560d6', 30);
+    if (!ownMarker) {
+      ownMarker = L.marker([d.own.lat, d.own.lon], { icon: icon, zIndexOffset: 1000 })
+        .addTo(shipLayer).bindPopup('Eigenes Schiff');
+    } else {
+      ownMarker.setLatLng([d.own.lat, d.own.lon]); ownMarker.setIcon(icon);
+    }
+  }
+
+  // Törn-Track
+  trackLayer.clearLayers();
+  const pts = (d.track && d.track.points) || [];
+  if (pts.length > 1) {
+    L.polyline(pts, { color: '#d6156a', weight: 3, opacity: .85 }).addTo(trackLayer);
+  }
+
+  // Beim ersten Datensatz auf alles einpassen
+  if (!didFit) {
+    const all = pts.slice();
+    (d.targets || []).forEach(function (t) { all.push([t.lat, t.lon]); });
+    if (d.own && d.own.lat != null) all.push([d.own.lat, d.own.lon]);
+    if (all.length) { map.fitBounds(L.latLngBounds(all).pad(0.2)); didFit = true; }
+  }
+}
+
+refresh();
+setInterval(refresh, 4000);
+</script>
+</body>
+</html>
+"""

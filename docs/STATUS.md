@@ -10,7 +10,7 @@ Das Repo ist eigenständig: `github.com/phaudenschild-sketch/masarasi`
 cd C:\claude\masarasi
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 92 Tests
+python -m unittest discover -s tests   # 116 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
@@ -30,10 +30,18 @@ Konfiguration & Datenbank liegen unter `~/.masarasi/`
 
 **Mehrquellen-Betrieb:** In der App unter „Quellen…" B&G (TCP) **und** Maretron
 (serial) anlegen → „Verbinden" liest beide gleichzeitig in einen Datensatz.
+AIS-Sätze (`!AIVDM`/`!AIVDO`) werden dabei je Quelle separat dekodiert.
 
-**GoFree-Plotterbild:** Live-Mirroring ist ein lizenzierter Navico-Videokanal
-(Tier 3) — ohne Lizenz/HDMI-Ausgang nicht zugänglich. Plotter-Screenshots
-daher **manuell laden** (Feld „Kartenplotter").
+**AIS-Karte:** Knopf „🗺 AIS-Karte" startet einen lokalen Webserver
+(nur `127.0.0.1`) und öffnet eine Leaflet-Karte mit OpenFreeMap. Sie zeigt das
+eigene Schiff, alle AIS-Ziele mit **echter Richtung** (COG/Heading) und den
+Track des **ausgewählten Törns**. Kartenhintergrund/Leaflet werden vom CDN
+geladen (an Bord über Starlink); ohne Netz bleibt nur der Hintergrund leer.
+
+**Kartenplotter (GoFree):** entfernt — Live-Mirroring ist ein lizenzierter
+Navico-Videokanal (Tier 3), ohne Lizenz/HDMI nicht zugänglich; funktionierte
+nicht. `plotter_capture.py` bleibt als Bild-Hilfsmodul erhalten, ist aber
+nicht mehr an die Oberfläche gebunden.
 
 ## Umgesetzt
 
@@ -41,7 +49,7 @@ daher **manuell laden** (Feld „Kartenplotter").
 - NMEA0183-Parser: Navigation + Wind + Tiefe + **Log (VLW)** + Motor (RPM),
   **XDR** (Luft/Baro/Krängung/Trimm/Ruder, Tacho, Spannung, Öldruck, Stunden)
 - **Motor an/aus** automatisch aus Lichtmaschinenspannung (≥13 V), sonst RPM
-- Flaches „Console"-Layout: Messwerte | Bedingungen | Kartenplotter
+- Flaches „Console"-Layout: Messwerte | Bedingungen nebeneinander
 - **Dauerhafte Bedingungsfelder** (Anlass, Motor, Segel, Wetter, Sicht,
   Seegang, Bemerkung) — bei **jedem** Log (auto + manuell) mitgeschrieben
 - Auto-Logging (Intervall) + „✎ Eintrag speichern"
@@ -49,7 +57,8 @@ daher **manuell laden** (Feld „Kartenplotter").
 - **Einträge bearbeiten & löschen**, ✎-Marker für Bearbeitetes
 - **Zeitzone** (System oder fester UTC-Versatz); intern UTC gespeichert
 - SQLite + Migration; **CSV/GPX-Export** (optional pro Törn)
-- **Kartenplotter-Bild pro Eintrag** (manuell laden, ansehen, exportieren)
+- **AIS-Decoder** (`!AIVDM`/`!AIVDO`, Typen 1/2/3/5/18/19/24, Mehrteiler) +
+  **AIS-Karte** (Leaflet + OpenFreeMap) mit eigenem Schiff, Zielen und Törn-Track
 - Werkzeuge: `discover.py` (`--full/--udp/--gofree/--sweep`),
   `inspect_backup.py`, `import_tripcon.py`, NMEA-Simulator
 - **TripCon-Import** (.tcdb): Törns, Messwerte, Tracks, Bilder, **Anlass**
@@ -79,9 +88,11 @@ Motor-an/aus nutzt jetzt vorrangig die Drehzahl.
 src/masarasi/
   app.py         Einstieg (GUI)
   gui.py         tkinter-Oberfläche (Quellen, Dashboard, Bedingungen,
-                 Törns, Tabelle, Bearbeiten/Löschen, Plotter, Zeitzone)
-  source.py      Quelle: TCP/UDP/seriell (Thread, Reconnect)
+                 Törns, Tabelle, Bearbeiten/Löschen, AIS-Karte, Zeitzone)
+  source.py      Quelle: TCP/UDP/seriell (Thread, Reconnect, AIS-Routing)
   nmea.py        NMEA0183-Parser + FIELD_LABELS + engine_running()
+  ais.py         AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
+  webmap.py      lokaler Kartenserver (Leaflet + OpenFreeMap)
   livedata.py    thread-sicherer Messwert-Speicher
   logbook.py     Auto-/Manuell-Logging, Bedingungen, Törns
   storage.py     SQLite: LogEntry/Trip, Migration, CSV/GPX, Bilder
@@ -89,7 +100,7 @@ src/masarasi/
   timeutil.py    Zeitzonen-Umrechnung (UTC ↔ Anzeige)
   config.py      Einstellungen (~/.masarasi/config.json)
   discover.py    Quellen-/Port-/GoFree-Scanner
-  plotter_capture.py  Bild laden/als-PNG (Pillow optional)
+  plotter_capture.py  Bild laden/als-PNG (Pillow optional, ungenutzt)
   legacy.py / tripcon.py  Analyse & Import alter TripCon-Sicherungen
   simulator.py   NMEA0183-Testsimulator
 tests/           unittest (ohne Boot lauffähig)

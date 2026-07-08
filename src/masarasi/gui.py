@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import base64
 import tkinter as tk
+import webbrowser
 from collections import deque
 from tkinter import filedialog, messagebox, ttk
-from typing import Deque, Dict, Optional
+from typing import Deque, Dict, List, Optional
 
-from masarasi import plotter_capture, timeutil
+from masarasi import timeutil
+from masarasi.ais import AisDecoder, AisTargets
 from masarasi.config import Config
 from masarasi.fields import (
     CLOUD_COVER_LABELS,
@@ -29,6 +30,7 @@ from masarasi.source import (
     NmeaSource,
 )
 from masarasi.storage import LogbookStore, Trip
+from masarasi.webmap import MapServer
 
 _STATUS_TEXT = {
     STATUS_DISCONNECTED: ("getrennt", "#888888"),
@@ -51,6 +53,11 @@ class Application:
         self._source_defs = self._load_source_defs()
         self._sources: list = []
         self._src_status: Dict[int, tuple] = {}
+
+        # AIS: gemeinsame Zielliste, je Quelle ein Decoder (Mehrteiler pro Kanal)
+        self._ais_targets = AisTargets()
+        # Lokaler Webserver für die AIS-Karte (Leaflet + OpenFreeMap)
+        self._map_server: Optional[MapServer] = None
 
         self._value_labels: Dict[str, tk.Label] = {}
         # Ringpuffer für die Rohdaten-Anzeige (Thread-sicher via deque.append)
@@ -115,7 +122,7 @@ class Application:
         )
         self._trip_dist_label.grid(row=0, column=4, padx=12)
 
-        # Hauptzeile: Messwerte | Bedingungen | Kartenplotter nebeneinander
+        # Hauptzeile: Messwerte | Bedingungen nebeneinander
         main_row = ttk.Frame(self._root)
         main_row.pack(fill="x", **pad)
 
@@ -137,10 +144,6 @@ class Application:
         cond = ttk.LabelFrame(main_row, text="Bedingungen (bei jedem Log mitgeschrieben)")
         cond.pack(side="left", fill="both", expand=True, padx=(8, 0))
         self._build_conditions(cond)
-
-        plotter = ttk.LabelFrame(main_row, text="Kartenplotter")
-        plotter.pack(side="left", fill="y", padx=(8, 0))
-        self._build_plotter(plotter)
 
         # Logging-Steuerung
         controls = ttk.LabelFrame(self._root, text="Logbuch")
@@ -168,7 +171,7 @@ class Application:
         ttk.Button(controls, text="GPX exportieren", command=self._on_export_gpx).grid(
             row=0, column=5, padx=4
         )
-        ttk.Button(controls, text="Bilder exportieren", command=self._on_export_images).grid(
+        ttk.Button(controls, text="🗺 AIS-Karte", command=self._on_open_map).grid(
             row=0, column=6, padx=4
         )
 
@@ -186,15 +189,15 @@ class Application:
         table_frame.pack(fill="both", expand=True, **pad)
 
         cols = ("time", "ed", "anlass", "type", "pos", "sog", "wind", "depth",
-                "motor", "segel", "img", "note")
+                "motor", "segel", "note")
         headers = {
             "time": "Zeit", "ed": "✎", "anlass": "Anlass", "type": "Typ",
             "pos": "Position", "sog": "SOG", "wind": "Wind", "depth": "Tiefe",
-            "motor": "Motor", "segel": "Segel", "img": "📷", "note": "Notiz",
+            "motor": "Motor", "segel": "Segel", "note": "Notiz",
         }
         widths = {
             "time": 145, "ed": 26, "anlass": 100, "type": 58, "pos": 140, "sog": 48,
-            "wind": 95, "depth": 52, "motor": 46, "segel": 120, "img": 28, "note": 130,
+            "wind": 95, "depth": 52, "motor": 46, "segel": 120, "note": 150,
         }
         self._tree = ttk.Treeview(table_frame, columns=cols, show="headings")
         for col in cols:
@@ -212,9 +215,6 @@ class Application:
         bottom.pack(fill="x", **pad)
         ttk.Button(bottom, text="Bearbeiten…", command=self._on_edit_entry).pack(side="left")
         ttk.Button(bottom, text="Eintrag löschen", command=self._on_delete_entry).pack(
-            side="left", padx=4
-        )
-        ttk.Button(bottom, text="Bild ansehen", command=self._on_view_image).pack(
             side="left", padx=4
         )
         ttk.Label(bottom, text="(Doppelklick = bearbeiten)", foreground="#999").pack(
@@ -312,85 +312,59 @@ class Application:
 
     def _on_save_entry(self) -> None:
         self._sync_conditions()
-        entry = self._logbook.add_current(
+        self._logbook.add_current(
             conditions=self._condition_values,
             note=self._condition_values.get("note", ""),
             trip_id=self._logbook.current_trip_id,
         )
-        self._attach_plotter_image(entry.id)
         self._refresh_logbook()
 
-    def _attach_plotter_image(self, entry_id) -> None:
-        """Speichert den letzten Plotter-Screenshot zum Eintrag (falls vorhanden)."""
-        png = self._latest_plotter_png
-        if png and entry_id is not None:
-            self._store.set_image(entry_id, png, "image/png")
+    # --- AIS-Karte (Leaflet + OpenFreeMap) ---------------------------------
 
-    # --- Kartenplotter-Panel (GoFree) --------------------------------------
+    def _on_open_map(self) -> None:
+        """Startet (falls nötig) den lokalen Kartenserver und öffnet den Browser."""
+        if self._map_server is None:
+            try:
+                self._map_server = MapServer(
+                    own_provider=self._map_own,
+                    targets_provider=lambda: self._ais_targets.all(),
+                    track_provider=self._map_track,
+                )
+                self._map_server.start()
+            except OSError as exc:
+                self._map_server = None
+                messagebox.showerror(
+                    "AIS-Karte", f"Kartenserver konnte nicht starten:\n{exc}"
+                )
+                return
+        webbrowser.open(self._map_server.url)
 
-    def _build_plotter(self, parent: ttk.LabelFrame) -> None:
-        self._plotter_img = None            # tk.PhotoImage (Referenz halten)
-        self._latest_plotter_png: Optional[bytes] = None  # wartet auf nächsten Eintrag
-        self._capture_enabled = False       # (Auto-Aufnahme derzeit nicht genutzt)
-        self._plotter_label = tk.Label(
-            parent,
-            text="(kein Bild)\n\nPlotter-Screenshot\nladen",
-            width=32, height=8, background="#1f2d36", foreground="#c8d2d8",
-        )
-        self._plotter_label.pack(padx=6, pady=4)
+    def _map_own(self) -> Optional[Dict]:
+        """Eigene Schiffsposition aus den Live-Daten für die Karte."""
+        snap = self._live.snapshot()
+        if snap.get("lat") is None or snap.get("lon") is None:
+            return None
+        return {
+            "lat": snap.get("lat"),
+            "lon": snap.get("lon"),
+            "cog": snap.get("cog_deg"),
+            "heading": snap.get("hdg_true_deg", snap.get("hdg_mag_deg")),
+            "sog": snap.get("sog_kn"),
+        }
 
-        btns = ttk.Frame(parent)
-        btns.pack(fill="x", padx=6, pady=(0, 2))
-        ttk.Button(btns, text="Screenshot laden…", command=self._on_load_plotter).pack(
-            side="left"
-        )
-        ttk.Button(btns, text="Entfernen", command=self._on_clear_plotter).pack(
-            side="left", padx=4
-        )
-
-        self._plotter_hint = ttk.Label(
-            parent, text="Kein Bild geladen.", foreground="#888"
-        )
-        self._plotter_hint.pack(anchor="w", padx=6, pady=(0, 6))
-        if not plotter_capture.available():
-            self._plotter_hint.config(text="Hinweis: JPG-Screenshots brauchen Pillow.")
-
-    def _show_plotter_png(self, png: bytes) -> None:
-        try:
-            img = tk.PhotoImage(data=base64.b64encode(png))
-        except Exception:  # noqa: BLE001
-            return
-        factor = max(1, img.width() // 360)
-        if factor > 1:
-            img = img.subsample(factor, factor)
-        self._plotter_img = img
-        self._plotter_label.config(image=img, text="")
-
-    def _on_load_plotter(self) -> None:
-        path = filedialog.askopenfilename(
-            filetypes=[("Bilder", "*.png *.gif *.jpg *.jpeg *.bmp"), ("Alle Dateien", "*.*")]
-        )
-        if not path:
-            return
-        png = plotter_capture.load_image_as_png(path)
-        if png is None:
-            messagebox.showerror(
-                "Bild",
-                "Konnte das Bild nicht laden.\n\nPNG/GIF gehen direkt; für JPG/BMP "
-                "bitte Pillow installieren:\n    pip install pillow",
-            )
-            return
-        self._latest_plotter_png = png
-        self._show_plotter_png(png)
-        self._plotter_hint.config(text="Bild wird an den nächsten Eintrag gehängt.")
-
-    def _on_clear_plotter(self) -> None:
-        self._latest_plotter_png = None
-        self._plotter_img = None
-        self._plotter_label.config(
-            image="", text="(kein Bild)\n\nPlotter-Screenshot laden"
-        )
-        self._plotter_hint.config(text="Kein Bild geladen.")
+    def _map_track(self) -> Dict:
+        """Track des ausgewählten Törns (älteste zuerst) für die Karte."""
+        trip_id = self._logbook.current_trip_id
+        points: List[List[float]] = []
+        for entry in self._store.all(newest_first=False, trip_id=trip_id, limit=20000):
+            if entry.lat is not None and entry.lon is not None:
+                points.append([entry.lat, entry.lon])
+        name = ""
+        if trip_id is not None:
+            trip = self._store.get_trip(trip_id)
+            if trip is not None:
+                name = trip.name or trip.start_location or f"Törn #{trip_id}"
+        return {"name": name, "points": points}
 
     # --- Verbindung ---------------------------------------------------------
 
@@ -435,6 +409,9 @@ class Application:
                 protocol=definition.get("protocol", "tcp"),
                 on_status=self._make_status_cb(index),
                 on_raw=self._raw_buffer.append,
+                # Eigener Decoder je Quelle (Mehrteiler werden pro Kanal
+                # zusammengesetzt), gemeinsame Zielliste.
+                on_ais=AisDecoder(self._ais_targets).add_sentence,
             )
             source.start()
             self._sources.append(source)
@@ -540,10 +517,7 @@ class Application:
         self._auto_btn.config(text="Auto-Logging stoppen")
 
     def _on_auto_entry(self, entry) -> None:
-        # Läuft im Auto-Log-Thread: Bild anhängen (SQLite ist je Aufruf eigen),
-        # dann die Tabelle im GUI-Thread aktualisieren.
-        if entry is not None:
-            self._attach_plotter_image(entry.id)
+        # Läuft im Auto-Log-Thread: die Tabelle im GUI-Thread aktualisieren.
         self._root.after(0, self._refresh_logbook)
 
     # --- Törns --------------------------------------------------------------
@@ -669,7 +643,6 @@ class Application:
         for item in self._tree.get_children():
             self._tree.delete(item)
         trip_id = self._logbook.current_trip_id
-        with_images = self._store.entries_with_images()
         offset = self._tz_offset()
         self._tree.heading("time", text=f"Zeit ({timeutil.label(self._config.timezone_mode, self._config.timezone_offset_hours)})")
         for entry in self._store.all(limit=5000, newest_first=True, trip_id=trip_id):
@@ -700,7 +673,6 @@ class Application:
                     "" if entry.depth_m is None else f"{entry.depth_m:.1f}",
                     motor,
                     ", ".join(sail_parts),
-                    "📷" if entry.id in with_images else "",
                     entry.note,
                 ),
             )
@@ -717,25 +689,6 @@ class Application:
         for iid in selection:
             self._store.delete(int(iid))
         self._refresh_logbook()
-
-    def _on_view_image(self) -> None:
-        selection = self._tree.selection()
-        if not selection:
-            return
-        png = self._store.get_image(int(selection[0]))
-        if not png:
-            return
-        win = tk.Toplevel(self._root)
-        win.title("Kartenplotter-Bild")
-        try:
-            img = tk.PhotoImage(data=base64.b64encode(png))
-        except Exception:  # noqa: BLE001
-            messagebox.showinfo("Bild", "Bild kann nicht angezeigt werden (kein PNG).")
-            win.destroy()
-            return
-        label = tk.Label(win, image=img)
-        label.image = img  # Referenz halten
-        label.pack()
 
     def _on_edit_entry(self) -> None:
         selection = self._tree.selection()
@@ -783,20 +736,14 @@ class Application:
         count = self._store.export_gpx(path, trip_id=self._logbook.current_trip_id)
         messagebox.showinfo("Export", f"{count} Positionspunkte nach GPX exportiert.")
 
-    def _on_export_images(self) -> None:
-        directory = filedialog.askdirectory(title="Zielordner für Kartenplotter-Bilder")
-        if not directory:
-            return
-        count = self._store.export_entry_images(directory)
-        messagebox.showinfo("Export", f"{count} Kartenplotter-Bild(er) exportiert.")
-
     # --- Schließen ----------------------------------------------------------
 
     def _on_close(self) -> None:
-        self._capture_enabled = False
         self._logbook.stop_auto()
         for src in self._sources:
             src.stop()
+        if self._map_server is not None:
+            self._map_server.stop()
         self._root.destroy()
 
 
@@ -1295,61 +1242,6 @@ class _SourcesDialog:
     def _on_ok(self) -> None:
         self.result = self._defs
         self.top.destroy()
-
-
-class _RegionSelector:
-    """Vollbild-Overlay: der Nutzer zieht ein Rechteck über den Kartenplotter.
-
-    Liefert die gewählte Bildschirmfläche (links, oben, rechts, unten) an den
-    Callback — genau die Fläche, die die Auto-Aufnahme dann abgreift.
-    """
-
-    def __init__(self, parent: tk.Tk, on_done) -> None:
-        self._on_done = on_done
-        self.top = tk.Toplevel(parent)
-        self.top.attributes("-fullscreen", True)
-        try:
-            self.top.attributes("-alpha", 0.25)
-            self.top.attributes("-topmost", True)
-        except tk.TclError:
-            pass
-        self._canvas = tk.Canvas(self.top, bg="gray20", highlightthickness=0, cursor="cross")
-        self._canvas.pack(fill="both", expand=True)
-        self._canvas.create_text(
-            20, 20, anchor="nw", fill="white",
-            text="Rechteck über den Kartenplotter ziehen  ·  Esc = Abbrechen",
-            font=("TkDefaultFont", 14),
-        )
-        self._rect = None
-        self._start_canvas = (0, 0)
-        self._start_root = (0, 0)
-        self._canvas.bind("<ButtonPress-1>", self._press)
-        self._canvas.bind("<B1-Motion>", self._drag)
-        self._canvas.bind("<ButtonRelease-1>", self._release)
-        self.top.bind("<Escape>", lambda _e: self.top.destroy())
-
-    def _press(self, event) -> None:
-        self._start_canvas = (event.x, event.y)
-        self._start_root = (event.x_root, event.y_root)
-        self._rect = self._canvas.create_rectangle(
-            event.x, event.y, event.x, event.y, outline="red", width=2
-        )
-
-    def _drag(self, event) -> None:
-        if self._rect is not None:
-            self._canvas.coords(self._rect, *self._start_canvas, event.x, event.y)
-
-    def _release(self, event) -> None:
-        if self._rect is None:
-            self.top.destroy()
-            return
-        x0, y0 = self._start_root
-        x1, y1 = event.x_root, event.y_root
-        left, right = sorted((x0, x1))
-        top, bottom = sorted((y0, y1))
-        self.top.destroy()
-        if right - left >= 5 and bottom - top >= 5:
-            self._on_done((left, top, right, bottom))
 
 
 class _RawMonitor:

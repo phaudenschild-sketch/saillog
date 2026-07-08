@@ -36,6 +36,7 @@ class NmeaSource:
         protocol: str = "tcp",
         on_status: Optional[StatusCallback] = None,
         on_raw: Optional[Callable[[str], None]] = None,
+        on_ais: Optional[Callable[[str], None]] = None,
         reconnect_delay: float = 3.0,
     ) -> None:
         self._host = host
@@ -45,6 +46,7 @@ class NmeaSource:
         self._parser = NmeaParser()
         self._on_status = on_status
         self._on_raw = on_raw
+        self._on_ais = on_ais
         self._reconnect_delay = reconnect_delay
 
         self._thread: Optional[threading.Thread] = None
@@ -187,6 +189,15 @@ class NmeaSource:
             return
         if self._on_raw is not None:
             self._on_raw(text)
+        # AIS-Sätze getrennt behandeln (der NMEA-Parser kennt sie nicht).
+        if self._on_ais is not None and (
+            text.startswith("!AIVDM") or text.startswith("!AIVDO")
+        ):
+            try:
+                self._on_ais(text)
+            except Exception:  # noqa: BLE001 - eine kaputte Zeile darf nicht stören
+                pass
+            return
         values = self._parser.parse(text)
         if values:
             self._live.update(values)

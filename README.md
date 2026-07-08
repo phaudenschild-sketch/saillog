@@ -27,12 +27,12 @@ Python.
   bei Törnbeginn/-abschluss automatisch vorbelegt
 - 🗺️ **Törns** — Einträge gruppieren; Törn mit Startort, Wasser-/Diesel­menge,
   Motorenstunden und Log-Stand beginnen und am Ende abschließen
-- 🖼️ **Kartenplotter-Feld**: Plotter-**Screenshot laden** (PNG/GIF direkt;
-  JPG/BMP mit Pillow) — das Bild wird **an den nächsten Logbuch-Eintrag
-  gehängt** (Doppelklick zum Ansehen, Ordner-Export). Hinweis: Das
-  **Live-Mirroring vom B&G-Plotter** läuft über einen **lizenzierten
-  Navico-Videokanal (GoFree Tier 3)** und ist ohne Lizenz nicht zugänglich —
-  siehe „GoFree" unten.
+- 🛰️ **AIS-Karte** (Knopf „🗺 AIS-Karte"): dekodiert `!AIVDM`/`!AIVDO`-Sätze
+  (Typen 1/2/3/5/18/19/24 inkl. Mehrteiler) und öffnet eine **Leaflet-Karte
+  mit OpenFreeMap**. Sie zeigt das **eigene Schiff**, alle **AIS-Ziele mit
+  echter Richtung** (COG/Heading) und den **Track des ausgewählten Törns**.
+  Der Kartenserver läuft nur lokal (`127.0.0.1`); Karten-Kacheln kommen vom
+  CDN (an Bord über Starlink).
 - ⏱️ **Automatisches Logging** in einstellbarem Intervall (dem aktiven Törn
   zugeordnet, inkl. der Bedingungswerte)
 - ✏️ **Einträge bearbeiten & löschen** — Doppelklick öffnet den Eintrag;
@@ -49,9 +49,10 @@ Python.
 
 - Python 3.9 oder neuer (mit tkinter — bei den offiziellen Windows-Installern
   standardmäßig dabei)
-- **Optional** `pillow` (nur für die automatische Kartenplotter-Aufnahme):
-  `pip install pillow`. Ohne Pillow läuft alles andere unverändert; das
-  Plotterbild lässt sich dann nur manuell laden.
+- **Optional** `pyserial` (nur für serielle Quellen wie den Maretron USB100):
+  `pip install pyserial`. Ohne läuft alles andere unverändert.
+- Für die **AIS-Karte** genügt ein Browser; die Kartenkacheln werden online
+  von OpenFreeMap geladen (an Bord über Starlink).
 
 ## Starten
 
@@ -154,30 +155,35 @@ python -m masarasi.simulator --port 2000
 python main.py
 ```
 
-## Kartenplotter / GoFree (B&G, Navico)
+## AIS-Karte
 
-Der **Live-Bildschirm** des B&G-Plotters wird bei GoFree über einen
-**MPEG4-Videokanal (Tier 3)** übertragen — das ist ein **lizenzierter,
-proprietärer** Navico-Kanal (die Bestätigung am MFD ist die Kopplung dafür).
-Ohne Navico-Lizenz gibt es dafür keine offene Schnittstelle, daher kann
-masarasi den Plotterbildschirm **nicht** direkt spiegeln.
+Über den Knopf **„🗺 AIS-Karte"** startet masarasi einen kleinen lokalen
+Webserver (nur `127.0.0.1`) und öffnet im Browser eine **Leaflet-Karte mit
+OpenFreeMap**. Eingehende `!AIVDM`/`!AIVDO`-Sätze (aller angeschlossenen
+Quellen) werden dekodiert und darauf angezeigt:
 
-Offen zugänglich ist die GoFree-**Daten**schnittstelle: der MFD kündigt sich
-per Multicast `239.2.1.1:2052` mit seinen Diensten an. `python discover.py
---gofree` zeigt Modell, IP und angebotene Dienste/Ports — nützlich, um zu
-sehen, was dein Plotter bereitstellt (die Messdaten holt masarasi ohnehin
-schon über NMEA0183, z.B. B&G TCP-Port 10110).
+- **eigenes Schiff** (Position, Richtung aus Heading bzw. COG),
+- **AIS-Ziele** mit **echter Richtung** (Pfeil = COG/Heading), Name, MMSI,
+  SOG und COG im Popup,
+- **Track des ausgewählten Törns** als Linie.
 
-Für ein Plotterbild im Logbuch bleiben damit: **manuell laden** (z.B. einen
-Screenshot aus der GoFree-App) oder **Bildschirmausschnitt**, falls der
-Plotter als normales Fenster am PC sichtbar ist (z.B. über eine
-HDMI-Video-Eingabe des MFD).
+Die Kartenkacheln lädt die Seite online von OpenFreeMap (an Bord über
+Starlink). Ohne Internet bleiben nur die Kacheln leer — Schiffe und Track
+werden trotzdem gezeichnet.
+
+> **Kartenplotter-Spiegelung (GoFree):** Der Live-Bildschirm des B&G-Plotters
+> läuft über einen lizenzierten Navico-Videokanal (Tier 3) und ist ohne
+> Lizenz/HDMI nicht zugänglich — diese (nicht funktionierende) Anzeige wurde
+> aus der Oberfläche entfernt. Die GoFree-**Daten**schnittstelle bleibt über
+> `python discover.py --gofree` (Multicast `239.2.1.1:2052`) einsehbar; die
+> Messdaten holt masarasi ohnehin über NMEA0183 (z.B. B&G TCP-Port 10110).
 
 ## Unterstützte NMEA0183-Sätze
 
 RMC, GGA, GLL (Position/Zeit) · VTG, VHW (SOG/COG, Fahrt d. Wasser) ·
 MWV, MWD (scheinbarer & wahrer Wind) · DPT, DBT (Tiefe) · MTW
-(Wassertemperatur) · HDG, HDT, HDM (Steuerkurs).
+(Wassertemperatur) · HDG, HDT, HDM (Steuerkurs) · **AIS** `!AIVDM`/`!AIVDO`
+(Typen 1/2/3/5/18/19/24).
 
 ## Altes TripCon-Logbuch importieren
 
@@ -231,12 +237,14 @@ masarasi/
 │   ├── config.py               ← Einstellungen (~/.masarasi/config.json)
 │   ├── fields.py               ← Auswahllisten (Segel, Wetter, Sicht)
 │   ├── nmea.py                 ← NMEA0183-Parser (inkl. Motor RPM/XDR)
-│   ├── source.py               ← TCP/UDP-Netzwerk-Client (Thread)
+│   ├── ais.py                  ← AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
+│   ├── webmap.py               ← lokaler Kartenserver (Leaflet + OpenFreeMap)
+│   ├── source.py               ← TCP/UDP/seriell-Client (Thread, AIS-Routing)
 │   ├── livedata.py             ← Thread-sicherer Messwert-Speicher
 │   ├── logbook.py              ← Auto-/Manuell-Logging-Dienst
 │   ├── storage.py              ← SQLite + CSV/GPX-Export
 │   ├── discover.py             ← Quellen-Scanner (Orca Core, B&G, …)
-│   ├── plotter_capture.py      ← Bildschirmausschnitt-Aufnahme (GoFree, optional)
+│   ├── plotter_capture.py      ← Bild laden/als-PNG (Pillow optional, ungenutzt)
 │   ├── legacy.py               ← Analyse alter Sicherungen + Bildextraktion
 │   ├── tripcon.py              ← Import alter TripCon-Logbücher (.tcdb)
 │   └── simulator.py            ← NMEA0183-Testsimulator
