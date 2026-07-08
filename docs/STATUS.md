@@ -59,6 +59,10 @@ nicht mehr an die Oberfläche gebunden.
 - SQLite + Migration; **CSV/GPX-Export** (optional pro Törn)
 - **AIS-Decoder** (`!AIVDM`/`!AIVDO`, Typen 1/2/3/5/18/19/24, Mehrteiler) +
   **AIS-Karte** (Leaflet + OpenFreeMap) mit eigenem Schiff, Zielen und Törn-Track
+  - Mehrteiler-Zusammensetzung je Funkkanal (Wetherdock vergibt Sequenz-ID neu)
+  - **Automatische COG-Korrektur:** erkennt Feeds, die COG fälschlich in ganzen
+    Grad statt Zehntelgrad liefern (B&G-Multiplexer an Bord), und rechnet um
+  - `python -m masarasi.ais "<!AIVDM-Zeile>"` — Sätze am Boot einzeln prüfen
 - Werkzeuge: `discover.py` (`--full/--udp/--gofree/--sweep`),
   `inspect_backup.py`, `import_tripcon.py`, NMEA-Simulator
 - **TripCon-Import** (.tcdb): Törns, Messwerte, Tracks, Bilder, **Anlass**

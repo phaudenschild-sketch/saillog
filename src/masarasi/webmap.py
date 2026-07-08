@@ -25,6 +25,7 @@ from typing import Callable, Dict, List, Optional
 OwnProvider = Callable[[], Optional[Dict]]
 TargetsProvider = Callable[[], List[Dict]]
 TrackProvider = Callable[[], Dict]
+InfoProvider = Callable[[], str]
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -65,12 +66,14 @@ class MapServer:
         own_provider: OwnProvider,
         targets_provider: TargetsProvider,
         track_provider: TrackProvider,
+        info_provider: Optional[InfoProvider] = None,
         host: str = "127.0.0.1",
         port: int = 0,
     ) -> None:
         self._own_provider = own_provider
         self._targets_provider = targets_provider
         self._track_provider = track_provider
+        self._info_provider = info_provider
         self._host = host
         self._port = port
         self._httpd: Optional[ThreadingHTTPServer] = None
@@ -105,6 +108,7 @@ class MapServer:
             "own": self._own_provider(),
             "targets": self._targets_view(),
             "track": self._track_provider(),
+            "info": self._info_provider() if self._info_provider else "",
         }
 
     def _targets_view(self) -> List[Dict]:
@@ -149,7 +153,7 @@ _PAGE = r"""<!doctype html>
 </head>
 <body>
 <div id="map"></div>
-<div id="info">AIS-Ziele: <span id="cnt">0</span></div>
+<div id="info">AIS-Ziele: <span id="cnt">0</span><div id="note" style="color:#b25000"></div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
@@ -234,6 +238,7 @@ async function refresh() {
     if (!seen[k]) { shipLayer.removeLayer(markers[k]); delete markers[k]; }
   });
   document.getElementById('cnt').textContent = (d.targets || []).length;
+  document.getElementById('note').textContent = d.info || '';
 
   // Eigenes Schiff
   if (d.own && d.own.lat != null) {

@@ -89,7 +89,12 @@ def _position(bits, sog, lon, lat, cog, hdg) -> Dict:
     lat_v = _s(bits, *lat) / 600000.0
     out["lon"] = None if abs(lon_v) > 180 else lon_v
     out["lat"] = None if abs(lat_v) > 90 else lat_v
-    c = _u(bits, *cog) / 10.0
+    raw_cog = _u(bits, *cog)
+    # Rohwert des COG-Feldes (0–3599 gültig, 3600 = „nicht verfügbar").
+    # Wird für die Erkennung fehlerhaft in ganzen Grad kodierter Feeds
+    # gebraucht (siehe AisDecoder._update_cog_mode).
+    out["cog_raw"] = None if raw_cog >= 3600 else raw_cog
+    c = raw_cog / 10.0
     out["cog"] = None if c >= 360 else c
     h = _u(bits, *hdg)
     out["heading"] = None if h == 511 else h
@@ -127,12 +132,28 @@ class AisTargets:
         return len(self.all(now))
 
 
+# So viele verschiedene bewegte Ziele mit COG-Feld < 360 müssen auftreten
+# (ohne dass je ein Feld ≥ 360 vorkam), bis ein Feed als „ganze Grad statt
+# Zehntelgrad" gilt. In echtem, normkonformem AIS-Verkehr taucht fast sofort
+# ein Ziel mit COG ≥ 36,0° (Feldwert ≥ 360) auf und sperrt auf „Zehntel".
+_COG_WHOLE_DEG_VOTES = 4
+
+
 class AisDecoder:
-    """Nimmt `!AIVDM`-Zeilen entgegen und aktualisiert die Zielliste."""
+    """Nimmt `!AIVDM`-Zeilen entgegen und aktualisiert die Zielliste.
+
+    Erkennt zusätzlich fehlerhaft kodierte Feeds: manche NMEA2000→0183-
+    Umsetzer (z.B. der B&G-Multiplexer an Bord) schreiben COG in **ganzen
+    Grad** statt in Zehntelgrad. `cog_mode` hält den erkannten Zustand
+    ("unknown" | "tenths" | "whole"); im Zustand "whole" wird COG korrekt
+    hochskaliert.
+    """
 
     def __init__(self, targets: AisTargets) -> None:
         self._targets = targets
         self._parts: Dict[str, Dict[int, str]] = {}
+        self.cog_mode = "unknown"
+        self._whole_mmsis: set = set()
 
     def add_sentence(self, line: str, now: Optional[float] = None) -> Optional[Dict]:
         line = line.strip()
@@ -172,11 +193,34 @@ class AisDecoder:
         msg = decode_payload(payload)
         if not msg or not msg.get("mmsi"):
             return None
+        self._update_cog_mode(msg)
+        # Fehlerhaften Feed korrigieren: liegt COG in ganzen Grad vor, ist der
+        # Rohwert (0–359) bereits der Kurs — nicht durch 10 teilen.
+        cog_raw = msg.get("cog_raw")
+        if self.cog_mode == "whole" and cog_raw is not None and cog_raw < 360:
+            msg["cog"] = float(cog_raw)
         fields = {k: msg[k] for k in ("lat", "lon", "sog", "cog", "heading",
                                        "name", "callsign") if k in msg}
         if fields:
             self._targets.update(msg["mmsi"], fields, now=now)
         return msg
+
+    def _update_cog_mode(self, msg: Dict) -> None:
+        """Erkennt anhand mehrerer Sätze, ob COG in ganzen Grad kodiert ist."""
+        cog_raw = msg.get("cog_raw")
+        if cog_raw is None:
+            return
+        if cog_raw >= 360:
+            # Feldwert ≥ 36,0° kann es nur bei Zehntelgrad-Kodierung geben —
+            # eindeutig normkonform (überstimmt auch eine frühere Fehlannahme).
+            self.cog_mode = "tenths"
+            return
+        if self.cog_mode == "unknown":
+            sog = msg.get("sog")
+            if sog and sog > 2.0:  # nur bewegte Ziele haben aussagekräftiges COG
+                self._whole_mmsis.add(msg["mmsi"])
+                if len(self._whole_mmsis) >= _COG_WHOLE_DEG_VOTES:
+                    self.cog_mode = "whole"
 
 
 def _main(argv=None) -> int:

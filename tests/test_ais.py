@@ -106,5 +106,44 @@ class DecoderTest(unittest.TestCase):
         self.assertEqual(len(targets.all(now=1.0)), 0)
 
 
+# Echte Sätze eines Bordfeeds, der COG fehlerhaft in ganzen Grad statt
+# Zehntelgrad kodiert (B&G-Multiplexer). Rohes COG-Feld = Kurs in Grad.
+_WHOLE_DEG_SENTENCES = [
+    ("!AIVDM,1,1,,,13S9cO0P17Q>nG2HUc3PQgwD2000,0*2B", 238185340, 134),
+    ("!AIVDM,1,1,,,13Sa`k01PwQ>FadHUPN0K0GD0000,0*1D", 238708940, 108),  # SAN SPIRITO
+    ("!AIVDM,1,1,,,13S8M?P01@1>P?LHUHB10Pk@0000,0*2C", 238165310, 258),  # JADERA
+    ("!AIVDM,1,1,,,13SBk50P1JQ>U<lHUVCPp?wD2000,0*7D", 238334740, 224),
+]
+
+
+class CogWholeDegreeTest(unittest.TestCase):
+    def test_detects_and_corrects_whole_degree_feed(self):
+        targets = AisTargets()
+        decoder = AisDecoder(targets)
+        for sentence, _mmsi, _deg in _WHOLE_DEG_SENTENCES:
+            decoder.add_sentence(sentence, now=1.0)
+        self.assertEqual(decoder.cog_mode, "whole")
+        # Zweite Runde (wie im Livebetrieb): jetzt sind alle korrigiert.
+        for sentence, _mmsi, _deg in _WHOLE_DEG_SENTENCES:
+            decoder.add_sentence(sentence, now=2.0)
+        by_mmsi = {r["mmsi"]: r for r in targets.all(now=2.0)}
+        for _sentence, mmsi, deg in _WHOLE_DEG_SENTENCES:
+            self.assertAlmostEqual(by_mmsi[mmsi]["cog"], float(deg), places=1)
+
+    def test_standard_feed_stays_tenths(self):
+        # Ein normkonformer Satz (COG 40,4°, Feldwert 404 ≥ 360) sperrt den
+        # Decoder dauerhaft auf Zehntelgrad — kein fälschliches Hochskalieren.
+        targets = AisTargets()
+        decoder = AisDecoder(targets)
+        decoder.add_sentence(
+            "!AIVDM,1,1,,A,13u?etPv2;0n:dDPwUM1U1Cb069D,0*29", now=1.0
+        )
+        self.assertEqual(decoder.cog_mode, "tenths")
+        # Selbst danach auftretende kleine COG-Werte werden NICHT hochskaliert.
+        decoder.add_sentence("!AIVDM,1,1,,,13Sa`k01PwQ>FadHUPN0K0GD0000,0*1D", now=2.0)
+        row = next(r for r in targets.all(now=2.0) if r["mmsi"] == 238708940)
+        self.assertAlmostEqual(row["cog"], 10.8, places=1)  # bleibt Zehntelgrad
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -56,6 +56,7 @@ class Application:
 
         # AIS: gemeinsame Zielliste, je Quelle ein Decoder (Mehrteiler pro Kanal)
         self._ais_targets = AisTargets()
+        self._ais_decoders: list = []
         # Lokaler Webserver für die AIS-Karte (Leaflet + OpenFreeMap)
         self._map_server: Optional[MapServer] = None
 
@@ -321,6 +322,18 @@ class Application:
 
     # --- AIS-Karte (Leaflet + OpenFreeMap) ---------------------------------
 
+    def _make_ais_decoder(self):
+        """Erzeugt einen AIS-Decoder je Quelle und merkt ihn sich."""
+        decoder = AisDecoder(self._ais_targets)
+        self._ais_decoders.append(decoder)
+        return decoder.add_sentence
+
+    def _ais_info(self) -> str:
+        """Hinweistext für die Karte (z.B. aktive COG-Korrektur)."""
+        if any(getattr(d, "cog_mode", "") == "whole" for d in self._ais_decoders):
+            return "COG-Korrektur aktiv: Feed liefert ganze Grad statt Zehntel."
+        return ""
+
     def _on_open_map(self) -> None:
         """Startet (falls nötig) den lokalen Kartenserver und öffnet den Browser."""
         if self._map_server is None:
@@ -329,6 +342,7 @@ class Application:
                     own_provider=self._map_own,
                     targets_provider=lambda: self._ais_targets.all(),
                     track_provider=self._map_track,
+                    info_provider=self._ais_info,
                 )
                 self._map_server.start()
             except OSError as exc:
@@ -389,6 +403,7 @@ class Application:
             for src in self._sources:
                 src.stop()
             self._sources = []
+            self._ais_decoders = []
             self._src_status = {}
             self._connect_btn.config(text="Verbinden")
             self._update_sources_label()
@@ -396,6 +411,7 @@ class Application:
         if not self._source_defs:
             messagebox.showinfo("Quellen", "Bitte zuerst über 'Quellen…' eine Datenquelle anlegen.")
             return
+        self._ais_decoders = []
         for index, definition in enumerate(self._source_defs):
             try:
                 port = int(definition["port"])
@@ -411,7 +427,7 @@ class Application:
                 on_raw=self._raw_buffer.append,
                 # Eigener Decoder je Quelle (Mehrteiler werden pro Kanal
                 # zusammengesetzt), gemeinsame Zielliste.
-                on_ais=AisDecoder(self._ais_targets).add_sentence,
+                on_ais=self._make_ais_decoder(),
             )
             source.start()
             self._sources.append(source)
