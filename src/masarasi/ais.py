@@ -177,3 +177,42 @@ class AisDecoder:
         if fields:
             self._targets.update(msg["mmsi"], fields, now=now)
         return msg
+
+
+def _main(argv=None) -> int:
+    """Kommandozeilen-Decoder: prüft AIS-Sätze direkt am Boot.
+
+        python -m masarasi.ais "!AIVDM,1,1,,B,..."   # eine/mehrere Zeilen
+        type rohdaten.txt | python -m masarasi.ais  # oder aus stdin
+
+    Zeigt je Ziel Typ, MMSI, Name, SOG, COG und Heading — zum Abgleich mit
+    der COG-Spalte des AIS-Empfängers.
+    """
+    import sys
+
+    lines = list(argv) if argv else sys.argv[1:]
+    if not lines:
+        lines = [ln.rstrip("\n") for ln in sys.stdin]
+
+    targets = AisTargets()
+    decoder = AisDecoder(targets)
+    for line in lines:
+        for part in line.replace("\r", "\n").split("\n"):
+            if part.strip():
+                decoder.add_sentence(part, now=0.0)
+
+    rows = sorted(targets.all(now=0.0), key=lambda r: r["mmsi"])
+    print(f"{'MMSI':>10}  {'Name':16} {'SOG':>6} {'COG':>6} {'HDG':>6}  Position")
+    for r in rows:
+        pos = ""
+        if r.get("lat") is not None and r.get("lon") is not None:
+            pos = f"{r['lat']:.5f}, {r['lon']:.5f}"
+        sog = "—" if r.get("sog") is None else f"{r['sog']:.1f}"
+        cog = "—" if r.get("cog") is None else f"{r['cog']:.1f}"
+        hdg = "—" if r.get("heading") is None else f"{r['heading']}"
+        print(f"{r['mmsi']:>10}  {r.get('name', ''):16} {sog:>6} {cog:>6} {hdg:>6}  {pos}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())
