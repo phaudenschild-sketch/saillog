@@ -57,6 +57,9 @@ nicht mehr an die Oberfläche gebunden.
 - **Einträge bearbeiten & löschen**, ✎-Marker für Bearbeitetes
 - **Zeitzone** (System oder fester UTC-Versatz); intern UTC gespeichert
 - SQLite + Migration; **CSV/GPX-Export** (optional pro Törn)
+- **Crewliste** (Ein-/Ausklarieren): Bootsangaben (in der Konfiguration
+  gespeichert) + Crew je Törn; druckbare, zweisprachige HTML-Liste (DE/EN)
+  im Browser (`crewlist.py`, Knopf „Crewliste…" in der Törn-Leiste)
 - **AIS-Decoder** (`!AIVDM`/`!AIVDO`, Typen 1/2/3/5/18/19/24, Mehrteiler) +
   **AIS-Karte** (Leaflet + OpenFreeMap) mit eigenem Schiff, Zielen und Törn-Track
   - Mehrteiler-Zusammensetzung je Funkkanal (Wetherdock vergibt Sequenz-ID neu)
@@ -97,6 +100,7 @@ src/masarasi/
   nmea.py        NMEA0183-Parser + FIELD_LABELS + engine_running()
   ais.py         AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
   webmap.py      lokaler Kartenserver (Leaflet + OpenFreeMap)
+  crewlist.py    druckbare Crewliste (HTML, DE/EN)
   livedata.py    thread-sicherer Messwert-Speicher
   logbook.py     Auto-/Manuell-Logging, Bedingungen, Törns
   storage.py     SQLite: LogEntry/Trip, Migration, CSV/GPX, Bilder

@@ -46,6 +46,16 @@ class Config:
     # Bootsangaben (für Auto-Fill manueller Einträge)
     boat_name: str = ""
 
+    # Bootsangaben für die Crewliste (Ein-/Ausklarieren)
+    ship_name: str = ""            # Schiffsname / Name of yacht
+    ship_type: str = ""            # Bootstyp (z.B. Segelyacht) / Type of boat
+    ship_flag: str = ""            # Flagge / Flag
+    home_port: str = ""            # Heimathafen / Port of registry
+    call_sign: str = ""            # Rufzeichen / Call sign
+    ship_mmsi: str = ""            # MMSI
+    registration_no: str = ""      # Registriernummer / Registration No.
+    ship_length: str = ""          # Länge über alles / Length overall
+
     # Kartenplotter-Bildschirmausschnitt (GoFree): [links, oben, rechts, unten]
     plotter_region: Optional[list] = None
     plotter_interval_seconds: int = 15

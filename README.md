@@ -27,6 +27,10 @@ Python.
   bei Törnbeginn/-abschluss automatisch vorbelegt
 - 🗺️ **Törns** — Einträge gruppieren; Törn mit Startort, Wasser-/Diesel­menge,
   Motorenstunden und Log-Stand beginnen und am Ende abschließen
+- 🧾 **Crewliste** (Knopf „Crewliste…"): Bootsangaben (einmal gespeichert) und
+  Crew je Törn erfassen und eine **zweisprachige, druckbare Crewliste (DE/EN)**
+  fürs Ein-/Ausklarieren erzeugen — öffnet im Browser, dort drucken oder als
+  PDF speichern
 - 🛰️ **AIS-Karte** (Knopf „🗺 AIS-Karte"): dekodiert `!AIVDM`/`!AIVDO`-Sätze
   (Typen 1/2/3/5/18/19/24 inkl. Mehrteiler) und öffnet eine **Leaflet-Karte
   mit OpenFreeMap**. Sie zeigt das **eigene Schiff**, alle **AIS-Ziele mit
@@ -239,6 +243,7 @@ masarasi/
 │   ├── nmea.py                 ← NMEA0183-Parser (inkl. Motor RPM/XDR)
 │   ├── ais.py                  ← AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
 │   ├── webmap.py               ← lokaler Kartenserver (Leaflet + OpenFreeMap)
+│   ├── crewlist.py             ← druckbare Crewliste (HTML, DE/EN)
 │   ├── source.py               ← TCP/UDP/seriell-Client (Thread, AIS-Routing)
 │   ├── livedata.py             ← Thread-sicherer Messwert-Speicher
 │   ├── logbook.py              ← Auto-/Manuell-Logging-Dienst

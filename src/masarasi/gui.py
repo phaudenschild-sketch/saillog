@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import datetime
 import tkinter as tk
 import webbrowser
 from collections import deque
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
-from masarasi import timeutil
+from masarasi import crewlist, timeutil
 from masarasi.ais import AisDecoder, AisTargets
 from masarasi.config import Config
 from masarasi.fields import (
@@ -29,7 +31,7 @@ from masarasi.source import (
     STATUS_ERROR,
     NmeaSource,
 )
-from masarasi.storage import LogbookStore, Trip
+from masarasi.storage import CrewMember, LogbookStore, Trip
 from masarasi.webmap import MapServer
 
 _STATUS_TEXT = {
@@ -118,10 +120,13 @@ class Application:
             trip_bar, text="Törn abschließen…", command=self._on_close_trip
         )
         self._close_trip_btn.grid(row=0, column=3, padx=4)
+        ttk.Button(trip_bar, text="Crewliste…", command=self._on_crewlist).grid(
+            row=0, column=4, padx=4
+        )
         self._trip_dist_label = ttk.Label(
             trip_bar, text="", foreground="#1a5a8a", font=("TkDefaultFont", 10, "bold")
         )
-        self._trip_dist_label.grid(row=0, column=4, padx=12)
+        self._trip_dist_label.grid(row=0, column=5, padx=12)
 
         # Hauptzeile: Messwerte | Bedingungen nebeneinander
         main_row = ttk.Frame(self._root)
@@ -602,6 +607,16 @@ class Application:
         self._refresh_trips()
         self._refresh_logbook()
 
+    # --- Crewliste ----------------------------------------------------------
+
+    def _on_crewlist(self) -> None:
+        trip = None
+        tid = self._logbook.current_trip_id
+        if tid is not None:
+            trip = self._store.get_trip(tid)
+        dialog = _CrewListDialog(self._root, self._config, self._store, trip)
+        self._root.wait_window(dialog.top)
+
     # --- manuelle Einträge --------------------------------------------------
 
     def _on_manual_entry(self) -> None:
@@ -1050,6 +1065,224 @@ class _ManualEntryDialog:
 def _fmt_live(snapshot: Dict[str, float], key: str) -> str:
     value = (snapshot or {}).get(key)
     return "" if value is None else f"{value:.1f}"
+
+
+class _CrewListDialog:
+    """Crewliste zum aktuellen Törn: Bootsangaben + Crew, druckbar."""
+
+    _BOAT_FIELDS = [
+        ("ship_name", "Schiffsname:"),
+        ("ship_type", "Bootstyp:"),
+        ("ship_flag", "Flagge:"),
+        ("home_port", "Heimathafen:"),
+        ("call_sign", "Rufzeichen:"),
+        ("ship_mmsi", "MMSI:"),
+        ("registration_no", "Registriernummer:"),
+        ("ship_length", "Länge über alles:"),
+    ]
+
+    def __init__(self, parent, config, store, trip) -> None:
+        self._config = config
+        self._store = store
+        self._trip = trip
+        self._trip_id = trip.id if trip else None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Crewliste" + (f" — Törn #{trip.id}" if trip else ""))
+        self.top.transient(parent)
+        self.top.grab_set()
+        self.top.geometry("740x580")
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        # Bootsangaben (aus der Konfiguration vorbelegt, werden gespeichert)
+        boat = ttk.LabelFrame(frame, text="Bootsangaben (werden gespeichert)")
+        boat.pack(fill="x")
+        self._boat_vars: Dict[str, tk.StringVar] = {}
+        for i, (key, label) in enumerate(self._BOAT_FIELDS):
+            r, c = i % 4, (i // 4) * 2
+            ttk.Label(boat, text=label).grid(row=r, column=c, sticky="e", padx=(8, 3), pady=3)
+            var = tk.StringVar(value=str(getattr(config, key, "") or ""))
+            ttk.Entry(boat, textvariable=var, width=26).grid(row=r, column=c + 1, sticky="w", pady=3)
+            self._boat_vars[key] = var
+
+        # Ort/Datum für den Ausdruck
+        pd = ttk.Frame(frame)
+        pd.pack(fill="x", pady=(8, 0))
+        ttk.Label(pd, text="Ort (Ausklarierung):").pack(side="left", padx=(4, 3))
+        default_place = ""
+        if trip:
+            default_place = trip.end_location or trip.start_location or ""
+        self._place = tk.StringVar(value=default_place)
+        ttk.Entry(pd, textvariable=self._place, width=22).pack(side="left")
+        ttk.Label(pd, text="Datum:").pack(side="left", padx=(12, 3))
+        self._date = tk.StringVar(value=datetime.date.today().strftime("%d.%m.%Y"))
+        ttk.Entry(pd, textvariable=self._date, width=12).pack(side="left")
+
+        # Crew-Tabelle
+        title = "Crew" if trip else "Crew (kein Törn gewählt — allgemeine Liste)"
+        crew = ttk.LabelFrame(frame, text=title)
+        crew.pack(fill="both", expand=True, pady=(8, 0))
+        cols = ("pos", "name", "first", "birth", "place", "nat", "pass")
+        headers = {
+            "pos": "Funktion", "name": "Name", "first": "Vorname",
+            "birth": "Geburtsdatum", "place": "Geburtsort",
+            "nat": "Staatsang.", "pass": "Pass-Nr.",
+        }
+        widths = {"pos": 70, "name": 110, "first": 100, "birth": 90,
+                  "place": 100, "nat": 90, "pass": 100}
+        self._tree = ttk.Treeview(crew, columns=cols, show="headings", height=8)
+        for col in cols:
+            self._tree.heading(col, text=headers[col])
+            self._tree.column(col, width=widths[col])
+        self._tree.pack(side="left", fill="both", expand=True, padx=(6, 0), pady=6)
+        sb = ttk.Scrollbar(crew, orient="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self._tree.bind("<Double-1>", lambda _e: self._on_edit())
+
+        cbtn = ttk.Frame(frame)
+        cbtn.pack(fill="x", pady=(6, 0))
+        ttk.Button(cbtn, text="Person hinzufügen…", command=self._on_add).pack(side="left")
+        ttk.Button(cbtn, text="Bearbeiten…", command=self._on_edit).pack(side="left", padx=4)
+        ttk.Button(cbtn, text="Entfernen", command=self._on_remove).pack(side="left")
+
+        bottom = ttk.Frame(frame)
+        bottom.pack(fill="x", pady=(10, 0))
+        ttk.Button(bottom, text="Crewliste drucken…", command=self._on_print).pack(side="left")
+        ttk.Button(bottom, text="Speichern & schließen", command=self._on_close).pack(
+            side="right"
+        )
+        ttk.Button(bottom, text="Schließen", command=self.top.destroy).pack(
+            side="right", padx=4
+        )
+
+        self._refresh()
+
+    def _refresh(self) -> None:
+        for item in self._tree.get_children():
+            self._tree.delete(item)
+        for m in self._store.crew_for_trip(self._trip_id):
+            self._tree.insert(
+                "", "end", iid=str(m.id),
+                values=(m.position, m.last_name, m.first_name, m.birth_date,
+                        m.birth_place, m.nationality, m.passport_no),
+            )
+
+    def _selected_id(self) -> Optional[int]:
+        sel = self._tree.selection()
+        return int(sel[0]) if sel else None
+
+    def _member(self, cid: int):
+        return next(
+            (m for m in self._store.crew_for_trip(self._trip_id) if m.id == cid), None
+        )
+
+    def _on_add(self) -> None:
+        count = len(self._store.crew_for_trip(self._trip_id))
+        member = CrewMember(
+            trip_id=self._trip_id,
+            position="Skipper" if count == 0 else "Crew",
+            sort_order=count,
+        )
+        dlg = _CrewMemberDialog(self.top, member)
+        self.top.wait_window(dlg.top)
+        if dlg.result is not None:
+            self._store.add_crew(dlg.result)
+            self._refresh()
+
+    def _on_edit(self) -> None:
+        cid = self._selected_id()
+        if cid is None:
+            return
+        member = self._member(cid)
+        if member is None:
+            return
+        dlg = _CrewMemberDialog(self.top, member)
+        self.top.wait_window(dlg.top)
+        if dlg.result is not None:
+            self._store.update_crew(dlg.result)
+            self._refresh()
+
+    def _on_remove(self) -> None:
+        cid = self._selected_id()
+        if cid is None:
+            return
+        if messagebox.askyesno("Entfernen", "Person aus der Crewliste entfernen?"):
+            self._store.delete_crew(cid)
+            self._refresh()
+
+    def _save_boat(self) -> None:
+        for key, var in self._boat_vars.items():
+            setattr(self._config, key, var.get().strip())
+        self._config.save()
+
+    def _on_print(self) -> None:
+        self._save_boat()
+        crew = self._store.crew_for_trip(self._trip_id)
+        html = crewlist.build_html(
+            {k: v.get().strip() for k, v in self._boat_vars.items()},
+            crew,
+            self._place.get().strip(),
+            self._date.get().strip(),
+        )
+        path = Path(self._config.db_path).parent / "crewliste.html"
+        try:
+            path.write_text(html, encoding="utf-8")
+        except OSError as exc:  # noqa: BLE001
+            messagebox.showerror("Crewliste", f"Konnte Datei nicht schreiben:\n{exc}")
+            return
+        webbrowser.open(path.as_uri())
+
+    def _on_close(self) -> None:
+        self._save_boat()
+        self.top.destroy()
+
+
+class _CrewMemberDialog:
+    """Dialog für ein einzelnes Crew-Mitglied."""
+
+    _ROWS = [
+        ("position", "Funktion:"),
+        ("last_name", "Name:"),
+        ("first_name", "Vorname:"),
+        ("birth_date", "Geburtsdatum:"),
+        ("birth_place", "Geburtsort:"),
+        ("nationality", "Staatsangehörigkeit:"),
+        ("passport_no", "Reisepass-Nr.:"),
+    ]
+
+    def __init__(self, parent, member: CrewMember) -> None:
+        self.result: Optional[CrewMember] = None
+        self._member = member
+        self.top = tk.Toplevel(parent)
+        self.top.title("Crew-Mitglied")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        self._vars: Dict[str, tk.StringVar] = {}
+        for i, (key, label) in enumerate(self._ROWS):
+            ttk.Label(frame, text=label).grid(row=i, column=0, sticky="e", padx=4, pady=3)
+            if key == "position":
+                var = tk.StringVar(value=getattr(member, key) or "Crew")
+                ttk.Combobox(frame, textvariable=var, width=26, state="readonly",
+                             values=["Skipper", "Crew"]).grid(row=i, column=1, sticky="w", pady=3)
+            else:
+                var = tk.StringVar(value=getattr(member, key) or "")
+                ttk.Entry(frame, textvariable=var, width=28).grid(row=i, column=1, sticky="w", pady=3)
+            self._vars[key] = var
+
+        btns = ttk.Frame(frame)
+        btns.grid(row=len(self._ROWS), column=0, columnspan=2, pady=(10, 0))
+        ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        for key, var in self._vars.items():
+            setattr(self._member, key, var.get().strip())
+        self.result = self._member
+        self.top.destroy()
 
 
 class _TripStartDialog:

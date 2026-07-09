@@ -148,8 +148,25 @@ class Trip:
     note: str = ""
 
 
+@dataclass
+class CrewMember:
+    """Ein Crew-Mitglied (für die Crewliste beim Ein-/Ausklarieren)."""
+
+    id: Optional[int] = None
+    trip_id: Optional[int] = None
+    position: str = "Crew"        # "Skipper" oder "Crew"
+    last_name: str = ""           # Name / Surname
+    first_name: str = ""          # Vorname / First name
+    birth_date: str = ""          # Geburtsdatum / Date of birth
+    birth_place: str = ""         # Geburtsort / Place of birth
+    nationality: str = ""         # Staatsangehörigkeit / Nationality
+    passport_no: str = ""         # Reisepass-/Ausweis-Nr. / Passport No.
+    sort_order: int = 0           # Reihenfolge (Skipper zuerst)
+
+
 _COLUMN_NAMES = [f.name for f in fields(LogEntry)]
 _TRIP_COLUMNS = [f.name for f in fields(Trip)]
+_CREW_COLUMNS = [f.name for f in fields(CrewMember)]
 
 # Spalten, die bei bestehenden Datenbanken nachgezogen werden (ohne NOT NULL).
 _MIGRATE_LOG = [
@@ -238,6 +255,19 @@ class LogbookStore:
                 "  image BLOB NOT NULL,\n"
                 "  mime TEXT DEFAULT 'image/png',\n"
                 "  created_dz TEXT DEFAULT ''\n)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS crew_members (\n"
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+                "  trip_id INTEGER,\n"
+                "  position TEXT DEFAULT 'Crew',\n"
+                "  last_name TEXT DEFAULT '',\n"
+                "  first_name TEXT DEFAULT '',\n"
+                "  birth_date TEXT DEFAULT '',\n"
+                "  birth_place TEXT DEFAULT '',\n"
+                "  nationality TEXT DEFAULT '',\n"
+                "  passport_no TEXT DEFAULT '',\n"
+                "  sort_order INTEGER DEFAULT 0\n)"
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_log_timestamp "
@@ -436,6 +466,54 @@ class LogbookStore:
     def _row_to_trip(row: sqlite3.Row) -> Trip:
         data = {k: row[k] for k in row.keys() if k in _TRIP_COLUMNS}
         return Trip(**data)
+
+    # --- Crew (Crewliste) ---------------------------------------------------
+
+    def add_crew(self, member: CrewMember) -> int:
+        cols = [c for c in _CREW_COLUMNS if c != "id"]
+        placeholders = ", ".join("?" for _ in cols)
+        values = [getattr(member, c) for c in cols]
+        with self._connect() as conn:
+            cursor = conn.execute(
+                f"INSERT INTO crew_members ({', '.join(cols)}) VALUES ({placeholders})",
+                values,
+            )
+            member.id = cursor.lastrowid
+        return member.id
+
+    def update_crew(self, member: CrewMember) -> None:
+        cols = [c for c in _CREW_COLUMNS if c != "id"]
+        assignments = ", ".join(f"{c} = ?" for c in cols)
+        values = [getattr(member, c) for c in cols] + [member.id]
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE crew_members SET {assignments} WHERE id = ?", values
+            )
+
+    def delete_crew(self, crew_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM crew_members WHERE id = ?", (crew_id,))
+
+    def crew_for_trip(self, trip_id: Optional[int]) -> List[CrewMember]:
+        """Crew des Törns (Skipper zuerst), geordnet nach sort_order und id."""
+        with self._connect() as conn:
+            if trip_id is None:
+                rows = conn.execute(
+                    "SELECT * FROM crew_members WHERE trip_id IS NULL "
+                    "ORDER BY sort_order, id"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM crew_members WHERE trip_id = ? "
+                    "ORDER BY sort_order, id",
+                    (trip_id,),
+                ).fetchall()
+        return [self._row_to_crew(r) for r in rows]
+
+    @staticmethod
+    def _row_to_crew(row: sqlite3.Row) -> CrewMember:
+        data = {k: row[k] for k in row.keys() if k in _CREW_COLUMNS}
+        return CrewMember(**data)
 
     # --- Export -------------------------------------------------------------
 
