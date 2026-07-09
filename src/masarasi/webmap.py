@@ -218,6 +218,9 @@ function dir(t) {                       // Ausrichtung des Pfeils
 function mtUrl(mmsi) {
   return 'https://www.marinetraffic.com/en/ais/details/ships/mmsi:' + mmsi;
 }
+function vfUrl(mmsi) {   // VesselFinder öffnet die Schiffsseite per MMSI (auch für Gäste)
+  return 'https://www.vesselfinder.com/?mmsi=' + mmsi;
+}
 function label(t) {
   const name = t.name || ('MMSI ' + (t.mmsi || '?'));
   const sog = (t.sog != null) ? t.sog.toFixed(1) + ' kn' : '–';
@@ -228,9 +231,15 @@ function label(t) {
           '<br>COG (Kurs) ' + cog +
           '<br>Heading (Bug) ' + hdg;
   if (t.mmsi) {
-    h += '<br><a href="' + mtUrl(t.mmsi) + '" target="_blank" rel="noopener">' +
-         'MarineTraffic ↗</a>' +
-         '<br><span style="color:#888;font-size:11px">Doppelklick öffnet MarineTraffic</span>';
+    h += '<br>Details: ' +
+         '<a href="https://www.vesselfinder.com/?mmsi=' + t.mmsi +
+         '" target="_blank" rel="noopener">VesselFinder ↗</a> · ' +
+         '<a href="https://www.myshiptracking.com/vessels/mmsi-' + t.mmsi +
+         '" target="_blank" rel="noopener">MyShipTracking ↗</a> · ' +
+         '<a href="' + mtUrl(t.mmsi) +
+         '" target="_blank" rel="noopener">MarineTraffic ↗</a>' +
+         '<br><span style="color:#888;font-size:11px">Doppelklick öffnet ' +
+         'VesselFinder (Schiffsseite direkt)</span>';
   }
   return h;
 }
@@ -277,11 +286,13 @@ async function refresh() {
       m.bindPopup('');
       m.bindTooltip('', { permanent: true, direction: 'right',
                           offset: [10, 0], className: 'lbl' });
-      // Doppelklick öffnet das Ziel bei MarineTraffic (per MMSI)
+      // Doppelklick öffnet die Schiffsseite (VesselFinder per MMSI — öffnet
+      // auch ohne Login direkt das Schiff; MarineTraffic leitet Gäste nur auf
+      // die Live-Karte um). Weitere Tracker als Links im Popup.
       const mmsi = t.mmsi;
       m.on('dblclick', function (ev) {
         L.DomEvent.stopPropagation(ev);          // keine Karten-Zoomstufe
-        if (mmsi) window.open(mtUrl(mmsi), '_blank', 'noopener');
+        if (mmsi) window.open(vfUrl(mmsi), '_blank', 'noopener');
       });
       markers[t.mmsi] = m;
     } else {
