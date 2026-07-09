@@ -347,6 +347,7 @@ class Application:
                     own_provider=self._map_own,
                     targets_provider=lambda: self._ais_targets.all(),
                     track_provider=self._map_track,
+                    entries_provider=self._map_entries,
                     info_provider=self._ais_info,
                 )
                 self._map_server.start()
@@ -384,6 +385,40 @@ class Application:
             if trip is not None:
                 name = trip.name or trip.start_location or f"Törn #{trip_id}"
         return {"name": name, "points": points}
+
+    def _map_entries(self) -> List[Dict]:
+        """Logbuch-Einträge des ausgewählten Törns als anklickbare Kartenpunkte."""
+        trip_id = self._logbook.current_trip_id
+        offset = self._tz_offset()
+        out: List[Dict] = []
+        for e in self._store.all(newest_first=False, trip_id=trip_id, limit=20000):
+            if e.lat is None or e.lon is None:
+                continue
+            wind = ""
+            if e.aws_kn is not None:
+                wind = f"{e.aws_kn:.0f} kn @ {e.awa_deg or 0:.0f}°"
+            sail_parts = []
+            if e.mainsail and e.mainsail != "—":
+                sail_parts.append(e.mainsail)
+            if e.genoa_percent is not None:
+                sail_parts.append(f"Genua {e.genoa_percent:.0f}%")
+            if e.spinnaker:
+                sail_parts.append("Spi")
+            motor = "ein" if e.engine_on == 1 else ("aus" if e.engine_on == 0 else "")
+            out.append({
+                "lat": e.lat,
+                "lon": e.lon,
+                "time": timeutil.to_display(e.timestamp, offset),
+                "type": e.entry_type,
+                "anlass": e.logevent or "",
+                "sog": None if e.sog_kn is None else round(e.sog_kn, 1),
+                "depth": None if e.depth_m is None else round(e.depth_m, 1),
+                "wind": wind,
+                "motor": motor,
+                "sails": ", ".join(sail_parts),
+                "note": e.note or "",
+            })
+        return out
 
     # --- Verbindung ---------------------------------------------------------
 

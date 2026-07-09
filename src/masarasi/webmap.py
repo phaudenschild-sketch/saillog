@@ -25,6 +25,7 @@ from typing import Callable, Dict, List, Optional
 OwnProvider = Callable[[], Optional[Dict]]
 TargetsProvider = Callable[[], List[Dict]]
 TrackProvider = Callable[[], Dict]
+EntriesProvider = Callable[[], List[Dict]]
 InfoProvider = Callable[[], str]
 
 
@@ -66,6 +67,7 @@ class MapServer:
         own_provider: OwnProvider,
         targets_provider: TargetsProvider,
         track_provider: TrackProvider,
+        entries_provider: Optional[EntriesProvider] = None,
         info_provider: Optional[InfoProvider] = None,
         host: str = "127.0.0.1",
         port: int = 0,
@@ -73,6 +75,7 @@ class MapServer:
         self._own_provider = own_provider
         self._targets_provider = targets_provider
         self._track_provider = track_provider
+        self._entries_provider = entries_provider
         self._info_provider = info_provider
         self._host = host
         self._port = port
@@ -108,6 +111,7 @@ class MapServer:
             "own": self._own_provider(),
             "targets": self._targets_view(),
             "track": self._track_provider(),
+            "entries": self._entries_provider() if self._entries_provider else [],
             "info": self._info_provider() if self._info_provider else "",
         }
 
@@ -167,11 +171,17 @@ try {
     { attribution: '© OpenStreetMap' }).addTo(map);
 }
 
-const trackLayer = L.layerGroup().addTo(map);
-const shipLayer  = L.layerGroup().addTo(map);
+const trackLayer   = L.layerGroup().addTo(map);
+const entriesLayer = L.layerGroup().addTo(map);
+const shipLayer    = L.layerGroup().addTo(map);
 const markers = {};       // mmsi -> Leaflet-Marker
 let ownMarker = null;
 let didFit = false;
+let entriesSig = null;    // Signatur, um Logbuch-Marker nur bei Aenderung neu zu bauen
+
+L.control.layers(null, {
+  'Logbuch': entriesLayer, 'Törn-Track': trackLayer, 'AIS-Ziele': shipLayer
+}, { collapsed: false }).addTo(map);
 
 // Pfeil-Icon: zeigt nach oben (Norden), per CSS um `deg` gedreht.
 function arrow(deg, color, size) {
@@ -207,6 +217,26 @@ function label(t) {
          '<br>SOG ' + sog +
          '<br>COG (Kurs) ' + cog +
          '<br>Heading (Bug) ' + hdg;
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function entryPopup(e) {
+  let h = '<b>' + esc(e.time) + '</b>';
+  if (e.type) h += ' <span style="color:#888">(' + esc(e.type) + ')</span>';
+  if (e.anlass) h += '<br>Anlass: ' + esc(e.anlass);
+  h += '<br>Pos: ' + e.lat.toFixed(4) + ', ' + e.lon.toFixed(4);
+  const l2 = [];
+  if (e.sog != null) l2.push('SOG ' + e.sog + ' kn');
+  if (e.depth != null) l2.push('Tiefe ' + e.depth + ' m');
+  if (l2.length) h += '<br>' + l2.join('  ·  ');
+  if (e.wind) h += '<br>Wind ' + esc(e.wind);
+  if (e.motor) h += '<br>Motor: ' + esc(e.motor);
+  if (e.sails) h += '<br>Segel: ' + esc(e.sails);
+  if (e.note) h += '<br><i>' + esc(e.note) + '</i>';
+  return h;
 }
 
 async function refresh() {
@@ -257,6 +287,22 @@ async function refresh() {
   const pts = (d.track && d.track.points) || [];
   if (pts.length > 1) {
     L.polyline(pts, { color: '#d6156a', weight: 3, opacity: .85 }).addTo(trackLayer);
+  }
+
+  // Logbuch-Einträge als anklickbare Punkte (nur bei Änderung neu bauen)
+  const entries = d.entries || [];
+  const sig = entries.length + '|' + (entries.length ? entries[entries.length-1].time : '');
+  if (sig !== entriesSig) {
+    entriesSig = sig;
+    entriesLayer.clearLayers();
+    entries.forEach(function (e) {
+      L.circleMarker([e.lat, e.lon], {
+        radius: 5, color: '#7a3d00', weight: 1.3,
+        fillColor: '#e8820c', fillOpacity: .95
+      }).addTo(entriesLayer)
+        .bindPopup(entryPopup(e))
+        .bindTooltip(e.time, { direction: 'top' });
+    });
   }
 
   // Beim ersten Datensatz auf alles einpassen

@@ -34,9 +34,11 @@ Python.
 - 🛰️ **AIS-Karte** (Knopf „🗺 AIS-Karte"): dekodiert `!AIVDM`/`!AIVDO`-Sätze
   (Typen 1/2/3/5/18/19/24 inkl. Mehrteiler) und öffnet eine **Leaflet-Karte
   mit OpenFreeMap**. Sie zeigt das **eigene Schiff**, alle **AIS-Ziele mit
-  echter Richtung** (COG/Heading) und den **Track des ausgewählten Törns**.
-  Der Kartenserver läuft nur lokal (`127.0.0.1`); Karten-Kacheln kommen vom
-  CDN (an Bord über Starlink).
+  echter Richtung** (COG/Heading), den **Track des ausgewählten Törns** und die
+  **Logbuch-Einträge als anklickbare Punkte** (Popup mit Zeit, Position, SOG,
+  Wind, Motor, Segel, Anlass, Notiz). Ein Ebenen-Umschalter blendet
+  Logbuch/Track/AIS ein und aus. Der Kartenserver läuft nur lokal
+  (`127.0.0.1`); Karten-Kacheln kommen vom CDN (an Bord über Starlink).
 - ⏱️ **Automatisches Logging** in einstellbarem Intervall (dem aktiven Törn
   zugeordnet, inkl. der Bedingungswerte)
 - ✏️ **Einträge bearbeiten & löschen** — Doppelklick öffnet den Eintrag;

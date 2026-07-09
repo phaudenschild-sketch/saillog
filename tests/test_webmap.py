@@ -7,11 +7,12 @@ import urllib.request
 from masarasi.webmap import MapServer
 
 
-def _make(own=None, targets=None, track=None):
+def _make(own=None, targets=None, track=None, entries=None):
     return MapServer(
         own_provider=lambda: own,
         targets_provider=lambda: list(targets or []),
         track_provider=lambda: track or {"name": "", "points": []},
+        entries_provider=lambda: list(entries or []),
     )
 
 
@@ -34,6 +35,15 @@ class DataAssemblyTest(unittest.TestCase):
         self.assertEqual(data["own"], own)
         self.assertEqual(data["track"]["name"], "Split→Vis")
         self.assertEqual(len(data["track"]["points"]), 2)
+
+    def test_entries_passed_through(self):
+        entries = [
+            {"lat": 43.5, "lon": 16.0, "time": "2026-07-08 10:00", "note": "Ankern"},
+        ]
+        srv = _make(entries=entries)
+        data = srv._data()
+        self.assertEqual(len(data["entries"]), 1)
+        self.assertEqual(data["entries"][0]["note"], "Ankern")
 
 
 class HttpTest(unittest.TestCase):

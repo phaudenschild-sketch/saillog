@@ -62,7 +62,8 @@ nicht mehr an die Oberfläche gebunden.
   ein Auswahlmenü wiederverwendbar); druckbare, zweisprachige HTML-Liste
   (DE/EN) im Browser (`crewlist.py`, Knopf „Crewliste…" in der Törn-Leiste)
 - **AIS-Decoder** (`!AIVDM`/`!AIVDO`, Typen 1/2/3/5/18/19/24, Mehrteiler) +
-  **AIS-Karte** (Leaflet + OpenFreeMap) mit eigenem Schiff, Zielen und Törn-Track
+  **AIS-Karte** (Leaflet + OpenFreeMap) mit eigenem Schiff, Zielen, Törn-Track
+  und **anklickbaren Logbuch-Einträgen** (Popup mit Details); Ebenen-Umschalter
   - Mehrteiler-Zusammensetzung je Funkkanal (Wetherdock vergibt Sequenz-ID neu)
   - **Automatische COG-Korrektur:** erkennt Feeds, die COG fälschlich in ganzen
     Grad statt Zehntelgrad liefern (B&G-Multiplexer an Bord), und rechnet um
