@@ -157,7 +157,14 @@ _PAGE = r"""<!doctype html>
 </head>
 <body>
 <div id="map"></div>
-<div id="info">AIS-Ziele: <span id="cnt">0</span><div id="note" style="color:#b25000"></div></div>
+<div id="info">AIS-Ziele: <span id="cnt">0</span>
+  <div id="note" style="color:#b25000"></div>
+  <div style="margin-top:4px;font-size:11px">Logbuch:
+    <span style="color:#e8820c">●</span> Auto
+    <span style="color:#d61e3c">●</span> Manuell
+    <span style="color:#9aa0a6">●</span> Import
+  </div>
+</div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
@@ -222,6 +229,11 @@ function label(t) {
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function entryColors(t) {                  // Farbe je Eintragstyp
+  if (t === 'manual')  return { stroke: '#7a0012', fill: '#d61e3c' };  // rot
+  if (t === 'tripcon') return { stroke: '#333333', fill: '#9aa0a6' };  // grau (Import)
+  return { stroke: '#7a3d00', fill: '#e8820c' };                       // orange (auto)
 }
 function entryPopup(e) {
   let h = '<b>' + esc(e.time) + '</b>';
@@ -296,9 +308,10 @@ async function refresh() {
     entriesSig = sig;
     entriesLayer.clearLayers();
     entries.forEach(function (e) {
+      const c = entryColors(e.type);
       L.circleMarker([e.lat, e.lon], {
-        radius: 5, color: '#7a3d00', weight: 1.3,
-        fillColor: '#e8820c', fillOpacity: .95
+        radius: 5, color: c.stroke, weight: 1.3,
+        fillColor: c.fill, fillOpacity: .95
       }).addTo(entriesLayer)
         .bindPopup(entryPopup(e))
         .bindTooltip(e.time, { direction: 'top' });
