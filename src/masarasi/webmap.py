@@ -215,15 +215,24 @@ function dir(t) {                       // Ausrichtung des Pfeils
   if (t.heading != null && t.heading < 360) return t.heading;
   return null;
 }
+function mtUrl(mmsi) {
+  return 'https://www.marinetraffic.com/en/ais/details/ships/mmsi:' + mmsi;
+}
 function label(t) {
   const name = t.name || ('MMSI ' + (t.mmsi || '?'));
   const sog = (t.sog != null) ? t.sog.toFixed(1) + ' kn' : '–';
   const cog = (t.cog != null) ? Math.round(t.cog) + '°' : '–';
   const hdg = (t.heading != null && t.heading < 360) ? Math.round(t.heading) + '°' : '–';
-  return '<b>' + name + '</b><br>MMSI ' + (t.mmsi || '?') +
-         '<br>SOG ' + sog +
-         '<br>COG (Kurs) ' + cog +
-         '<br>Heading (Bug) ' + hdg;
+  let h = '<b>' + name + '</b><br>MMSI ' + (t.mmsi || '?') +
+          '<br>SOG ' + sog +
+          '<br>COG (Kurs) ' + cog +
+          '<br>Heading (Bug) ' + hdg;
+  if (t.mmsi) {
+    h += '<br><a href="' + mtUrl(t.mmsi) + '" target="_blank" rel="noopener">' +
+         'MarineTraffic ↗</a>' +
+         '<br><span style="color:#888;font-size:11px">Doppelklick öffnet MarineTraffic</span>';
+  }
+  return h;
 }
 
 function esc(s) {
@@ -268,6 +277,12 @@ async function refresh() {
       m.bindPopup('');
       m.bindTooltip('', { permanent: true, direction: 'right',
                           offset: [10, 0], className: 'lbl' });
+      // Doppelklick öffnet das Ziel bei MarineTraffic (per MMSI)
+      const mmsi = t.mmsi;
+      m.on('dblclick', function (ev) {
+        L.DomEvent.stopPropagation(ev);          // keine Karten-Zoomstufe
+        if (mmsi) window.open(mtUrl(mmsi), '_blank', 'noopener');
+      });
       markers[t.mmsi] = m;
     } else {
       m.setLatLng([t.lat, t.lon]); m.setIcon(icon);
