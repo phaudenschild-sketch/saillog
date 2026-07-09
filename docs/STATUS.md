@@ -57,9 +57,10 @@ nicht mehr an die Oberfläche gebunden.
 - **Einträge bearbeiten & löschen**, ✎-Marker für Bearbeitetes
 - **Zeitzone** (System oder fester UTC-Versatz); intern UTC gespeichert
 - SQLite + Migration; **CSV/GPX-Export** (optional pro Törn)
-- **Crewliste** (Ein-/Ausklarieren): Bootsangaben (in der Konfiguration
-  gespeichert) + Crew je Törn; druckbare, zweisprachige HTML-Liste (DE/EN)
-  im Browser (`crewlist.py`, Knopf „Crewliste…" in der Törn-Leiste)
+- **Crewliste** (Ein-/Ausklarieren): Bootsangaben + Ort/Datum (gespeichert)
+  + Crew je Törn; **Personen-Speicher** (einmal erfasste Personen sind über
+  ein Auswahlmenü wiederverwendbar); druckbare, zweisprachige HTML-Liste
+  (DE/EN) im Browser (`crewlist.py`, Knopf „Crewliste…" in der Törn-Leiste)
 - **AIS-Decoder** (`!AIVDM`/`!AIVDO`, Typen 1/2/3/5/18/19/24, Mehrteiler) +
   **AIS-Karte** (Leaflet + OpenFreeMap) mit eigenem Schiff, Zielen und Törn-Track
   - Mehrteiler-Zusammensetzung je Funkkanal (Wetherdock vergibt Sequenz-ID neu)

@@ -31,7 +31,7 @@ from masarasi.source import (
     STATUS_ERROR,
     NmeaSource,
 )
-from masarasi.storage import CrewMember, LogbookStore, Trip
+from masarasi.storage import CrewMember, LogbookStore, Person, Trip
 from masarasi.webmap import MapServer
 
 _STATUS_TEXT = {
@@ -1109,13 +1109,16 @@ class _CrewListDialog:
         pd = ttk.Frame(frame)
         pd.pack(fill="x", pady=(8, 0))
         ttk.Label(pd, text="Ort (Ausklarierung):").pack(side="left", padx=(4, 3))
-        default_place = ""
-        if trip:
+        # Zuletzt gespeicherten Ort/Datum bevorzugen, sonst Törn-Ort / heute.
+        default_place = getattr(config, "clearance_place", "") or ""
+        if not default_place and trip:
             default_place = trip.end_location or trip.start_location or ""
         self._place = tk.StringVar(value=default_place)
         ttk.Entry(pd, textvariable=self._place, width=22).pack(side="left")
         ttk.Label(pd, text="Datum:").pack(side="left", padx=(12, 3))
-        self._date = tk.StringVar(value=datetime.date.today().strftime("%d.%m.%Y"))
+        default_date = getattr(config, "clearance_date", "") or \
+            datetime.date.today().strftime("%d.%m.%Y")
+        self._date = tk.StringVar(value=default_date)
         ttk.Entry(pd, textvariable=self._date, width=12).pack(side="left")
 
         # Crew-Tabelle
@@ -1184,10 +1187,11 @@ class _CrewListDialog:
             position="Skipper" if count == 0 else "Crew",
             sort_order=count,
         )
-        dlg = _CrewMemberDialog(self.top, member)
+        dlg = _CrewMemberDialog(self.top, member, self._store.all_persons())
         self.top.wait_window(dlg.top)
         if dlg.result is not None:
             self._store.add_crew(dlg.result)
+            self._store.save_person(self._to_person(dlg.result))
             self._refresh()
 
     def _on_edit(self) -> None:
@@ -1197,11 +1201,20 @@ class _CrewListDialog:
         member = self._member(cid)
         if member is None:
             return
-        dlg = _CrewMemberDialog(self.top, member)
+        dlg = _CrewMemberDialog(self.top, member, self._store.all_persons())
         self.top.wait_window(dlg.top)
         if dlg.result is not None:
             self._store.update_crew(dlg.result)
+            self._store.save_person(self._to_person(dlg.result))
             self._refresh()
+
+    @staticmethod
+    def _to_person(m: CrewMember) -> Person:
+        return Person(
+            last_name=m.last_name, first_name=m.first_name,
+            birth_date=m.birth_date, birth_place=m.birth_place,
+            nationality=m.nationality, passport_no=m.passport_no,
+        )
 
     def _on_remove(self) -> None:
         cid = self._selected_id()
@@ -1214,6 +1227,9 @@ class _CrewListDialog:
     def _save_boat(self) -> None:
         for key, var in self._boat_vars.items():
             setattr(self._config, key, var.get().strip())
+        # Ort/Datum der Ausklarierung merken
+        self._config.clearance_place = self._place.get().strip()
+        self._config.clearance_date = self._date.get().strip()
         self._config.save()
 
     def _on_print(self) -> None:
@@ -1251,9 +1267,10 @@ class _CrewMemberDialog:
         ("passport_no", "Reisepass-Nr.:"),
     ]
 
-    def __init__(self, parent, member: CrewMember) -> None:
+    def __init__(self, parent, member: CrewMember, persons=None) -> None:
         self.result: Optional[CrewMember] = None
         self._member = member
+        self._persons = list(persons or [])
         self.top = tk.Toplevel(parent)
         self.top.title("Crew-Mitglied")
         self.top.transient(parent)
@@ -1261,22 +1278,51 @@ class _CrewMemberDialog:
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
+        row0 = 0
+        # Auswahl aus gespeicherten Personen (falls vorhanden)
+        if self._persons:
+            ttk.Label(frame, text="Gespeicherte Person:").grid(
+                row=0, column=0, sticky="e", padx=4, pady=(0, 6)
+            )
+            self._pick = tk.StringVar(value="— neu —")
+            choices = ["— neu —"] + [
+                f"{p.last_name}, {p.first_name}".strip(", ") for p in self._persons
+            ]
+            combo = ttk.Combobox(frame, textvariable=self._pick, width=26,
+                                 state="readonly", values=choices)
+            combo.grid(row=0, column=1, sticky="w", pady=(0, 6))
+            combo.bind("<<ComboboxSelected>>", lambda _e: self._on_pick())
+            row0 = 1
+
         self._vars: Dict[str, tk.StringVar] = {}
         for i, (key, label) in enumerate(self._ROWS):
-            ttk.Label(frame, text=label).grid(row=i, column=0, sticky="e", padx=4, pady=3)
+            r = row0 + i
+            ttk.Label(frame, text=label).grid(row=r, column=0, sticky="e", padx=4, pady=3)
             if key == "position":
                 var = tk.StringVar(value=getattr(member, key) or "Crew")
                 ttk.Combobox(frame, textvariable=var, width=26, state="readonly",
-                             values=["Skipper", "Crew"]).grid(row=i, column=1, sticky="w", pady=3)
+                             values=["Skipper", "Crew"]).grid(row=r, column=1, sticky="w", pady=3)
             else:
                 var = tk.StringVar(value=getattr(member, key) or "")
-                ttk.Entry(frame, textvariable=var, width=28).grid(row=i, column=1, sticky="w", pady=3)
+                ttk.Entry(frame, textvariable=var, width=28).grid(row=r, column=1, sticky="w", pady=3)
             self._vars[key] = var
 
         btns = ttk.Frame(frame)
-        btns.grid(row=len(self._ROWS), column=0, columnspan=2, pady=(10, 0))
+        btns.grid(row=row0 + len(self._ROWS), column=0, columnspan=2, pady=(10, 0))
         ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
         ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _on_pick(self) -> None:
+        """Füllt die Felder aus einer gespeicherten Person (Funktion bleibt)."""
+        choice = self._pick.get()
+        labels = [f"{p.last_name}, {p.first_name}".strip(", ") for p in self._persons]
+        if choice not in labels:
+            return
+        person = self._persons[labels.index(choice)]
+        for key in ("last_name", "first_name", "birth_date", "birth_place",
+                    "nationality", "passport_no"):
+            if key in self._vars:
+                self._vars[key].set(getattr(person, key) or "")
 
     def _on_ok(self) -> None:
         for key, var in self._vars.items():

@@ -164,9 +164,23 @@ class CrewMember:
     sort_order: int = 0           # Reihenfolge (Skipper zuerst)
 
 
+@dataclass
+class Person:
+    """Eine gespeicherte Person (wiederverwendbar über Törns hinweg)."""
+
+    id: Optional[int] = None
+    last_name: str = ""
+    first_name: str = ""
+    birth_date: str = ""
+    birth_place: str = ""
+    nationality: str = ""
+    passport_no: str = ""
+
+
 _COLUMN_NAMES = [f.name for f in fields(LogEntry)]
 _TRIP_COLUMNS = [f.name for f in fields(Trip)]
 _CREW_COLUMNS = [f.name for f in fields(CrewMember)]
+_PERSON_COLUMNS = [f.name for f in fields(Person)]
 
 # Spalten, die bei bestehenden Datenbanken nachgezogen werden (ohne NOT NULL).
 _MIGRATE_LOG = [
@@ -268,6 +282,16 @@ class LogbookStore:
                 "  nationality TEXT DEFAULT '',\n"
                 "  passport_no TEXT DEFAULT '',\n"
                 "  sort_order INTEGER DEFAULT 0\n)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS persons (\n"
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+                "  last_name TEXT DEFAULT '',\n"
+                "  first_name TEXT DEFAULT '',\n"
+                "  birth_date TEXT DEFAULT '',\n"
+                "  birth_place TEXT DEFAULT '',\n"
+                "  nationality TEXT DEFAULT '',\n"
+                "  passport_no TEXT DEFAULT ''\n)"
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_log_timestamp "
@@ -514,6 +538,59 @@ class LogbookStore:
     def _row_to_crew(row: sqlite3.Row) -> CrewMember:
         data = {k: row[k] for k in row.keys() if k in _CREW_COLUMNS}
         return CrewMember(**data)
+
+    # --- Personen (wiederverwendbare Crew-Liste) ----------------------------
+
+    def all_persons(self) -> List[Person]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM persons ORDER BY last_name, first_name"
+            ).fetchall()
+        return [self._row_to_person(r) for r in rows]
+
+    def save_person(self, person: Person) -> Optional[int]:
+        """Legt eine Person an oder aktualisiert sie (für spätere Verwendung).
+
+        Ohne Namen wird nichts gespeichert. Existiert bereits eine Person mit
+        gleichem Namen (und Geburtsdatum), werden deren Angaben aktualisiert,
+        statt eine Dublette anzulegen.
+        """
+        if not (person.last_name.strip() or person.first_name.strip()):
+            return None
+        cols = [c for c in _PERSON_COLUMNS if c != "id"]
+        with self._connect() as conn:
+            pid = person.id
+            if pid is None:
+                row = conn.execute(
+                    "SELECT id FROM persons WHERE "
+                    "lower(last_name) = lower(?) AND lower(first_name) = lower(?) "
+                    "AND birth_date = ?",
+                    (person.last_name.strip(), person.first_name.strip(),
+                     person.birth_date.strip()),
+                ).fetchone()
+                pid = row["id"] if row else None
+            if pid is None:
+                placeholders = ", ".join("?" for _ in cols)
+                cursor = conn.execute(
+                    f"INSERT INTO persons ({', '.join(cols)}) VALUES ({placeholders})",
+                    [getattr(person, c) for c in cols],
+                )
+                return cursor.lastrowid
+            assignments = ", ".join(f"{c} = ?" for c in cols)
+            conn.execute(
+                f"UPDATE persons SET {assignments} WHERE id = ?",
+                [getattr(person, c) for c in cols] + [pid],
+            )
+            return pid
+
+    def delete_person(self, person_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM persons WHERE id = ?", (person_id,))
+
+    @staticmethod
+    def _row_to_person(row: sqlite3.Row) -> Person:
+        data = {k: row[k] for k in row.keys() if k in _PERSON_COLUMNS}
+        return Person(**data)
 
     # --- Export -------------------------------------------------------------
 

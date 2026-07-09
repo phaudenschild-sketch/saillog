@@ -56,6 +56,10 @@ class Config:
     registration_no: str = ""      # Registriernummer / Registration No.
     ship_length: str = ""          # Länge über alles / Length overall
 
+    # Zuletzt verwendeter Ort/Datum für die Crewliste (werden gemerkt)
+    clearance_place: str = ""
+    clearance_date: str = ""
+
     # Kartenplotter-Bildschirmausschnitt (GoFree): [links, oben, rechts, unten]
     plotter_region: Optional[list] = None
     plotter_interval_seconds: int = 15

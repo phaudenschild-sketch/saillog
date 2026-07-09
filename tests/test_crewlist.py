@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from masarasi import crewlist
-from masarasi.storage import CrewMember, LogbookStore, Trip
+from masarasi.storage import CrewMember, LogbookStore, Person, Trip
 
 
 class CrewStoreTest(unittest.TestCase):
@@ -46,6 +46,43 @@ class CrewStoreTest(unittest.TestCase):
         self.assertEqual(len(self.store.crew_for_trip(t1)), 1)
         self.assertEqual(len(self.store.crew_for_trip(t2)), 0)
         self.assertEqual(len(self.store.crew_for_trip(None)), 0)
+
+
+class PersonRosterTest(unittest.TestCase):
+    def setUp(self):
+        fd, self._path = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(fd)
+        self.store = LogbookStore(self._path)
+
+    def tearDown(self):
+        os.unlink(self._path)
+
+    def test_save_and_list(self):
+        self.store.save_person(Person(last_name="Meyer", first_name="Anna",
+                                      passport_no="A1"))
+        self.store.save_person(Person(last_name="Aebi", first_name="Urs"))
+        persons = self.store.all_persons()
+        self.assertEqual([p.last_name for p in persons], ["Aebi", "Meyer"])  # sortiert
+
+    def test_save_person_upserts_no_duplicate(self):
+        self.store.save_person(Person(last_name="Meyer", first_name="Anna",
+                                      passport_no="A1"))
+        # gleicher Name -> aktualisiert, keine Dublette
+        self.store.save_person(Person(last_name="meyer", first_name="anna",
+                                      passport_no="A2", nationality="CH"))
+        persons = self.store.all_persons()
+        self.assertEqual(len(persons), 1)
+        self.assertEqual(persons[0].passport_no, "A2")
+        self.assertEqual(persons[0].nationality, "CH")
+
+    def test_empty_person_not_saved(self):
+        self.assertIsNone(self.store.save_person(Person()))
+        self.assertEqual(self.store.all_persons(), [])
+
+    def test_delete_person(self):
+        pid = self.store.save_person(Person(last_name="Weg", first_name="Da"))
+        self.store.delete_person(pid)
+        self.assertEqual(self.store.all_persons(), [])
 
 
 class CrewListHtmlTest(unittest.TestCase):
