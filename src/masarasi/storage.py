@@ -177,10 +177,25 @@ class Person:
     passport_no: str = ""
 
 
+@dataclass
+class FuelEntry:
+    """Ein Tank-Vorgang (für Verbrauchsberechnung l/h)."""
+
+    id: Optional[int] = None
+    trip_id: Optional[int] = None
+    timestamp: str = ""              # UTC ISO-8601
+    liters: Optional[float] = None   # getankte Menge
+    location: str = ""               # Tankort
+    full_tank: int = 0               # 1 = voll getankt (Bezugspunkt)
+    engine_hours: Optional[float] = None  # Motorstunden zum Zeitpunkt (aus NMEA)
+    note: str = ""
+
+
 _COLUMN_NAMES = [f.name for f in fields(LogEntry)]
 _TRIP_COLUMNS = [f.name for f in fields(Trip)]
 _CREW_COLUMNS = [f.name for f in fields(CrewMember)]
 _PERSON_COLUMNS = [f.name for f in fields(Person)]
+_FUEL_COLUMNS = [f.name for f in fields(FuelEntry)]
 
 # Spalten, die bei bestehenden Datenbanken nachgezogen werden (ohne NOT NULL).
 _MIGRATE_LOG = [
@@ -292,6 +307,17 @@ class LogbookStore:
                 "  birth_place TEXT DEFAULT '',\n"
                 "  nationality TEXT DEFAULT '',\n"
                 "  passport_no TEXT DEFAULT ''\n)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS fuel_entries (\n"
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+                "  trip_id INTEGER,\n"
+                "  timestamp TEXT NOT NULL,\n"
+                "  liters REAL,\n"
+                "  location TEXT DEFAULT '',\n"
+                "  full_tank INTEGER DEFAULT 0,\n"
+                "  engine_hours REAL,\n"
+                "  note TEXT DEFAULT ''\n)"
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_log_timestamp "
@@ -591,6 +617,45 @@ class LogbookStore:
     def _row_to_person(row: sqlite3.Row) -> Person:
         data = {k: row[k] for k in row.keys() if k in _PERSON_COLUMNS}
         return Person(**data)
+
+    # --- Tanken (Kraftstoff) ------------------------------------------------
+
+    def add_fuel(self, entry: FuelEntry) -> int:
+        cols = [c for c in _FUEL_COLUMNS if c != "id"]
+        placeholders = ", ".join("?" for _ in cols)
+        with self._connect() as conn:
+            cursor = conn.execute(
+                f"INSERT INTO fuel_entries ({', '.join(cols)}) VALUES ({placeholders})",
+                [getattr(entry, c) for c in cols],
+            )
+            entry.id = cursor.lastrowid
+        return entry.id
+
+    def update_fuel(self, entry: FuelEntry) -> None:
+        cols = [c for c in _FUEL_COLUMNS if c != "id"]
+        assignments = ", ".join(f"{c} = ?" for c in cols)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE fuel_entries SET {assignments} WHERE id = ?",
+                [getattr(entry, c) for c in cols] + [entry.id],
+            )
+
+    def delete_fuel(self, fuel_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM fuel_entries WHERE id = ?", (fuel_id,))
+
+    def all_fuel(self, newest_first: bool = False) -> List[FuelEntry]:
+        order = "DESC" if newest_first else "ASC"
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM fuel_entries ORDER BY timestamp {order}, id {order}"
+            ).fetchall()
+        return [self._row_to_fuel(r) for r in rows]
+
+    @staticmethod
+    def _row_to_fuel(row: sqlite3.Row) -> FuelEntry:
+        data = {k: row[k] for k in row.keys() if k in _FUEL_COLUMNS}
+        return FuelEntry(**data)
 
     # --- Export -------------------------------------------------------------
 

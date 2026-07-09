@@ -27,6 +27,10 @@ Python.
   bei Törnbeginn/-abschluss automatisch vorbelegt
 - 🗺️ **Törns** — Einträge gruppieren; Törn mit Startort, Wasser-/Diesel­menge,
   Motorenstunden und Log-Stand beginnen und am Ende abschließen
+- ⛽ **Tanken & Verbrauch** (Knopf „⛽ Tanken…"): festhalten, **wann/wieviel/wo**
+  getankt wurde, mit Schalter **„voll getankt"** und Motorstunden (aus dem
+  NMEA-Netz vorbelegt). masarasi berechnet den **Verbrauch in l/h** zwischen
+  zwei Voll-Tankungen — verlässlich trotz schwankender Tankanzeige
 - 🧾 **Crewliste** (Knopf „Crewliste…"): Bootsangaben (einmal gespeichert) und
   Crew je Törn erfassen und eine **zweisprachige, druckbare Crewliste (DE/EN)**
   fürs Ein-/Ausklarieren erzeugen — öffnet im Browser, dort drucken oder als
@@ -246,6 +250,7 @@ masarasi/
 │   ├── ais.py                  ← AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
 │   ├── webmap.py               ← lokaler Kartenserver (Leaflet + OpenFreeMap)
 │   ├── crewlist.py             ← druckbare Crewliste (HTML, DE/EN)
+│   ├── fuel.py                 ← Verbrauchsberechnung (l/h) aus Tankungen
 │   ├── source.py               ← TCP/UDP/seriell-Client (Thread, AIS-Routing)
 │   ├── livedata.py             ← Thread-sicherer Messwert-Speicher
 │   ├── logbook.py              ← Auto-/Manuell-Logging-Dienst

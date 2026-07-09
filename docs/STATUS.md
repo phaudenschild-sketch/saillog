@@ -57,6 +57,10 @@ nicht mehr an die Oberfläche gebunden.
 - **Einträge bearbeiten & löschen**, ✎-Marker für Bearbeitetes
 - **Zeitzone** (System oder fester UTC-Versatz); intern UTC gespeichert
 - SQLite + Migration; **CSV/GPX-Export** (optional pro Törn)
+- **Tanken & Verbrauch** (Knopf „⛽ Tanken…"): Tankungen mit Zeit, Liter, Ort,
+  „voll getankt" und Motorstunden (aus NMEA vorbelegt); Verbrauch in l/h wird
+  „voll-zu-voll" berechnet — unabhängig von der schwankenden Tankanzeige
+  (`fuel.py`)
 - **Crewliste** (Ein-/Ausklarieren): Bootsangaben + Ort/Datum (gespeichert)
   + Crew je Törn; **Personen-Speicher** (einmal erfasste Personen sind über
   ein Auswahlmenü wiederverwendbar); druckbare, zweisprachige HTML-Liste
@@ -104,6 +108,7 @@ src/masarasi/
   webmap.py      lokaler Kartenserver (Leaflet + OpenFreeMap)
   crewlist.py    druckbare Crewliste (HTML, DE/EN)
   geo.py         Distanzen (Haversine) — Strecke im Törn aus der GPS-Spur
+  fuel.py        Verbrauchsberechnung (l/h) aus den Tank-Einträgen
   livedata.py    thread-sicherer Messwert-Speicher
   logbook.py     Auto-/Manuell-Logging, Bedingungen, Törns
   storage.py     SQLite: LogEntry/Trip, Migration, CSV/GPX, Bilder

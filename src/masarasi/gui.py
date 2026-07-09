@@ -10,7 +10,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
-from masarasi import crewlist, geo, timeutil
+from masarasi import crewlist, fuel, geo, timeutil
 from masarasi.ais import AisDecoder, AisTargets
 from masarasi.config import Config
 from masarasi.fields import (
@@ -31,7 +31,7 @@ from masarasi.source import (
     STATUS_ERROR,
     NmeaSource,
 )
-from masarasi.storage import CrewMember, LogbookStore, Person, Trip
+from masarasi.storage import CrewMember, FuelEntry, LogbookStore, Person, Trip
 from masarasi.webmap import MapServer
 
 _STATUS_TEXT = {
@@ -123,10 +123,13 @@ class Application:
         ttk.Button(trip_bar, text="Crewliste…", command=self._on_crewlist).grid(
             row=0, column=4, padx=4
         )
+        ttk.Button(trip_bar, text="⛽ Tanken…", command=self._on_fuel).grid(
+            row=0, column=5, padx=4
+        )
         self._trip_dist_label = ttk.Label(
             trip_bar, text="", foreground="#1a5a8a", font=("TkDefaultFont", 10, "bold")
         )
-        self._trip_dist_label.grid(row=0, column=5, padx=12)
+        self._trip_dist_label.grid(row=0, column=6, padx=12)
 
         # Hauptzeile: Messwerte | Bedingungen nebeneinander
         main_row = ttk.Frame(self._root)
@@ -652,6 +655,15 @@ class Application:
         if tid is not None:
             trip = self._store.get_trip(tid)
         dialog = _CrewListDialog(self._root, self._config, self._store, trip)
+        self._root.wait_window(dialog.top)
+
+    # --- Tanken -------------------------------------------------------------
+
+    def _on_fuel(self) -> None:
+        dialog = _FuelDialog(
+            self._root, self._store, self._live, self._tz_offset(),
+            self._logbook.current_trip_id,
+        )
         self._root.wait_window(dialog.top)
 
     # --- manuelle Einträge --------------------------------------------------
@@ -1373,6 +1385,191 @@ class _CrewMemberDialog:
         for key, var in self._vars.items():
             setattr(self._member, key, var.get().strip())
         self.result = self._member
+        self.top.destroy()
+
+
+class _FuelDialog:
+    """Tank-Logbuch mit Verbrauchsberechnung (l/h) über „voll getankt"."""
+
+    def __init__(self, parent, store, live, offset, trip_id) -> None:
+        self._store = store
+        self._live = live
+        self._offset = offset
+        self._trip_id = trip_id
+        self.top = tk.Toplevel(parent)
+        self.top.title("Tanken & Verbrauch")
+        self.top.transient(parent)
+        self.top.grab_set()
+        self.top.geometry("660x470")
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        self._summary = ttk.Label(
+            frame, text="", font=("TkDefaultFont", 11, "bold"), foreground="#1a5a8a"
+        )
+        self._summary.pack(anchor="w")
+        ttk.Label(
+            frame, foreground="#777",
+            text="Verbrauch = getankte Menge zwischen zwei „voll getankt\"-Einträgen, "
+                 "geteilt durch die Motorstunden dazwischen.",
+        ).pack(anchor="w", pady=(0, 8))
+
+        cols = ("time", "liters", "loc", "full", "hours")
+        headers = {"time": "Zeit", "liters": "Liter", "loc": "Ort",
+                   "full": "Voll", "hours": "Motorstd."}
+        widths = {"time": 150, "liters": 70, "loc": 160, "full": 46, "hours": 90}
+        self._tree = ttk.Treeview(frame, columns=cols, show="headings", height=11)
+        for c in cols:
+            self._tree.heading(c, text=headers[c])
+            self._tree.column(c, width=widths[c],
+                              anchor="e" if c in ("liters", "hours") else "w")
+        self._tree.pack(fill="both", expand=True, pady=6)
+        self._tree.bind("<Double-1>", lambda _e: self._on_edit())
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill="x")
+        ttk.Button(btns, text="Tankung hinzufügen…", command=self._on_add).pack(side="left")
+        ttk.Button(btns, text="Bearbeiten…", command=self._on_edit).pack(side="left", padx=4)
+        ttk.Button(btns, text="Entfernen", command=self._on_remove).pack(side="left")
+        ttk.Button(btns, text="Schließen", command=self.top.destroy).pack(side="right")
+
+        self._refresh()
+
+    def _refresh(self) -> None:
+        for item in self._tree.get_children():
+            self._tree.delete(item)
+        entries = self._store.all_fuel(newest_first=False)
+        for e in reversed(entries):  # neueste oben
+            self._tree.insert(
+                "", "end", iid=str(e.id),
+                values=(
+                    timeutil.to_display(e.timestamp, self._offset),
+                    "" if e.liters is None else f"{e.liters:.1f}",
+                    e.location,
+                    "✓" if e.full_tank else "",
+                    "" if e.engine_hours is None else f"{e.engine_hours:.1f}",
+                ),
+            )
+        self._show_summary(fuel.consumption_stats(entries))
+
+    def _show_summary(self, stats) -> None:
+        if stats["last_rate"] is None:
+            self._summary.config(
+                text="Verbrauch: noch nicht berechenbar — mind. zwei „voll getankt\"-"
+                     "Einträge mit Motorstunden nötig."
+            )
+            return
+        txt = f"Verbrauch (letztes Intervall): {stats['last_rate']:.1f} l/h"
+        if stats["avg_rate"] is not None:
+            txt += (f"      Ø {stats['avg_rate']:.1f} l/h "
+                    f"({stats['total_liters']:.0f} l / {stats['total_hours']:.1f} h)")
+        self._summary.config(text=txt)
+
+    def _selected(self) -> Optional[int]:
+        sel = self._tree.selection()
+        return int(sel[0]) if sel else None
+
+    def _entry(self, fid: int):
+        return next((e for e in self._store.all_fuel() if e.id == fid), None)
+
+    def _on_add(self) -> None:
+        entry = FuelEntry(
+            trip_id=self._trip_id,
+            timestamp=utc_now_iso(),
+            full_tank=1,
+            engine_hours=self._live.snapshot().get("engine_hours"),
+        )
+        dlg = _FuelEntryDialog(self.top, entry, self._offset)
+        self.top.wait_window(dlg.top)
+        if dlg.result is not None:
+            self._store.add_fuel(dlg.result)
+            self._refresh()
+
+    def _on_edit(self) -> None:
+        fid = self._selected()
+        if fid is None:
+            return
+        entry = self._entry(fid)
+        if entry is None:
+            return
+        dlg = _FuelEntryDialog(self.top, entry, self._offset)
+        self.top.wait_window(dlg.top)
+        if dlg.result is not None:
+            self._store.update_fuel(dlg.result)
+            self._refresh()
+
+    def _on_remove(self) -> None:
+        fid = self._selected()
+        if fid is None:
+            return
+        if messagebox.askyesno("Entfernen", "Tankung entfernen?"):
+            self._store.delete_fuel(fid)
+            self._refresh()
+
+
+class _FuelEntryDialog:
+    """Dialog für einen einzelnen Tank-Vorgang."""
+
+    def __init__(self, parent, entry: FuelEntry, offset: float) -> None:
+        self.result: Optional[FuelEntry] = None
+        self._entry = entry
+        self._offset = offset
+        self.top = tk.Toplevel(parent)
+        self.top.title("Tankung")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        def lab(text, r):
+            ttk.Label(frame, text=text).grid(row=r, column=0, sticky="e", padx=4, pady=3)
+
+        lab("Zeit (lokal):", 0)
+        ts = timeutil.to_display(entry.timestamp, offset) if entry.timestamp else ""
+        self._ts = tk.StringVar(value=ts)
+        ttk.Entry(frame, textvariable=self._ts, width=24).grid(row=0, column=1, sticky="w")
+
+        lab("Liter:", 1)
+        self._liters = tk.StringVar(
+            value="" if entry.liters is None else f"{entry.liters:g}")
+        ttk.Entry(frame, textvariable=self._liters, width=12).grid(row=1, column=1, sticky="w")
+
+        lab("Ort:", 2)
+        self._loc = tk.StringVar(value=entry.location)
+        ttk.Entry(frame, textvariable=self._loc, width=24).grid(row=2, column=1, sticky="w")
+
+        lab("Motorstunden:", 3)
+        self._hours = tk.StringVar(
+            value="" if entry.engine_hours is None else f"{entry.engine_hours:g}")
+        ttk.Entry(frame, textvariable=self._hours, width=12).grid(row=3, column=1, sticky="w")
+        ttk.Label(frame, text="(aus NMEA vorbelegt)", foreground="#888").grid(
+            row=3, column=2, sticky="w")
+
+        self._full = tk.BooleanVar(value=bool(entry.full_tank))
+        ttk.Checkbutton(frame, text="voll getankt", variable=self._full).grid(
+            row=4, column=1, sticky="w", pady=3)
+
+        lab("Notiz:", 5)
+        self._note = tk.StringVar(value=entry.note)
+        ttk.Entry(frame, textvariable=self._note, width=30).grid(
+            row=5, column=1, columnspan=2, sticky="w")
+
+        btns = ttk.Frame(frame)
+        btns.grid(row=6, column=0, columnspan=3, pady=(10, 0))
+        ttk.Button(btns, text="Speichern", command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        e = self._entry
+        new_ts = timeutil.from_display(self._ts.get().strip(), self._offset)
+        if new_ts:
+            e.timestamp = new_ts
+        e.liters = _parse_float(self._liters.get())
+        e.location = self._loc.get().strip()
+        e.engine_hours = _parse_float(self._hours.get())
+        e.full_tank = 1 if self._full.get() else 0
+        e.note = self._note.get().strip()
+        self.result = e
         self.top.destroy()
 
 
