@@ -10,7 +10,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
-from masarasi import crewlist, timeutil
+from masarasi import crewlist, geo, timeutil
 from masarasi.ais import AisDecoder, AisTargets
 from masarasi.config import Config
 from masarasi.fields import (
@@ -508,17 +508,21 @@ class Application:
         self._update_trip_distance(snapshot)
 
     def _update_trip_distance(self, snapshot) -> None:
-        """Strecke im aktiven Törn = Gesamtlog − Log-Stand bei Törnbeginn."""
-        start = getattr(self, "_active_trip_start_log", None)
-        total = snapshot.get("log_total_nm")
+        """Strecke im aktiven Törn aus den geloggten GPS-Positionen.
+
+        Robust gegenüber den (uneinheitlichen) Instrumenten-Logständen: die
+        Strecke ist die Summe der Distanzen zwischen den geloggten Positionen,
+        plus dem aktuellen Teilstück seit dem letzten Eintrag.
+        """
         if self._logbook.current_trip_id is None:
             self._trip_dist_label.config(text="")
-        elif start is None:
-            self._trip_dist_label.config(text="Strecke Törn: — (kein Start-Log)")
-        elif total is None:
-            self._trip_dist_label.config(text="Strecke Törn: … (kein Log-Signal)")
-        else:
-            self._trip_dist_label.config(text=f"Strecke Törn: {max(0.0, total - start):.1f} NM")
+            return
+        dist = getattr(self, "_trip_track_nm", 0.0)
+        last = getattr(self, "_trip_last_pos", None)
+        lat, lon = snapshot.get("lat"), snapshot.get("lon")
+        if last is not None and lat is not None and lon is not None:
+            dist += geo.haversine_nm(last[0], last[1], lat, lon)
+        self._trip_dist_label.config(text=f"Strecke Törn: {dist:.1f} NM")
 
     # --- Auto-Logging -------------------------------------------------------
 
@@ -574,8 +578,6 @@ class Application:
         self._close_trip_btn.config(
             state="normal" if trip and trip.status == "open" else "disabled"
         )
-        # Log-Stand bei Törnbeginn cachen (für die Strecke im Törn)
-        self._active_trip_start_log = trip.start_log_nm if trip else None
 
     def _on_trip_selected(self) -> None:
         self._logbook.current_trip_id = self._trip_choices.get(self._trip_var.get())
@@ -676,10 +678,12 @@ class Application:
         trip_id = self._logbook.current_trip_id
         offset = self._tz_offset()
         self._tree.heading("time", text=f"Zeit ({timeutil.label(self._config.timezone_mode, self._config.timezone_offset_hours)})")
-        for entry in self._store.all(limit=5000, newest_first=True, trip_id=trip_id):
+        positions = []  # (lat, lon) der Törn-Einträge — für die Strecke
+        for entry in self._store.all(limit=20000, newest_first=True, trip_id=trip_id):
             pos = ""
             if entry.lat is not None and entry.lon is not None:
                 pos = f"{entry.lat:.4f}, {entry.lon:.4f}"
+                positions.append((entry.lat, entry.lon))
             wind = ""
             if entry.aws_kn is not None:
                 wind = f"{entry.aws_kn:.0f}kn @ {entry.awa_deg or 0:.0f}°"
@@ -707,6 +711,12 @@ class Application:
                     entry.note,
                 ),
             )
+        # Strecke im Törn aus der GPS-Spur (Einträge kommen neueste zuerst ->
+        # für die aufsummierte Distanz chronologisch umdrehen).
+        positions.reverse()
+        self._trip_track_nm = geo.track_distance_nm(positions) if trip_id else 0.0
+        self._trip_last_pos = positions[-1] if positions else None
+
         total = self._store.count(trip_id=trip_id)
         scope = "im Törn" if trip_id else "gesamt"
         self._count_label.config(text=f"{total} Einträge ({scope})")

@@ -102,6 +102,7 @@ src/masarasi/
   ais.py         AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
   webmap.py      lokaler Kartenserver (Leaflet + OpenFreeMap)
   crewlist.py    druckbare Crewliste (HTML, DE/EN)
+  geo.py         Distanzen (Haversine) — Strecke im Törn aus der GPS-Spur
   livedata.py    thread-sicherer Messwert-Speicher
   logbook.py     Auto-/Manuell-Logging, Bedingungen, Törns
   storage.py     SQLite: LogEntry/Trip, Migration, CSV/GPX, Bilder
