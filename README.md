@@ -30,7 +30,9 @@ Python.
 - ⛽ **Tanken & Verbrauch** (Knopf „⛽ Tanken…"): festhalten, **wann/wieviel/wo**
   getankt wurde, mit Schalter **„voll getankt"** und Motorstunden (aus dem
   NMEA-Netz vorbelegt). masarasi berechnet den **Verbrauch in l/h** zwischen
-  zwei Voll-Tankungen — verlässlich trotz schwankender Tankanzeige
+  zwei Voll-Tankungen — verlässlich trotz schwankender Tankanzeige — und zeigt
+  aus der **Tankgröße** (Standard 160 L, einstellbar) den geschätzten
+  **Restfüllstand** und die **Reichweite** (Rest-Motorstunden)
 - 🧾 **Crewliste** (Knopf „Crewliste…"): Bootsangaben (einmal gespeichert) und
   Crew je Törn erfassen und eine **zweisprachige, druckbare Crewliste (DE/EN)**
   fürs Ein-/Ausklarieren erzeugen — öffnet im Browser, dort drucken oder als

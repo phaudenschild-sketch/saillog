@@ -60,6 +60,9 @@ class Config:
     clearance_place: str = ""
     clearance_date: str = ""
 
+    # Dieseltank-Größe in Litern (für Restfüllstand-/Reichweitenschätzung)
+    tank_capacity_l: float = 160.0
+
     # Kartenplotter-Bildschirmausschnitt (GoFree): [links, oben, rechts, unten]
     plotter_region: Optional[list] = None
     plotter_interval_seconds: int = 15

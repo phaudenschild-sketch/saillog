@@ -59,8 +59,9 @@ nicht mehr an die Oberfläche gebunden.
 - SQLite + Migration; **CSV/GPX-Export** (optional pro Törn)
 - **Tanken & Verbrauch** (Knopf „⛽ Tanken…"): Tankungen mit Zeit, Liter, Ort,
   „voll getankt" und Motorstunden (aus NMEA vorbelegt); Verbrauch in l/h wird
-  „voll-zu-voll" berechnet — unabhängig von der schwankenden Tankanzeige
-  (`fuel.py`)
+  „voll-zu-voll" berechnet — unabhängig von der schwankenden Tankanzeige.
+  **Restfüllstand + Reichweite** (Rest-Motorstunden) aus Tankgröße (Standard
+  160 L, einstellbar) und aktuellen Motorstunden (`fuel.py`)
 - **Crewliste** (Ein-/Ausklarieren): Bootsangaben + Ort/Datum (gespeichert)
   + Crew je Törn; **Personen-Speicher** (einmal erfasste Personen sind über
   ein Auswahlmenü wiederverwendbar); druckbare, zweisprachige HTML-Liste

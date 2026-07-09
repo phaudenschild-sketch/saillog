@@ -662,7 +662,7 @@ class Application:
     def _on_fuel(self) -> None:
         dialog = _FuelDialog(
             self._root, self._store, self._live, self._tz_offset(),
-            self._logbook.current_trip_id,
+            self._logbook.current_trip_id, self._config,
         )
         self._root.wait_window(dialog.top)
 
@@ -1391,16 +1391,17 @@ class _CrewMemberDialog:
 class _FuelDialog:
     """Tank-Logbuch mit Verbrauchsberechnung (l/h) über „voll getankt"."""
 
-    def __init__(self, parent, store, live, offset, trip_id) -> None:
+    def __init__(self, parent, store, live, offset, trip_id, config) -> None:
         self._store = store
         self._live = live
         self._offset = offset
         self._trip_id = trip_id
+        self._config = config
         self.top = tk.Toplevel(parent)
         self.top.title("Tanken & Verbrauch")
         self.top.transient(parent)
         self.top.grab_set()
-        self.top.geometry("660x470")
+        self.top.geometry("680x510")
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
@@ -1408,11 +1409,26 @@ class _FuelDialog:
             frame, text="", font=("TkDefaultFont", 11, "bold"), foreground="#1a5a8a"
         )
         self._summary.pack(anchor="w")
+        self._remaining = ttk.Label(
+            frame, text="", font=("TkDefaultFont", 11, "bold"), foreground="#1a7a3a"
+        )
+        self._remaining.pack(anchor="w", pady=(2, 0))
         ttk.Label(
             frame, foreground="#777",
             text="Verbrauch = getankte Menge zwischen zwei „voll getankt\"-Einträgen, "
                  "geteilt durch die Motorstunden dazwischen.",
-        ).pack(anchor="w", pady=(0, 8))
+        ).pack(anchor="w", pady=(2, 6))
+
+        # Tankgröße (wird gespeichert)
+        tankrow = ttk.Frame(frame)
+        tankrow.pack(fill="x", pady=(0, 6))
+        ttk.Label(tankrow, text="Tankgröße (L):").pack(side="left")
+        self._tank = tk.StringVar(
+            value="" if not config.tank_capacity_l else f"{config.tank_capacity_l:g}")
+        ent = ttk.Entry(tankrow, textvariable=self._tank, width=8)
+        ent.pack(side="left", padx=(4, 0))
+        ent.bind("<FocusOut>", lambda _e: self._save_tank())
+        ent.bind("<Return>", lambda _e: self._save_tank())
 
         cols = ("time", "liters", "loc", "full", "hours")
         headers = {"time": "Zeit", "liters": "Liter", "loc": "Ort",
@@ -1450,7 +1466,14 @@ class _FuelDialog:
                     "" if e.engine_hours is None else f"{e.engine_hours:.1f}",
                 ),
             )
-        self._show_summary(fuel.consumption_stats(entries))
+        stats = fuel.consumption_stats(entries)
+        self._show_summary(stats)
+        self._show_remaining(entries, stats)
+
+    def _save_tank(self) -> None:
+        self._config.tank_capacity_l = _parse_float(self._tank.get()) or 0.0
+        self._config.save()
+        self._refresh()
 
     def _show_summary(self, stats) -> None:
         if stats["last_rate"] is None:
@@ -1464,6 +1487,23 @@ class _FuelDialog:
             txt += (f"      Ø {stats['avg_rate']:.1f} l/h "
                     f"({stats['total_liters']:.0f} l / {stats['total_hours']:.1f} h)")
         self._summary.config(text=txt)
+
+    def _show_remaining(self, entries, stats) -> None:
+        rate = stats["avg_rate"] if stats["avg_rate"] is not None else stats["last_rate"]
+        capacity = _parse_float(self._tank.get())
+        hours = self._live.snapshot().get("engine_hours")
+        est = fuel.remaining_estimate(entries, capacity, hours, rate)
+        if est is None:
+            hint = ""
+            if capacity and rate and hours is None:
+                hint = " (keine Motorstunden aus dem NMEA-Netz)"
+            self._remaining.config(text="Restfüllstand: —" + hint)
+            return
+        self._remaining.config(
+            text=f"Restfüllstand (geschätzt): {est['remaining_l']:.0f} L von "
+                 f"{est['capacity_l']:.0f} L  ·  Reichweite ~{est['remaining_hours']:.1f} h "
+                 f"Motorlaufzeit"
+        )
 
     def _selected(self) -> Optional[int]:
         sel = self._tree.selection()

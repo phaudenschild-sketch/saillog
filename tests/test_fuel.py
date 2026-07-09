@@ -68,6 +68,43 @@ class ConsumptionTest(unittest.TestCase):
         self.assertIsNone(s["last_rate"])
 
 
+class RemainingEstimateTest(unittest.TestCase):
+    def test_basic_remaining(self):
+        # voll@100h, 160 L Tank, 6 l/h, jetzt 110h -> 60 l weg -> 100 l Rest
+        entries = [_f("2026-07-01T00:00:00Z", 160.0, 1, 100.0)]
+        est = fuel.remaining_estimate(entries, 160.0, 110.0, 6.0)
+        self.assertAlmostEqual(est["remaining_l"], 100.0, places=3)
+        self.assertAlmostEqual(est["remaining_hours"], 100.0 / 6.0, places=3)
+
+    def test_partial_refuel_after_full_adds_back(self):
+        entries = [
+            _f("2026-07-01T00:00:00Z", 160.0, 1, 100.0),
+            _f("2026-07-02T00:00:00Z", 30.0, 0, 110.0),   # Teiltankung danach
+        ]
+        # jetzt 120h, rate 5 -> verbraucht 100 l, +30 nachgetankt -> 90 l Rest
+        est = fuel.remaining_estimate(entries, 160.0, 120.0, 5.0)
+        self.assertAlmostEqual(est["remaining_l"], 90.0, places=3)
+
+    def test_capped_at_capacity(self):
+        entries = [
+            _f("2026-07-01T00:00:00Z", 160.0, 1, 100.0),
+            _f("2026-07-02T00:00:00Z", 200.0, 0, 101.0),  # unrealistisch viel
+        ]
+        est = fuel.remaining_estimate(entries, 160.0, 101.0, 5.0)
+        self.assertLessEqual(est["remaining_l"], 160.0)
+
+    def test_missing_inputs_return_none(self):
+        e = [_f("2026-07-01T00:00:00Z", 160.0, 1, 100.0)]
+        self.assertIsNone(fuel.remaining_estimate(e, None, 110.0, 6.0))     # keine Kapazität
+        self.assertIsNone(fuel.remaining_estimate(e, 160.0, None, 6.0))     # keine Motorstunden
+        self.assertIsNone(fuel.remaining_estimate(e, 160.0, 110.0, None))   # keine Rate
+        self.assertIsNone(fuel.remaining_estimate([], 160.0, 110.0, 6.0))   # keine Tankung
+
+    def test_negative_hours_since_returns_none(self):
+        e = [_f("2026-07-01T00:00:00Z", 160.0, 1, 120.0)]
+        self.assertIsNone(fuel.remaining_estimate(e, 160.0, 110.0, 6.0))  # jetzt < voll
+
+
 class FuelStoreTest(unittest.TestCase):
     def setUp(self):
         fd, self._path = tempfile.mkstemp(suffix=".sqlite3")

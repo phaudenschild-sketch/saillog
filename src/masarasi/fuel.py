@@ -62,3 +62,42 @@ def consumption_stats(entries: List) -> Dict:
         "total_liters": total_liters,
         "total_hours": total_hours,
     }
+
+
+def remaining_estimate(
+    entries: List,
+    capacity_l: Optional[float],
+    current_engine_hours: Optional[float],
+    rate: Optional[float],
+) -> Optional[Dict]:
+    """Schätzt den Restfüllstand und die Rest-Motorlaufzeit.
+
+    Ab der letzten „voll getankt"-Tankung (Tank = Kapazität bei deren
+    Motorstunden) wird mit `rate` (l/h) verbraucht; spätere Teiltankungen
+    kommen hinzu. Braucht Kapazität, aktuelle Motorstunden und eine
+    Verbrauchsrate. Gibt None zurück, wenn etwas fehlt.
+    """
+    if not capacity_l or capacity_l <= 0 or not rate or rate <= 0:
+        return None
+    if current_engine_hours is None:
+        return None
+    fills = sorted(entries, key=lambda e: (e.timestamp or "", e.id or 0))
+    fulls = [e for e in fills if e.full_tank and e.engine_hours is not None]
+    if not fulls:
+        return None
+    ref = fulls[-1]
+    hours_since = current_engine_hours - (ref.engine_hours or 0.0)
+    if hours_since < 0:
+        return None  # Motorstunden kleiner als beim letzten Volltanken (Reset?)
+    consumed = rate * hours_since
+    partial_after = sum(
+        (e.liters or 0.0) for e in fills if e.timestamp > ref.timestamp
+    )
+    remaining = max(0.0, min(capacity_l, capacity_l - consumed + partial_after))
+    return {
+        "remaining_l": remaining,
+        "remaining_hours": remaining / rate,
+        "capacity_l": capacity_l,
+        "rate": rate,
+        "hours_since_full": hours_since,
+    }
