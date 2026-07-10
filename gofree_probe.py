@@ -169,17 +169,17 @@ def main(argv=None) -> int:
                         help="zusätzlich die HTTP-API (Port 80) abfragen")
     parser.add_argument("--rtsp", action="store_true",
                         help="zusätzlich den RTSP-Dienst (Port 554) abfragen")
-    parser.add_argument("--ws", action="store_true",
-                        help="nur die WebSocket-Daten-API prüfen (Standard, wenn nichts anderes)")
+    parser.add_argument("--no-ws", action="store_true",
+                        help="die WebSocket-Daten-API (Port 2053) NICHT prüfen")
     args = parser.parse_args(argv)
 
-    do_ws = args.ws or not (args.http or args.rtsp)
-
+    # Die nav-ws-Daten-API ist der Kern und läuft immer (außer --no-ws);
+    # --http/--rtsp kommen zusätzlich dazu.
     if args.http:
         probe_http(args.host)
     if args.rtsp:
         probe_rtsp(args.host)
-    if not do_ws:
+    if args.no_ws:
         print("\nFertig. Bitte die komplette Ausgabe kopieren und schicken.")
         return 0
 
