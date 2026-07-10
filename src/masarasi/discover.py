@@ -351,7 +351,9 @@ def gofree_source_hints(device: Dict) -> List[str]:
         name = str(s.get("name") or "").lower()
         port = s.get("port")
         if port and ("nmea" in name or "0183" in name or "tcp" in name):
-            hints.append(f"TCP {ip}:{port}")
+            hint = f"TCP {ip}:{port}"
+            if hint not in hints:            # Zeus meldet NMEA0183 doppelt (Port 10110)
+                hints.append(hint)
     return hints
 
 
