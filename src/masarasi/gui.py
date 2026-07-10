@@ -91,6 +91,13 @@ class Application:
     def _build_ui(self) -> None:
         pad = dict(padx=8, pady=4)
 
+        # Menüleiste: Stammdaten (Personen/Schiffe verwalten)
+        menubar = tk.Menu(self._root)
+        stamm = tk.Menu(menubar, tearoff=0)
+        stamm.add_command(label="Personen verwalten…", command=self._on_manage_persons)
+        menubar.add_cascade(label="Stammdaten", menu=stamm)
+        self._root.config(menu=menubar)
+
         # Kopfzeile: Datenquellen (mehrere gleichzeitig möglich)
         top = ttk.LabelFrame(self._root, text="Datenquellen")
         top.pack(fill="x", **pad)
@@ -731,6 +738,12 @@ class Application:
         if tid is not None:
             trip = self._store.get_trip(tid)
         dialog = _CrewListDialog(self._root, self._config, self._store, trip)
+        self._root.wait_window(dialog.top)
+
+    # --- Stammdaten ---------------------------------------------------------
+
+    def _on_manage_persons(self) -> None:
+        dialog = _PersonManagerDialog(self._root, self._store)
         self._root.wait_window(dialog.top)
 
     # --- Tanken -------------------------------------------------------------
@@ -1501,6 +1514,202 @@ class _BackupDialog:
 
     def _on_ok(self) -> None:
         self._save()
+        self.top.destroy()
+
+
+class _PersonManagerDialog:
+    """Personen-Stammdaten verwalten (Neu / Ändern / Löschen)."""
+
+    def __init__(self, parent, store) -> None:
+        self._store = store
+        self.top = tk.Toplevel(parent)
+        self.top.title("Personen verwalten")
+        self.top.transient(parent)
+        self.top.grab_set()
+        self.top.geometry("420x360")
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="Gespeicherte Personen:").pack(anchor="w")
+        list_row = ttk.Frame(frame)
+        list_row.pack(fill="both", expand=True, pady=6)
+        self._list = tk.Listbox(list_row, height=12)
+        self._list.pack(side="left", fill="both", expand=True)
+        sb = ttk.Scrollbar(list_row, orient="vertical", command=self._list.yview)
+        self._list.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        self._list.bind("<Double-1>", lambda _e: self._on_edit())
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill="x")
+        ttk.Button(btns, text="Neu…", command=self._on_new).pack(side="left")
+        ttk.Button(btns, text="Ändern…", command=self._on_edit).pack(side="left", padx=4)
+        ttk.Button(btns, text="Löschen", command=self._on_delete).pack(side="left")
+        ttk.Button(btns, text="Schließen", command=self.top.destroy).pack(side="right")
+
+        self._persons = []
+        self._refresh()
+
+    def _refresh(self) -> None:
+        self._persons = self._store.all_persons()
+        self._list.delete(0, "end")
+        for p in self._persons:
+            label = f"{p.last_name}, {p.first_name}".strip(", ")
+            self._list.insert("end", label or f"Person #{p.id}")
+
+    def _selected(self):
+        sel = self._list.curselection()
+        return self._persons[sel[0]] if sel else None
+
+    def _on_new(self) -> None:
+        dlg = _PersonEditDialog(self.top, self._store, Person())
+        self.top.wait_window(dlg.top)
+        if dlg.saved:
+            self._refresh()
+
+    def _on_edit(self) -> None:
+        person = self._selected()
+        if person is None:
+            return
+        dlg = _PersonEditDialog(self.top, self._store, person)
+        self.top.wait_window(dlg.top)
+        if dlg.saved:
+            self._refresh()
+
+    def _on_delete(self) -> None:
+        person = self._selected()
+        if person is None:
+            return
+        name = f"{person.last_name}, {person.first_name}".strip(", ")
+        if messagebox.askyesno("Löschen", f'Person „{name}" löschen?'):
+            self._store.delete_person(person.id)
+            self._refresh()
+
+
+class _PersonEditDialog:
+    """Personendaten erfassen/bearbeiten (nach TripCon-Vorlage) inkl. Foto."""
+
+    _FIELDS = [
+        ("last_name", "Name:"),
+        ("first_name", "Vorname:"),
+        ("email", "E-Mail:"),
+        ("nationality", "Nationalität:"),
+        ("passport_no", "Pass Nr.:"),
+        ("street", "Straße / Nr.:"),
+        ("birth_place", "Geburtsort:"),
+        ("birth_date", "Geburtsdatum:"),
+    ]
+
+    def __init__(self, parent, store, person: Person) -> None:
+        self.saved = False
+        self._store = store
+        self._person = person
+        self._photo_action = None   # None=unverändert, ("set", jpeg), ("remove",)
+        self.top = tk.Toplevel(parent)
+        self.top.title("Personendaten erfassen")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        self._vars: Dict[str, tk.StringVar] = {}
+        r = 0
+        for attr, label in self._FIELDS:
+            ttk.Label(frame, text=label).grid(row=r, column=0, sticky="e", padx=4, pady=3)
+            var = tk.StringVar(value=getattr(person, attr) or "")
+            ttk.Entry(frame, textvariable=var, width=30).grid(
+                row=r, column=1, columnspan=2, sticky="w", pady=3)
+            self._vars[attr] = var
+            r += 1
+
+        # PLZ / Stadt in einer Zeile
+        ttk.Label(frame, text="PLZ / Stadt:").grid(row=r, column=0, sticky="e", padx=4, pady=3)
+        self._vars["zip_code"] = tk.StringVar(value=person.zip_code or "")
+        ttk.Entry(frame, textvariable=self._vars["zip_code"], width=8).grid(
+            row=r, column=1, sticky="w", pady=3)
+        self._vars["city"] = tk.StringVar(value=person.city or "")
+        ttk.Entry(frame, textvariable=self._vars["city"], width=20).grid(
+            row=r, column=2, sticky="w", pady=3)
+        r += 1
+
+        # Foto
+        photo = ttk.LabelFrame(frame, text="Foto")
+        photo.grid(row=0, column=3, rowspan=6, padx=(16, 0), sticky="n")
+        self._photo_status = ttk.Label(photo, text="", foreground="#555")
+        self._photo_status.pack(padx=8, pady=(8, 4))
+        ttk.Button(photo, text="Hinzufügen…", command=self._on_add_photo).pack(fill="x", padx=8, pady=2)
+        ttk.Button(photo, text="Ansehen", command=self._on_view_photo).pack(fill="x", padx=8, pady=2)
+        ttk.Button(photo, text="Entfernen", command=self._on_remove_photo).pack(fill="x", padx=8, pady=2)
+        if not photos.available():
+            ttk.Label(photo, text="(Foto braucht Pillow)", foreground="#b25000",
+                      wraplength=120).pack(padx=8, pady=(4, 8))
+        self._update_photo_status()
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=r, column=0, columnspan=4, pady=(12, 0))
+        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _has_photo(self) -> bool:
+        if self._photo_action is not None:
+            return self._photo_action[0] == "set"
+        return self._person.id is not None and \
+            self._store.get_person_photo(self._person.id) is not None
+
+    def _update_photo_status(self) -> None:
+        self._photo_status.config(
+            text="✓ Foto vorhanden" if self._has_photo() else "(kein Foto)")
+
+    def _on_add_photo(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Personenfoto wählen",
+            filetypes=[("Bilder", "*.jpg *.jpeg *.png *.bmp *.gif"), ("Alle", "*.*")])
+        if not path:
+            return
+        jpeg = photos.resize_to_jpeg(path, max_px=400)
+        if not jpeg:
+            messagebox.showerror(
+                "Foto", "Konnte das Bild nicht verarbeiten.\nBraucht Pillow "
+                        "(pip install pillow) und ein lesbares Bildformat.")
+            return
+        self._photo_action = ("set", jpeg)
+        self._update_photo_status()
+
+    def _on_remove_photo(self) -> None:
+        self._photo_action = ("remove",)
+        self._update_photo_status()
+
+    def _on_view_photo(self) -> None:
+        data = None
+        if self._photo_action is not None and self._photo_action[0] == "set":
+            data = self._photo_action[1]
+        elif self._person.id is not None:
+            data = self._store.get_person_photo(self._person.id)
+        if not data:
+            messagebox.showinfo("Foto", "Kein Foto vorhanden.")
+            return
+        import os
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix=".jpg", prefix="masarasi_person_")
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        webbrowser.open(Path(path).as_uri())
+
+    def _on_save(self) -> None:
+        p = self._person
+        for attr, var in self._vars.items():
+            setattr(p, attr, var.get().strip())
+        if p.id is None:
+            self._store.add_person(p)
+        else:
+            self._store.update_person(p)
+        # Foto anwenden
+        if self._photo_action is not None:
+            if self._photo_action[0] == "set":
+                self._store.set_person_photo(p.id, self._photo_action[1])
+            else:
+                self._store.delete_person_photo(p.id)
+        self.saved = True
         self.top.destroy()
 
 

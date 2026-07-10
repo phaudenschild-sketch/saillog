@@ -175,6 +175,10 @@ class Person:
     birth_place: str = ""
     nationality: str = ""
     passport_no: str = ""
+    email: str = ""
+    street: str = ""
+    zip_code: str = ""
+    city: str = ""
 
 
 @dataclass
@@ -306,7 +310,17 @@ class LogbookStore:
                 "  birth_date TEXT DEFAULT '',\n"
                 "  birth_place TEXT DEFAULT '',\n"
                 "  nationality TEXT DEFAULT '',\n"
-                "  passport_no TEXT DEFAULT ''\n)"
+                "  passport_no TEXT DEFAULT '',\n"
+                "  email TEXT DEFAULT '',\n"
+                "  street TEXT DEFAULT '',\n"
+                "  zip_code TEXT DEFAULT '',\n"
+                "  city TEXT DEFAULT ''\n)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS person_photos (\n"
+                "  person_id INTEGER PRIMARY KEY,\n"
+                "  image BLOB NOT NULL,\n"
+                "  mime TEXT DEFAULT 'image/jpeg'\n)"
             )
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS fuel_entries (\n"
@@ -331,6 +345,11 @@ class LogbookStore:
         for name, sql_type in _MIGRATE_LOG:
             if name not in existing:
                 conn.execute(f"ALTER TABLE log_entries ADD COLUMN {name} {sql_type}")
+        # Personen: E-Mail/Adresse nachziehen
+        existing_p = {r[1] for r in conn.execute("PRAGMA table_info(persons)")}
+        for name in ("email", "street", "zip_code", "city"):
+            if name not in existing_p:
+                conn.execute(f"ALTER TABLE persons ADD COLUMN {name} TEXT DEFAULT ''")
 
     # --- Einträge -----------------------------------------------------------
 
@@ -609,9 +628,63 @@ class LogbookStore:
             )
             return pid
 
+    def add_person(self, person: Person) -> int:
+        """Legt immer eine neue Person an (für „Neu" in der Verwaltung)."""
+        cols = [c for c in _PERSON_COLUMNS if c != "id"]
+        placeholders = ", ".join("?" for _ in cols)
+        with self._connect() as conn:
+            cursor = conn.execute(
+                f"INSERT INTO persons ({', '.join(cols)}) VALUES ({placeholders})",
+                [getattr(person, c) for c in cols],
+            )
+            person.id = cursor.lastrowid
+        return person.id
+
+    def update_person(self, person: Person) -> None:
+        """Aktualisiert eine Person anhand ihrer id."""
+        cols = [c for c in _PERSON_COLUMNS if c != "id"]
+        assignments = ", ".join(f"{c} = ?" for c in cols)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE persons SET {assignments} WHERE id = ?",
+                [getattr(person, c) for c in cols] + [person.id],
+            )
+
+    def get_person(self, person_id: int) -> Optional[Person]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM persons WHERE id = ?", (person_id,)
+            ).fetchone()
+        return self._row_to_person(row) if row else None
+
     def delete_person(self, person_id: int) -> None:
         with self._connect() as conn:
+            conn.execute("DELETE FROM person_photos WHERE person_id = ?", (person_id,))
             conn.execute("DELETE FROM persons WHERE id = ?", (person_id,))
+
+    def set_person_photo(self, person_id: int, data: bytes,
+                         mime: str = "image/jpeg") -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO person_photos (person_id, image, mime) "
+                "VALUES (?, ?, ?)",
+                (person_id, sqlite3.Binary(data), mime),
+            )
+
+    def get_person_photo(self, person_id: int) -> Optional[bytes]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT image FROM person_photos WHERE person_id = ?", (person_id,)
+            ).fetchone()
+        return bytes(row[0]) if row else None
+
+    def delete_person_photo(self, person_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM person_photos WHERE person_id = ?", (person_id,))
+
+    def persons_with_photos(self) -> set:
+        with self._connect() as conn:
+            return {r[0] for r in conn.execute("SELECT person_id FROM person_photos")}
 
     @staticmethod
     def _row_to_person(row: sqlite3.Row) -> Person:

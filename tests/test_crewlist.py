@@ -84,6 +84,29 @@ class PersonRosterTest(unittest.TestCase):
         self.store.delete_person(pid)
         self.assertEqual(self.store.all_persons(), [])
 
+    def test_extended_fields_and_crud(self):
+        p = Person(last_name="Haudenschild", first_name="Peter",
+                   email="peter@haudenschild.ch", street="Gässli 10",
+                   zip_code="4704", city="Niederbipp", nationality="Switzerland",
+                   passport_no="E5663801", birth_place="Niederbipp",
+                   birth_date="18.02.1968")
+        pid = self.store.add_person(p)              # „Neu"
+        got = self.store.get_person(pid)
+        self.assertEqual(got.email, "peter@haudenschild.ch")
+        self.assertEqual(got.city, "Niederbipp")
+        got.city = "Bern"                            # „Ändern"
+        self.store.update_person(got)
+        self.assertEqual(self.store.get_person(pid).city, "Bern")
+
+    def test_person_photo_roundtrip(self):
+        pid = self.store.add_person(Person(last_name="Foto", first_name="Test"))
+        self.store.set_person_photo(pid, b"JPEGDATA")
+        self.assertEqual(self.store.get_person_photo(pid), b"JPEGDATA")
+        self.assertIn(pid, self.store.persons_with_photos())
+        # Foto verschwindet mit der Person
+        self.store.delete_person(pid)
+        self.assertIsNone(self.store.get_person_photo(pid))
+
 
 class CrewListHtmlTest(unittest.TestCase):
     def test_html_contains_boat_and_crew(self):

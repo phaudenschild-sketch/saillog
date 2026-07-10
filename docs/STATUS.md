@@ -74,6 +74,9 @@ nicht mehr an die Oberfläche gebunden.
   + Crew je Törn; **Personen-Speicher** (einmal erfasste Personen sind über
   ein Auswahlmenü wiederverwendbar); druckbare, zweisprachige HTML-Liste
   (DE/EN) im Browser (`crewlist.py`, Knopf „Crewliste…" in der Törn-Leiste)
+- **Personen verwalten** (Menü „Stammdaten"): Stammdaten mit Name, Vorname,
+  E-Mail, Nationalität, Pass-Nr., Adresse, Geburtsort/-datum und **Foto** (aus
+  Datei, verkleinert); Neu/Ändern/Löschen. *(Schiffe verwalten folgt.)*
 - **AIS-Decoder** (`!AIVDM`/`!AIVDO`, Typen 1/2/3/5/18/19/24, Mehrteiler) +
   **AIS-Karte** (Leaflet + OpenFreeMap) mit eigenem Schiff, Zielen, Törn-Track
   und **anklickbaren Logbuch-Einträgen** (Popup mit Details); Ebenen-Umschalter
