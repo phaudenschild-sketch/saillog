@@ -52,6 +52,9 @@ class Config:
     backup_on_close: bool = False
     backup_keep: int = 5
 
+    # Aktives Schiff (Stammdaten); dessen Loggeber-Korrektur wirkt auf STW/Log
+    active_ship_id: Optional[int] = None
+
     # Speicherort der Datenbank
     db_path: str = str(_app_dir() / "logbook.sqlite3")
 

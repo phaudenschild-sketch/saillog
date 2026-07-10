@@ -38,6 +38,7 @@ class NmeaSource:
         on_raw: Optional[Callable[[str], None]] = None,
         on_ais: Optional[Callable[[str], None]] = None,
         reconnect_delay: float = 3.0,
+        log_correction: float = 1.0,
     ) -> None:
         self._host = host
         self._port = int(port)
@@ -48,6 +49,9 @@ class NmeaSource:
         self._on_raw = on_raw
         self._on_ais = on_ais
         self._reconnect_delay = reconnect_delay
+        # Korrekturfaktor des Loggebers (Kalibrierung); wirkt auf Fahrt durchs
+        # Wasser (STW) und den Gesamtlog. 1.0 = keine Korrektur.
+        self.log_correction = float(log_correction) if log_correction else 1.0
 
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
@@ -200,4 +204,8 @@ class NmeaSource:
             return
         values = self._parser.parse(text)
         if values:
+            if self.log_correction != 1.0:
+                for key in ("stw_kn", "log_total_nm"):
+                    if values.get(key) is not None:
+                        values[key] = values[key] * self.log_correction
             self._live.update(values)

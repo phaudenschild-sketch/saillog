@@ -32,7 +32,7 @@ from masarasi.source import (
     STATUS_ERROR,
     NmeaSource,
 )
-from masarasi.storage import CrewMember, FuelEntry, LogbookStore, Person, Trip
+from masarasi.storage import CrewMember, FuelEntry, LogbookStore, Person, Ship, Trip
 from masarasi.webmap import MapServer
 
 _STATUS_TEXT = {
@@ -95,6 +95,7 @@ class Application:
         menubar = tk.Menu(self._root)
         stamm = tk.Menu(menubar, tearoff=0)
         stamm.add_command(label="Personen verwalten…", command=self._on_manage_persons)
+        stamm.add_command(label="Schiffe verwalten…", command=self._on_manage_ships)
         menubar.add_cascade(label="Stammdaten", menu=stamm)
         self._root.config(menu=menubar)
 
@@ -489,6 +490,7 @@ class Application:
                 # Eigener Decoder je Quelle (Mehrteiler werden pro Kanal
                 # zusammengesetzt), gemeinsame Zielliste.
                 on_ais=self._make_ais_decoder(),
+                log_correction=self._active_log_correction(),
             )
             source.start()
             self._sources.append(source)
@@ -745,6 +747,21 @@ class Application:
     def _on_manage_persons(self) -> None:
         dialog = _PersonManagerDialog(self._root, self._store)
         self._root.wait_window(dialog.top)
+
+    def _on_manage_ships(self) -> None:
+        dialog = _ShipManagerDialog(self._root, self._store, self._config)
+        self._root.wait_window(dialog.top)
+        # Loggeber-Korrektur des aktiven Schiffs auf laufende Quellen anwenden
+        factor = self._active_log_correction()
+        for src in self._sources:
+            src.log_correction = factor
+
+    def _active_log_correction(self) -> float:
+        ship_id = self._config.active_ship_id
+        if ship_id is None:
+            return 1.0
+        ship = self._store.get_ship(ship_id)
+        return ship.log_correction if ship and ship.log_correction else 1.0
 
     # --- Tanken -------------------------------------------------------------
 
@@ -1709,6 +1726,265 @@ class _PersonEditDialog:
                 self._store.set_person_photo(p.id, self._photo_action[1])
             else:
                 self._store.delete_person_photo(p.id)
+        self.saved = True
+        self.top.destroy()
+
+
+class _ShipManagerDialog:
+    """Schiffe verwalten: Auswahl (aktives Schiff), Neu/Ändern/Löschen."""
+
+    def __init__(self, parent, store, config) -> None:
+        self._store = store
+        self._config = config
+        self.top = tk.Toplevel(parent)
+        self.top.title("Schiffe verwalten")
+        self.top.transient(parent)
+        self.top.grab_set()
+        self.top.geometry("560x440")
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        sel = ttk.LabelFrame(frame, text="Auswahl (aktives Schiff)")
+        sel.pack(fill="x")
+        self._combo_var = tk.StringVar()
+        self._combo = ttk.Combobox(sel, textvariable=self._combo_var, width=30,
+                                   state="readonly")
+        self._combo.grid(row=0, column=0, padx=6, pady=6, sticky="w")
+        self._combo.bind("<<ComboboxSelected>>", lambda _e: self._on_select())
+        ttk.Button(sel, text="Neu…", command=self._on_new).grid(row=0, column=1, padx=3)
+        ttk.Button(sel, text="Ändern…", command=self._on_edit).grid(row=0, column=2, padx=3)
+        ttk.Button(sel, text="Löschen", command=self._on_delete).grid(row=0, column=3, padx=3)
+
+        self._summary = tk.Text(frame, height=15, wrap="word", state="disabled",
+                                font=("TkDefaultFont", 9))
+        self._summary.pack(fill="both", expand=True, pady=8)
+        ttk.Button(frame, text="Schließen", command=self.top.destroy).pack(side="right")
+
+        self._ships = []
+        self._refresh()
+
+    def _refresh(self) -> None:
+        self._ships = self._store.all_ships()
+        self._combo["values"] = [s.name or f"Schiff #{s.id}" for s in self._ships]
+        active = self._config.active_ship_id
+        idx = next((i for i, s in enumerate(self._ships) if s.id == active), None)
+        if idx is None and self._ships:
+            idx = 0
+            # sichtbar gewähltes Schiff auch als aktiv übernehmen
+            self._config.active_ship_id = self._ships[0].id
+            self._config.save()
+        if idx is not None:
+            self._combo.current(idx)
+        else:
+            self._combo_var.set("")
+        self._show_summary()
+
+    def _selected(self):
+        i = self._combo.current()
+        return self._ships[i] if 0 <= i < len(self._ships) else None
+
+    def _on_select(self) -> None:
+        s = self._selected()
+        self._config.active_ship_id = s.id if s else None
+        self._config.save()
+        self._show_summary()
+
+    def _show_summary(self) -> None:
+        s = self._selected()
+        self._summary.config(state="normal")
+        self._summary.delete("1.0", "end")
+        if s:
+            def v(x, u=""):
+                return f"{x:g} {u}".strip() if x is not None else "—"
+            self._summary.insert("1.0", "\n".join([
+                f"Schiffstyp: {s.ship_type or '—'}    Kielart: {s.keel_type or '—'}",
+                f"Schiffsnummer: {s.ship_number or '—'}",
+                f"Länge: {v(s.length_m, 'm')}   Breite: {v(s.beam_m, 'm')}   "
+                f"Tiefgang: {v(s.max_draft_m, 'm')}",
+                f"Verdrängung: {v(s.displacement_t, 't')}   "
+                f"Durchfahrtshöhe: {v(s.clearance_height_m, 'm')}",
+                f"Flagge: {s.flag or '—'}   Heimathafen: {s.home_port or '—'}",
+                f"Rufzeichen: {s.call_sign or '—'}   MMSI: {s.mmsi or '—'}",
+                f"Echolot-Einbautiefe: {v(s.echo_depth_m, 'm')}   "
+                f"Loggeber-Korrektur: {s.log_correction:g}",
+                f"Tanks: Wasser {v(s.water_tank_l, 'l')}, "
+                f"Treibstoff {v(s.fuel_tank_l, 'l')}",
+                f"Segel/Antrieb: {s.sails or '—'}",
+                f"Ausstattung: {s.equipment or '—'}",
+                f"Stromversorgung: {s.power_source or '—'}",
+            ]))
+        else:
+            self._summary.insert("1.0", 'Noch kein Schiff angelegt. „Neu…" anklicken.')
+        self._summary.config(state="disabled")
+
+    def _on_new(self) -> None:
+        dlg = _ShipEditDialog(self.top, self._store, Ship())
+        self.top.wait_window(dlg.top)
+        if dlg.saved:
+            if self._config.active_ship_id is None and dlg.ship_id:
+                self._config.active_ship_id = dlg.ship_id
+                self._config.save()
+            self._refresh()
+
+    def _on_edit(self) -> None:
+        s = self._selected()
+        if s is None:
+            return
+        dlg = _ShipEditDialog(self.top, self._store, s)
+        self.top.wait_window(dlg.top)
+        if dlg.saved:
+            self._refresh()
+
+    def _on_delete(self) -> None:
+        s = self._selected()
+        if s is None:
+            return
+        if messagebox.askyesno("Löschen", f'Schiff „{s.name}" löschen?'):
+            self._store.delete_ship(s.id)
+            if self._config.active_ship_id == s.id:
+                self._config.active_ship_id = None
+                self._config.save()
+            self._refresh()
+
+
+class _ShipEditDialog:
+    """Schiff bearbeiten: Kennwerte + Tanks + Ausrüstung + Foto."""
+
+    _FIELDS = [
+        ("name", "Schiffsname:", "text"),
+        ("ship_type", "Schiffstyp:", "text"),
+        ("keel_type", "Kielart:", "text"),
+        ("ship_number", "Schiffsnummer:", "text"),
+        ("length_m", "Länge (m):", "num"),
+        ("beam_m", "Breite (m):", "num"),
+        ("max_draft_m", "max. Tiefgang (m):", "num"),
+        ("displacement_t", "Verdrängung (t):", "num"),
+        ("clearance_height_m", "Durchfahrtshöhe (m):", "num"),
+        ("flag", "Flagge:", "text"),
+        ("home_port", "Heimathafen:", "text"),
+        ("call_sign", "Rufzeichen:", "text"),
+        ("mmsi", "MMSI:", "text"),
+        ("echo_depth_m", "Einbautiefe Echolot (m):", "num"),
+        ("log_correction", "Korrekturfaktor Loggeber:", "num"),
+        ("water_tank_l", "Wassertank (l):", "num"),
+        ("fuel_tank_l", "Treibstofftank (l):", "num"),
+        ("sails", "Segel/Antrieb:", "text"),
+        ("equipment", "Ausstattung:", "text"),
+        ("power_source", "Stromversorgung:", "text"),
+    ]
+
+    def __init__(self, parent, store, ship: Ship) -> None:
+        self.saved = False
+        self.ship_id = ship.id
+        self._store = store
+        self._ship = ship
+        self._photo_action = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Schiff bearbeiten")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        self._vars: Dict[str, tk.StringVar] = {}
+        per_col = (len(self._FIELDS) + 1) // 2
+        for i, (attr, label, kind) in enumerate(self._FIELDS):
+            r = i % per_col
+            base = (i // per_col) * 2
+            ttk.Label(frame, text=label).grid(row=r, column=base, sticky="e", padx=(6, 3), pady=2)
+            cur = getattr(ship, attr)
+            if kind == "num":
+                text = "" if cur is None else f"{cur:g}"
+            else:
+                text = cur or ""
+            var = tk.StringVar(value=text)
+            ttk.Entry(frame, textvariable=var, width=18).grid(
+                row=r, column=base + 1, sticky="w", pady=2)
+            self._vars[attr] = var
+
+        # Foto rechts
+        photo = ttk.LabelFrame(frame, text="Schiffsfoto")
+        photo.grid(row=0, column=4, rowspan=6, padx=(16, 0), sticky="n")
+        self._photo_status = ttk.Label(photo, text="", foreground="#555")
+        self._photo_status.pack(padx=8, pady=(8, 4))
+        ttk.Button(photo, text="Hinzufügen…", command=self._on_add_photo).pack(fill="x", padx=8, pady=2)
+        ttk.Button(photo, text="Ansehen", command=self._on_view_photo).pack(fill="x", padx=8, pady=2)
+        ttk.Button(photo, text="Entfernen", command=self._on_remove_photo).pack(fill="x", padx=8, pady=2)
+        if not photos.available():
+            ttk.Label(photo, text="(Foto braucht Pillow)", foreground="#b25000",
+                      wraplength=120).pack(padx=8, pady=(4, 8))
+        self._update_photo_status()
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=per_col, column=0, columnspan=5, pady=(12, 0))
+        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _has_photo(self) -> bool:
+        if self._photo_action is not None:
+            return self._photo_action[0] == "set"
+        return self._ship.id is not None and \
+            self._store.get_ship_photo(self._ship.id) is not None
+
+    def _update_photo_status(self) -> None:
+        self._photo_status.config(
+            text="✓ Foto vorhanden" if self._has_photo() else "(kein Foto)")
+
+    def _on_add_photo(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Schiffsfoto wählen",
+            filetypes=[("Bilder", "*.jpg *.jpeg *.png *.bmp *.gif"), ("Alle", "*.*")])
+        if not path:
+            return
+        jpeg = photos.resize_to_jpeg(path, max_px=800)
+        if not jpeg:
+            messagebox.showerror(
+                "Foto", "Konnte das Bild nicht verarbeiten (braucht Pillow).")
+            return
+        self._photo_action = ("set", jpeg)
+        self._update_photo_status()
+
+    def _on_remove_photo(self) -> None:
+        self._photo_action = ("remove",)
+        self._update_photo_status()
+
+    def _on_view_photo(self) -> None:
+        data = None
+        if self._photo_action is not None and self._photo_action[0] == "set":
+            data = self._photo_action[1]
+        elif self._ship.id is not None:
+            data = self._store.get_ship_photo(self._ship.id)
+        if not data:
+            messagebox.showinfo("Foto", "Kein Foto vorhanden.")
+            return
+        import os
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix=".jpg", prefix="masarasi_ship_")
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        webbrowser.open(Path(path).as_uri())
+
+    def _on_save(self) -> None:
+        s = self._ship
+        for attr, _label, kind in self._FIELDS:
+            raw = self._vars[attr].get().strip()
+            if kind == "num":
+                value = _parse_float(raw)
+                if attr == "log_correction":
+                    value = value if value else 1.0
+                setattr(s, attr, value)
+            else:
+                setattr(s, attr, raw)
+        if s.id is None:
+            self._store.add_ship(s)
+        else:
+            self._store.update_ship(s)
+        self.ship_id = s.id
+        if self._photo_action is not None:
+            if self._photo_action[0] == "set":
+                self._store.set_ship_photo(s.id, self._photo_action[1])
+            else:
+                self._store.delete_ship_photo(s.id)
         self.saved = True
         self.top.destroy()
 

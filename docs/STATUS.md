@@ -76,7 +76,12 @@ nicht mehr an die Oberfläche gebunden.
   (DE/EN) im Browser (`crewlist.py`, Knopf „Crewliste…" in der Törn-Leiste)
 - **Personen verwalten** (Menü „Stammdaten"): Stammdaten mit Name, Vorname,
   E-Mail, Nationalität, Pass-Nr., Adresse, Geburtsort/-datum und **Foto** (aus
-  Datei, verkleinert); Neu/Ändern/Löschen. *(Schiffe verwalten folgt.)*
+  Datei, verkleinert); Neu/Ändern/Löschen.
+- **Schiffe verwalten** (Menü „Stammdaten"): Kennwerte (Typ, Kielart, Länge/
+  Breite/Tiefgang, Verdrängung, Durchfahrtshöhe, Flagge, Heimathafen, Rufzeichen,
+  MMSI, Echolot-Einbautiefe, **Loggeber-Korrekturfaktor**), Tanks (Wasser/
+  Treibstoff), Ausrüstung, Schiffsfoto; mehrere Schiffe, aktives auswählbar. Die
+  **Loggeber-Korrektur** des aktiven Schiffs wirkt auf STW/Gesamtlog beim Einlesen.
 - **AIS-Decoder** (`!AIVDM`/`!AIVDO`, Typen 1/2/3/5/18/19/24, Mehrteiler) +
   **AIS-Karte** (Leaflet + OpenFreeMap) mit eigenem Schiff, Zielen, Törn-Track
   und **anklickbaren Logbuch-Einträgen** (Popup mit Details); Ebenen-Umschalter

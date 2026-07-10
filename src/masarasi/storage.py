@@ -182,6 +182,33 @@ class Person:
 
 
 @dataclass
+class Ship:
+    """Ein Schiff (Stammdaten, nach TripCon-Vorlage „Schiffe verwalten")."""
+
+    id: Optional[int] = None
+    name: str = ""
+    ship_type: str = ""               # Schiffstyp (z.B. Sailing Vessel)
+    keel_type: str = ""               # Kielart
+    ship_number: str = ""             # Schiffsnummer
+    length_m: Optional[float] = None  # Länge über alles
+    beam_m: Optional[float] = None    # Breite
+    max_draft_m: Optional[float] = None       # maximaler Tiefgang
+    displacement_t: Optional[float] = None    # Verdrängung
+    clearance_height_m: Optional[float] = None  # Durchfahrtshöhe
+    flag: str = ""                    # Flagge
+    home_port: str = ""               # Heimathafen
+    call_sign: str = ""               # Rufzeichen
+    mmsi: str = ""                    # MMSI
+    echo_depth_m: Optional[float] = None      # Einbautiefe Echolot
+    log_correction: float = 1.0       # Korrekturfaktor Loggeber
+    water_tank_l: Optional[float] = None      # Wassertank (Liter)
+    fuel_tank_l: Optional[float] = None       # Treibstofftank (Liter)
+    sails: str = ""                   # Antrieb/Segel (Freitext)
+    equipment: str = ""               # Ausstattung (Freitext)
+    power_source: str = ""            # Stromversorgung (Freitext)
+
+
+@dataclass
 class FuelEntry:
     """Ein Tank-Vorgang (für Verbrauchsberechnung l/h)."""
 
@@ -200,6 +227,7 @@ _TRIP_COLUMNS = [f.name for f in fields(Trip)]
 _CREW_COLUMNS = [f.name for f in fields(CrewMember)]
 _PERSON_COLUMNS = [f.name for f in fields(Person)]
 _FUEL_COLUMNS = [f.name for f in fields(FuelEntry)]
+_SHIP_COLUMNS = [f.name for f in fields(Ship)]
 
 # Spalten, die bei bestehenden Datenbanken nachgezogen werden (ohne NOT NULL).
 _MIGRATE_LOG = [
@@ -319,6 +347,28 @@ class LogbookStore:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS person_photos (\n"
                 "  person_id INTEGER PRIMARY KEY,\n"
+                "  image BLOB NOT NULL,\n"
+                "  mime TEXT DEFAULT 'image/jpeg'\n)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS ships (\n"
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+                "  name TEXT DEFAULT '',\n"
+                "  ship_type TEXT DEFAULT '',\n"
+                "  keel_type TEXT DEFAULT '',\n"
+                "  ship_number TEXT DEFAULT '',\n"
+                "  length_m REAL, beam_m REAL, max_draft_m REAL,\n"
+                "  displacement_t REAL, clearance_height_m REAL,\n"
+                "  flag TEXT DEFAULT '', home_port TEXT DEFAULT '',\n"
+                "  call_sign TEXT DEFAULT '', mmsi TEXT DEFAULT '',\n"
+                "  echo_depth_m REAL, log_correction REAL DEFAULT 1.0,\n"
+                "  water_tank_l REAL, fuel_tank_l REAL,\n"
+                "  sails TEXT DEFAULT '', equipment TEXT DEFAULT '',\n"
+                "  power_source TEXT DEFAULT ''\n)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS ship_photos (\n"
+                "  ship_id INTEGER PRIMARY KEY,\n"
                 "  image BLOB NOT NULL,\n"
                 "  mime TEXT DEFAULT 'image/jpeg'\n)"
             )
@@ -690,6 +740,68 @@ class LogbookStore:
     def _row_to_person(row: sqlite3.Row) -> Person:
         data = {k: row[k] for k in row.keys() if k in _PERSON_COLUMNS}
         return Person(**data)
+
+    # --- Schiffe (Stammdaten) ----------------------------------------------
+
+    def add_ship(self, ship: Ship) -> int:
+        cols = [c for c in _SHIP_COLUMNS if c != "id"]
+        placeholders = ", ".join("?" for _ in cols)
+        with self._connect() as conn:
+            cursor = conn.execute(
+                f"INSERT INTO ships ({', '.join(cols)}) VALUES ({placeholders})",
+                [getattr(ship, c) for c in cols],
+            )
+            ship.id = cursor.lastrowid
+        return ship.id
+
+    def update_ship(self, ship: Ship) -> None:
+        cols = [c for c in _SHIP_COLUMNS if c != "id"]
+        assignments = ", ".join(f"{c} = ?" for c in cols)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE ships SET {assignments} WHERE id = ?",
+                [getattr(ship, c) for c in cols] + [ship.id],
+            )
+
+    def get_ship(self, ship_id: int) -> Optional[Ship]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM ships WHERE id = ?", (ship_id,)).fetchone()
+        return self._row_to_ship(row) if row else None
+
+    def all_ships(self) -> List[Ship]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM ships ORDER BY name, id").fetchall()
+        return [self._row_to_ship(r) for r in rows]
+
+    def delete_ship(self, ship_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM ship_photos WHERE ship_id = ?", (ship_id,))
+            conn.execute("DELETE FROM ships WHERE id = ?", (ship_id,))
+
+    def set_ship_photo(self, ship_id: int, data: bytes,
+                       mime: str = "image/jpeg") -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO ship_photos (ship_id, image, mime) "
+                "VALUES (?, ?, ?)",
+                (ship_id, sqlite3.Binary(data), mime),
+            )
+
+    def get_ship_photo(self, ship_id: int) -> Optional[bytes]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT image FROM ship_photos WHERE ship_id = ?", (ship_id,)
+            ).fetchone()
+        return bytes(row[0]) if row else None
+
+    def delete_ship_photo(self, ship_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM ship_photos WHERE ship_id = ?", (ship_id,))
+
+    @staticmethod
+    def _row_to_ship(row: sqlite3.Row) -> Ship:
+        data = {k: row[k] for k in row.keys() if k in _SHIP_COLUMNS}
+        return Ship(**data)
 
     # --- Tanken (Kraftstoff) ------------------------------------------------
 
