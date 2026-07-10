@@ -186,6 +186,43 @@ def move_entries(conn, db_path, from_id, to_id, types, since, until, apply) -> N
     print(f"{len(rows)} Eintrag/Einträge verschoben nach {dst}.")
 
 
+def delete_entries(conn, db_path, from_id, types, since, until, ids, apply) -> None:
+    if ids:
+        marks = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"SELECT id, timestamp, entry_type, logevent FROM log_entries "
+            f"WHERE id IN ({marks}) ORDER BY timestamp, id",
+            ids,
+        ).fetchall()
+        target_ids = [r["id"] for r in rows]
+    else:
+        rows, _clause, _params = _select_move(conn, from_id, None, types, since, until)
+        target_ids = [r["id"] for r in rows]
+
+    print(f"\n{len(rows)} Eintrag/Einträge werden GELÖSCHT:")
+    for r in rows[:40]:
+        print(f"    {r['id']:>5}  {r['timestamp']}  {r['entry_type']:<8} {r['logevent'] or ''}")
+    if len(rows) > 40:
+        print(f"    … und {len(rows) - 40} weitere")
+    if not rows:
+        print("  Nichts zu löschen.")
+        return
+
+    if not apply:
+        print("\n(Vorschau — nichts geändert. Zum Ausführen --apply anhängen.)")
+        return
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup = f"{db_path}.bak_{stamp}"
+    shutil.copy2(db_path, backup)
+    print(f"\nSicherungskopie: {backup}")
+    marks = ",".join("?" for _ in target_ids)
+    conn.execute(f"DELETE FROM entry_images WHERE entry_id IN ({marks})", target_ids)
+    conn.execute(f"DELETE FROM log_entries WHERE id IN ({marks})", target_ids)
+    conn.commit()
+    print(f"{len(target_ids)} Eintrag/Einträge gelöscht.")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Zeigt/korrigiert die Törn-Zuordnung von Logbuch-Einträgen."
@@ -193,8 +230,10 @@ def main(argv=None) -> int:
     parser.add_argument("--db", default=None, help="Pfad zur Logbuch-DB (Standard: Konfiguration)")
     parser.add_argument("--show", type=int, metavar="TRIP_ID", help="Einträge eines Törns anzeigen")
     parser.add_argument("--move", action="store_true", help="Einträge umhängen")
+    parser.add_argument("--delete", action="store_true", help="Einträge löschen")
     parser.add_argument("--from", dest="from_id", help="Quell-Törn-ID (oder 'none' = ohne Zuordnung)")
     parser.add_argument("--to", dest="to_id", help="Ziel-Törn-ID (oder 'none' = abhängen)")
+    parser.add_argument("--ids", default="", help="genau diese Eintrags-IDs, kommagetrennt (für --delete)")
     parser.add_argument("--type", default="", help="nur diese Typen, kommagetrennt (z.B. auto)")
     parser.add_argument("--since", default="", help="nur Einträge ab (Datum oder ISO-Zeit)")
     parser.add_argument("--until", default="", help="nur Einträge bis (Datum oder ISO-Zeit)")
@@ -219,6 +258,17 @@ def main(argv=None) -> int:
             types = [t.strip() for t in args.type.split(",") if t.strip()]
             move_entries(conn, db_path, from_id, to_id, types,
                          _norm_since(args.since), _norm_until(args.until), args.apply)
+            return 0
+        if args.delete:
+            ids = [int(x) for x in args.ids.split(",") if x.strip()]
+            from_id = None
+            if not ids:
+                if args.from_id is None:
+                    parser.error("--delete braucht --ids oder --from")
+                from_id = None if args.from_id.lower() == "none" else int(args.from_id)
+            types = [t.strip() for t in args.type.split(",") if t.strip()]
+            delete_entries(conn, db_path, from_id, types,
+                           _norm_since(args.since), _norm_until(args.until), ids, args.apply)
             return 0
         # Standard: Überblick
         list_trips(conn)
