@@ -83,10 +83,16 @@ def main(argv=None) -> int:
                       f"(Verknüpfung: {method}).")
             else:
                 print(f"  Keine Plotterbilder verknüpft (Methode: {method}).")
-            if result["ship_photos"]:
-                print(f"  {result['ship_photos']} Schiffsfoto(s) in die Stammdaten übernommen.")
-            if result["person_photos"]:
-                print(f"  {result['person_photos']} Personenfoto(s) in die Stammdaten übernommen.")
+            print(f"  Schiffe: {result['ships_created']} neu, "
+                  f"{result['ships_matched']} vorhanden, "
+                  f"{result['ship_photos']} mit Foto.")
+            if result["ship_fields"]:
+                print(f"    übernommene Felder: {', '.join(result['ship_fields'])}")
+            print(f"  Personen: {result['persons_created']} neu, "
+                  f"{result['persons_matched']} vorhanden, "
+                  f"{result['person_photos']} mit Foto.")
+            if result["person_fields"]:
+                print(f"    übernommene Felder: {', '.join(result['person_fields'])}")
             print("  → In masarasi sichtbar (ältere Törns ggf. über Export/Scrollen).")
     finally:
         conn.close()

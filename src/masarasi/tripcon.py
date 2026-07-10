@@ -485,7 +485,7 @@ def import_entry_images(conn, store: LogbookStore, logid_map: Dict[int, int],
     return {"images": count, "method": method}
 
 
-# --- Schiffs-/Crew-Fotos in die Stammdaten übernehmen -----------------------
+# --- Schiffe & Personen als Stammdaten übernehmen ---------------------------
 
 def _norm(text) -> str:
     if text is None:
@@ -503,91 +503,211 @@ def _pick_col(cols: List[str], candidates) -> Optional[str]:
     return None
 
 
-def import_stammdaten_photos(conn, store: LogbookStore,
-                             max_px: int = 1600) -> Dict[str, int]:
-    """Ordnet Schiffs-/Personen-Fotos aus TripCon den Stammdaten zu.
+# Feld-Zuordnung TripCon-Spalte -> masarasi-Attribut (adaptiv über Kandidaten).
+# Eintrag: (masarasi-Attribut, (Spalten-Kandidaten…), "text"|"float")
+_SHIP_FIELD_MAP = [
+    ("name", ("ShipName", "Name"), "text"),
+    ("ship_type", ("ShipType", "Type", "BoatType", "Typ"), "text"),
+    ("keel_type", ("KeelType", "Keel", "Kiel"), "text"),
+    ("ship_number", ("ShipNumber", "Number", "RegistrationNo", "Registration",
+                     "Nummer"), "text"),
+    ("length_m", ("Length", "LengthOverAll", "LOA", "Loa", "Laenge"), "float"),
+    ("beam_m", ("Beam", "Width", "Breadth", "Breite"), "float"),
+    ("max_draft_m", ("Draft", "Draught", "MaxDraft", "Tiefgang"), "float"),
+    ("displacement_t", ("Displacement", "Weight", "Verdraengung"), "float"),
+    ("clearance_height_m", ("ClearanceHeight", "AirDraft", "MastHeight",
+                            "Durchfahrtshoehe"), "float"),
+    ("flag", ("Flag", "Flagge"), "text"),
+    ("home_port", ("HomePort", "Port", "HomeHarbour", "HomeHarbor",
+                   "Heimathafen"), "text"),
+    ("call_sign", ("CallSign", "Callsign", "Call", "Rufzeichen"), "text"),
+    ("mmsi", ("MMSI", "Mmsi"), "text"),
+    ("echo_depth_m", ("EchoDepth", "DepthOffset", "SounderOffset",
+                      "Echolot"), "float"),
+    ("log_correction", ("LogCorrection", "LogFactor", "CorrectionFactor",
+                        "Korrekturfaktor"), "float"),
+    ("water_tank_l", ("WaterTank", "WaterCapacity", "FreshWater",
+                      "Wassertank"), "float"),
+    ("fuel_tank_l", ("FuelTank", "FuelCapacity", "Fuel", "Diesel",
+                     "Treibstoff"), "float"),
+    ("sails", ("Sails", "Sail", "Segel", "Antrieb"), "text"),
+    ("equipment", ("Equipment", "Gear", "Ausruestung", "Ausstattung"), "text"),
+    ("power_source", ("PowerSource", "Power", "Electric", "Strom"), "text"),
+]
 
-    Fotos werden nur übernommen, wenn ein Schiff bzw. eine Person mit passendem
-    Namen bereits in masarasi angelegt ist. Gibt {"ships": n, "persons": m}
-    zurück.
-    """
+_PERSON_FIELD_MAP = [
+    ("last_name", ("LastName", "Name", "Surname", "Nachname"), "text"),
+    ("first_name", ("FirstName", "Vorname", "GivenName", "PreName"), "text"),
+    ("birth_date", ("BirthDate", "DateOfBirth", "Birthday", "BirthDZ",
+                    "Geburtsdatum"), "text"),
+    ("birth_place", ("BirthPlace", "PlaceOfBirth", "BirthLocation",
+                     "Geburtsort"), "text"),
+    ("nationality", ("Nationality", "Nation", "Citizenship",
+                     "Nationalitaet"), "text"),
+    ("passport_no", ("PassportNo", "Passport", "PassNo", "PassportNumber",
+                     "IDNumber", "Ausweis", "Reisepass"), "text"),
+    ("email", ("Email", "EMail", "Mail"), "text"),
+    ("street", ("Street", "Address", "Addr", "Address1", "Strasse",
+                "Adresse"), "text"),
+    ("zip_code", ("Zip", "ZipCode", "PostalCode", "PLZ"), "text"),
+    ("city", ("City", "Town", "Ort", "Stadt"), "text"),
+]
+
+
+def _resolve_field_map(cols: List[str], field_map) -> Dict[str, Tuple[str, str]]:
+    """{masarasi-Attribut: (TripCon-Spalte, kind)} für vorhandene Spalten."""
+    resolved: Dict[str, Tuple[str, str]] = {}
+    for attr, candidates, kind in field_map:
+        col = _pick_col(cols, candidates)
+        if col is not None:
+            resolved[attr] = (col, kind)
+    return resolved
+
+
+def _apply_fields(obj, rowd: Dict[str, object], fmap: Dict[str, Tuple[str, str]],
+                  skip=("name", "last_name", "first_name")) -> None:
+    """Überträgt die aufgelösten Felder aus einer Zeile auf das Dataobjekt."""
+    for attr, (col, kind) in fmap.items():
+        if attr in skip:
+            continue
+        value = rowd.get(col)
+        if kind == "float":
+            fv = to_float(value)
+            if fv is not None:
+                setattr(obj, attr, fv)
+        else:
+            if value is None:
+                continue
+            text = value.decode("utf-8", "replace") if isinstance(value, bytes) else str(value)
+            text = text.strip()
+            if text:
+                setattr(obj, attr, text)
+
+
+def _row_dict(conn, table: str, cols: List[str]):
+    """Liefert je Zeile ein {Spalte: Wert}-Dict (nur die gewünschten Spalten)."""
+    quoted = ", ".join(f'"{c}"' for c in cols)
+    try:
+        cursor = conn.execute(f"SELECT {quoted} FROM {table}")
+    except sqlite3.Error:
+        return
+    for row in cursor:
+        yield dict(zip(cols, row))
+
+
+def _attach_photo(raw: bytes, max_px: int):
+    """(bytes, mime) für ein Stammdaten-Foto; None, wenn kein gültiges Bild."""
     from masarasi import photos
+    ext = image_ext(raw[:16])
+    if not ext:
+        return None
+    jpeg = photos.resize_bytes_to_jpeg(raw, max_px=max_px)
+    if jpeg:
+        return jpeg, "image/jpeg"
+    mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+    return raw, mime
 
-    result = {"ships": 0, "persons": 0}
 
-    # Schiffsfotos (S003_Ships.ShipName -> Ship.name)
-    ship_cols = _columns(conn, "S003_Ships")
-    if ship_cols:
-        name_col = _pick_col(ship_cols, ("ShipName", "Name"))
-        pic_col = _pick_col(ship_cols, ("Picture", "Image", "Photo"))
-        if name_col and pic_col:
-            by_name = {_norm(s.name): s for s in store.all_ships() if s.name.strip()}
-            try:
-                cursor = conn.execute(
-                    f"SELECT {name_col}, {pic_col} FROM S003_Ships"
-                )
-            except sqlite3.Error:
-                cursor = []
-            for name, blob in cursor:
-                if not isinstance(blob, (bytes, bytearray)):
-                    continue
-                raw = bytes(blob)
-                if not image_ext(raw[:16]):
-                    continue
-                ship = by_name.get(_norm(name))
-                if ship is None:
-                    continue
-                jpeg = photos.resize_bytes_to_jpeg(raw, max_px=max_px) or raw
-                mime = "image/jpeg" if jpeg is not raw else "image/png"
-                store.set_ship_photo(ship.id, jpeg, mime)
-                result["ships"] += 1
+def import_ships(conn, store: LogbookStore, max_px: int = 1600) -> Dict[str, object]:
+    """Legt Schiffe aus S003_Ships an (idempotent über den Namen) + Foto.
 
-    # Personenfotos (S006_Persons.LastName/FirstName -> Person)
-    person_cols = _columns(conn, "S006_Persons")
-    if person_cols:
-        last_col = _pick_col(person_cols, ("LastName", "Name", "Surname"))
-        first_col = _pick_col(person_cols, ("FirstName", "Vorname", "GivenName"))
-        pic_col = _pick_col(person_cols, ("Picture", "Image", "Photo"))
-        if last_col and pic_col:
-            by_name = {}
-            for p in store.all_persons():
-                by_name.setdefault((_norm(p.last_name), _norm(p.first_name)), p)
-            sel = f"SELECT {last_col}, {pic_col}"
-            sel += f", {first_col}" if first_col else ", NULL"
-            try:
-                cursor = conn.execute(sel + " FROM S006_Persons")
-            except sqlite3.Error:
-                cursor = []
-            for last, blob, first in cursor:
-                if not isinstance(blob, (bytes, bytearray)):
-                    continue
-                raw = bytes(blob)
-                if not image_ext(raw[:16]):
-                    continue
-                key = (_norm(last), _norm(first))
-                person = by_name.get(key)
-                if person is None and first_col:
-                    # zweiter Versuch: nur über den Nachnamen
-                    matches = [
-                        p for (ln, _fn), p in by_name.items() if ln == _norm(last)
-                    ]
-                    person = matches[0] if len(matches) == 1 else None
-                if person is None:
-                    continue
-                jpeg = photos.resize_bytes_to_jpeg(raw, max_px=max_px) or raw
-                mime = "image/jpeg" if jpeg is not raw else "image/png"
-                store.set_person_photo(person.id, jpeg, mime)
-                result["persons"] += 1
+    Gibt {"created": n, "matched": m, "photos": p, "fields": [Attribute]} zurück.
+    """
+    from masarasi.storage import Ship
 
+    result = {"created": 0, "matched": 0, "photos": 0, "fields": []}
+    cols = _columns(conn, "S003_Ships")
+    if not cols:
+        return result
+    fmap = _resolve_field_map(cols, _SHIP_FIELD_MAP)
+    name_col = fmap.get("name", (None, None))[0]
+    if not name_col:
+        return result
+    pic_col = _pick_col(cols, ("Picture", "Image", "Photo", "Bild"))
+    result["fields"] = sorted(fmap.keys())
+
+    wanted = [c for c, _ in fmap.values()]
+    if pic_col and pic_col not in wanted:
+        wanted.append(pic_col)
+
+    existing = {_norm(s.name): s for s in store.all_ships() if s.name.strip()}
+    for rowd in _row_dict(conn, "S003_Ships", wanted):
+        name = str(rowd.get(name_col) or "").strip()
+        if not name:
+            continue
+        ship = existing.get(_norm(name))
+        if ship is None:
+            ship = Ship(name=name)
+            _apply_fields(ship, rowd, fmap)
+            store.add_ship(ship)
+            existing[_norm(name)] = ship
+            result["created"] += 1
+        else:
+            result["matched"] += 1
+        if pic_col and isinstance(rowd.get(pic_col), (bytes, bytearray)):
+            attach = _attach_photo(bytes(rowd[pic_col]), max_px)
+            if attach:
+                store.set_ship_photo(ship.id, attach[0], attach[1])
+                result["photos"] += 1
+    return result
+
+
+def import_persons(conn, store: LogbookStore, max_px: int = 1600) -> Dict[str, object]:
+    """Legt Personen aus S006_Persons an (idempotent über Name) + Foto.
+
+    Gibt {"created": n, "matched": m, "photos": p, "fields": [Attribute]} zurück.
+    """
+    from masarasi.storage import Person
+
+    result = {"created": 0, "matched": 0, "photos": 0, "fields": []}
+    cols = _columns(conn, "S006_Persons")
+    if not cols:
+        return result
+    fmap = _resolve_field_map(cols, _PERSON_FIELD_MAP)
+    last_col = fmap.get("last_name", (None, None))[0]
+    first_col = fmap.get("first_name", (None, None))[0]
+    if not (last_col or first_col):
+        return result
+    pic_col = _pick_col(cols, ("Picture", "Image", "Photo", "Bild"))
+    result["fields"] = sorted(fmap.keys())
+
+    wanted = [c for c, _ in fmap.values()]
+    if pic_col and pic_col not in wanted:
+        wanted.append(pic_col)
+
+    existing = {}
+    for p in store.all_persons():
+        existing.setdefault((_norm(p.last_name), _norm(p.first_name)), p)
+
+    for rowd in _row_dict(conn, "S006_Persons", wanted):
+        last = str(rowd.get(last_col) or "").strip() if last_col else ""
+        first = str(rowd.get(first_col) or "").strip() if first_col else ""
+        if not (last or first):
+            continue
+        key = (_norm(last), _norm(first))
+        person = existing.get(key)
+        if person is None:
+            person = Person(last_name=last, first_name=first)
+            _apply_fields(person, rowd, fmap)
+            store.add_person(person)
+            existing[key] = person
+            result["created"] += 1
+        else:
+            result["matched"] += 1
+        if pic_col and isinstance(rowd.get(pic_col), (bytes, bytearray)):
+            attach = _attach_photo(bytes(rowd[pic_col]), max_px)
+            if attach:
+                store.set_person_photo(person.id, attach[0], attach[1])
+                result["photos"] += 1
     return result
 
 
 def import_into_masarasi(conn, db_path: str, replace: bool = True,
                          max_px: int = 1600) -> Dict[str, object]:
-    """Importiert Törns, Einträge und Bilder in die masarasi-Logbuch-DB.
+    """Importiert Törns, Einträge, Bilder und Stammdaten in die masarasi-DB.
 
-    Gibt {"entries": n, "images": m, "image_method": str,
-    "ship_photos": p, "person_photos": q} zurück.
+    Schiffe und Personen aus TripCon werden als Stammdaten angelegt (idempotent
+    über den Namen) und ihre Fotos angehängt. Gibt ein Ergebnis-Dict zurück.
     """
     store = LogbookStore(db_path)
     if replace:
@@ -601,14 +721,21 @@ def import_into_masarasi(conn, db_path: str, replace: bool = True,
     }
 
     image_info = import_entry_images(conn, store, logid_map, max_px=max_px)
-    photo_info = import_stammdaten_photos(conn, store, max_px=max_px)
+    ship_info = import_ships(conn, store, max_px=max_px)
+    person_info = import_persons(conn, store, max_px=max_px)
 
     return {
         "entries": len(pairs),
         "images": image_info["images"],
         "image_method": image_info["method"],
-        "ship_photos": photo_info["ships"],
-        "person_photos": photo_info["persons"],
+        "ships_created": ship_info["created"],
+        "ships_matched": ship_info["matched"],
+        "ship_photos": ship_info["photos"],
+        "ship_fields": ship_info["fields"],
+        "persons_created": person_info["created"],
+        "persons_matched": person_info["matched"],
+        "person_photos": person_info["photos"],
+        "person_fields": person_info["fields"],
     }
 
 

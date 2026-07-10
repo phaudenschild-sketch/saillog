@@ -94,11 +94,12 @@ nicht mehr an die Oberfläche gebunden.
 - **TripCon-Import** (.tcdb): Törns, Messwerte, Tracks, Bilder, **Anlass**
   (LogEvent) + Wetter/Sicht aus den Übersetzungstabellen aufgelöst.
   **Plotterbilder** (B104_BinDat) werden beim Import an die passenden Einträge
-  gehängt und dabei auf 1600 px (JPEG) verkleinert; **Schiffs-/Personenfotos**
-  (S003_Ships/S006_Persons) wandern in die Stammdaten, sofern Schiff/Person
-  mit passendem Namen bereits angelegt ist. Die Bild-Verknüpfung ist
-  schema-adaptiv (Fremdschlüssel oder Zeitstempel) und meldet die verwendete
-  Methode.
+  gehängt und dabei auf 1600 px (JPEG) verkleinert. **Schiffe und Personen**
+  (S003_Ships/S006_Persons) werden als Stammdaten angelegt (idempotent über den
+  Namen; vorhandene Einträge werden erkannt, nicht dupliziert) — mit adaptiv
+  gemappten Feldern (Kennwerte/Adresse etc.) und ihrem Foto. Die
+  Bild-Verknüpfung ist schema-adaptiv (Fremdschlüssel oder Zeitstempel) und
+  meldet die verwendete Methode.
 
 ## Offene Punkte / nächste Schritte
 

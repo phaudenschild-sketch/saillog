@@ -160,24 +160,48 @@ class TripconTest(unittest.TestCase):
         (entry_id,) = tuple(with_images)
         self.assertIsNotNone(store.get_image(entry_id))
 
-    def test_import_stammdaten_photos(self):
+    def test_import_creates_stammdaten_with_photos(self):
+        # Schiff und Person werden automatisch angelegt und mit Foto versehen
+        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        result = tripcon.import_into_masarasi(self.conn, db_path)
+        self.assertEqual(result["ships_created"], 1)
+        self.assertEqual(result["ship_photos"], 1)
+        self.assertEqual(result["persons_created"], 1)
+        self.assertEqual(result["person_photos"], 1)
+        store = LogbookStore(db_path)
+        ships = store.all_ships()
+        self.assertEqual([s.name for s in ships], ["Tymanfaya"])
+        self.assertIsNotNone(store.get_ship_photo(ships[0].id))
+        persons = store.all_persons()
+        self.assertEqual([p.last_name for p in persons], ["Haudenschild"])
+        self.assertIsNotNone(store.get_person_photo(persons[0].id))
+
+    def test_import_stammdaten_idempotent(self):
+        # Erneuter Import legt keine Dubletten an
+        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        tripcon.import_into_masarasi(self.conn, db_path)
+        result2 = tripcon.import_into_masarasi(self.conn, db_path)
+        self.assertEqual(result2["ships_created"], 0)
+        self.assertEqual(result2["ships_matched"], 1)
+        self.assertEqual(result2["persons_created"], 0)
+        self.assertEqual(result2["persons_matched"], 1)
+        store = LogbookStore(db_path)
+        self.assertEqual(len(store.all_ships()), 1)
+        self.assertEqual(len(store.all_persons()), 1)
+
+    def test_import_matches_existing_ship_without_duplicate(self):
+        # Ein vorab angelegtes Schiff wird per Name erkannt, nicht dupliziert
         db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
         store = LogbookStore(db_path)
-        from masarasi.storage import Person, Ship
-        ship_id = store.add_ship(Ship(name="Tymanfaya"))
-        person_id = store.add_person(Person(last_name="Haudenschild"))
+        from masarasi.storage import Ship
+        store.add_ship(Ship(name="Tymanfaya", home_port="Lavagna"))
         result = tripcon.import_into_masarasi(self.conn, db_path)
+        self.assertEqual(result["ships_created"], 0)
+        self.assertEqual(result["ships_matched"], 1)
         self.assertEqual(result["ship_photos"], 1)
-        self.assertEqual(result["person_photos"], 1)
-        self.assertIsNotNone(store.get_ship_photo(ship_id))
-        self.assertIsNotNone(store.get_person_photo(person_id))
-
-    def test_import_stammdaten_photos_skips_unknown(self):
-        # Ohne passende Stammdaten werden keine Fotos übernommen
-        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
-        result = tripcon.import_into_masarasi(self.conn, db_path)
-        self.assertEqual(result["ship_photos"], 0)
-        self.assertEqual(result["person_photos"], 0)
+        ships = store.all_ships()
+        self.assertEqual(len(ships), 1)
+        self.assertEqual(ships[0].home_port, "Lavagna")  # bestehende Daten bleiben
 
     def test_import_creates_and_links_trips(self):
         db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
