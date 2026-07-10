@@ -508,29 +508,32 @@ def _pick_col(cols: List[str], candidates) -> Optional[str]:
 _SHIP_FIELD_MAP = [
     ("name", ("ShipName", "Name"), "text"),
     ("ship_type", ("ShipType", "Type", "BoatType", "Typ"), "text"),
-    ("keel_type", ("KeelType", "Keel", "Kiel"), "text"),
+    ("keel_type", ("KeelType", "Keeltype", "Keel", "Kiel"), "text"),
     ("ship_number", ("ShipNumber", "Number", "RegistrationNo", "Registration",
                      "Nummer"), "text"),
-    ("length_m", ("Length", "LengthOverAll", "LOA", "Loa", "Laenge"), "float"),
-    ("beam_m", ("Beam", "Width", "Breadth", "Breite"), "float"),
-    ("max_draft_m", ("Draft", "Draught", "MaxDraft", "Tiefgang"), "float"),
-    ("displacement_t", ("Displacement", "Weight", "Verdraengung"), "float"),
-    ("clearance_height_m", ("ClearanceHeight", "AirDraft", "MastHeight",
-                            "Durchfahrtshoehe"), "float"),
-    ("flag", ("Flag", "Flagge"), "text"),
-    ("home_port", ("HomePort", "Port", "HomeHarbour", "HomeHarbor",
-                   "Heimathafen"), "text"),
+    ("length_m", ("LoA", "Length", "LengthOverAll", "LOA", "Loa",
+                  "Laenge"), "float"),
+    ("beam_m", ("WoA", "Beam", "Width", "Breadth", "Breite"), "float"),
+    ("max_draft_m", ("Draft_Max", "Draft", "Draught", "MaxDraft",
+                     "Tiefgang"), "float"),
+    ("displacement_t", ("Displace", "Displacement", "Weight",
+                        "Verdraengung"), "float"),
+    ("clearance_height_m", ("PassHeight", "ClearanceHeight", "AirDraft",
+                            "MastHeight", "Durchfahrtshoehe"), "float"),
+    ("flag", ("FlagOf", "Flag", "Flagge"), "text"),
+    ("home_port", ("PortOfRegistry", "HomePort", "Port", "HomeHarbour",
+                   "HomeHarbor", "Heimathafen"), "text"),
     ("call_sign", ("CallSign", "Callsign", "Call", "Rufzeichen"), "text"),
     ("mmsi", ("MMSI", "Mmsi"), "text"),
-    ("echo_depth_m", ("EchoDepth", "DepthOffset", "SounderOffset",
-                      "Echolot"), "float"),
-    ("log_correction", ("LogCorrection", "LogFactor", "CorrectionFactor",
-                        "Korrekturfaktor"), "float"),
+    ("echo_depth_m", ("TransInstDepth", "EchoDepth", "DepthOffset",
+                      "SounderOffset", "Echolot"), "float"),
+    ("log_correction", ("CorrFactLog", "LogCorrection", "LogFactor",
+                        "CorrectionFactor", "Korrekturfaktor"), "float"),
     ("water_tank_l", ("WaterTank", "WaterCapacity", "FreshWater",
                       "Wassertank"), "float"),
     ("fuel_tank_l", ("FuelTank", "FuelCapacity", "Fuel", "Diesel",
                      "Treibstoff"), "float"),
-    ("sails", ("Sails", "Sail", "Segel", "Antrieb"), "text"),
+    ("sails", ("TypeOfDrive", "Sails", "Sail", "Segel", "Antrieb"), "text"),
     ("equipment", ("Equipment", "Gear", "Ausruestung", "Ausstattung"), "text"),
     ("power_source", ("PowerSource", "Power", "Electric", "Strom"), "text"),
 ]
@@ -538,18 +541,19 @@ _SHIP_FIELD_MAP = [
 _PERSON_FIELD_MAP = [
     ("last_name", ("LastName", "Name", "Surname", "Nachname"), "text"),
     ("first_name", ("FirstName", "Vorname", "GivenName", "PreName"), "text"),
-    ("birth_date", ("BirthDate", "DateOfBirth", "Birthday", "BirthDZ",
-                    "Geburtsdatum"), "text"),
-    ("birth_place", ("BirthPlace", "PlaceOfBirth", "BirthLocation",
+    ("birth_date", ("Birthday", "BirthDate", "DateOfBirth", "BirthDZ",
+                    "Geburtsdatum"), "date"),
+    ("birth_place", ("PlaceOfBirth", "BirthPlace", "BirthLocation",
                      "Geburtsort"), "text"),
     ("nationality", ("Nationality", "Nation", "Citizenship",
                      "Nationalitaet"), "text"),
-    ("passport_no", ("PassportNo", "Passport", "PassNo", "PassportNumber",
-                     "IDNumber", "Ausweis", "Reisepass"), "text"),
+    ("passport_no", ("Passport_Nr", "PassportNo", "Passport", "PassNo",
+                     "PassportNumber", "IDNumber", "Ausweis",
+                     "Reisepass"), "text"),
     ("email", ("Email", "EMail", "Mail"), "text"),
-    ("street", ("Street", "Address", "Addr", "Address1", "Strasse",
+    ("street", ("Address", "Street", "Addr", "Address1", "Strasse",
                 "Adresse"), "text"),
-    ("zip_code", ("Zip", "ZipCode", "PostalCode", "PLZ"), "text"),
+    ("zip_code", ("ZipCode", "Zip", "PostalCode", "PLZ"), "text"),
     ("city", ("City", "Town", "Ort", "Stadt"), "text"),
 ]
 
@@ -564,17 +568,45 @@ def _resolve_field_map(cols: List[str], field_map) -> Dict[str, Tuple[str, str]]
     return resolved
 
 
+def _is_empty(attr: str, value) -> bool:
+    """True, wenn das Feld noch „leer" ist (für das Nachfüllen bestehender Sätze)."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if attr == "log_correction":
+        return value == 1.0        # Standardwert = noch nicht gesetzt
+    return False
+
+
+def _clean_date(value) -> str:
+    """TripCon-Geburtsdatum -> „YYYY-MM-DD" (ohne Uhrzeit/Z)."""
+    iso = to_iso(value)
+    return iso.split("T", 1)[0].rstrip("Z") if iso else ""
+
+
 def _apply_fields(obj, rowd: Dict[str, object], fmap: Dict[str, Tuple[str, str]],
-                  skip=("name", "last_name", "first_name")) -> None:
-    """Überträgt die aufgelösten Felder aus einer Zeile auf das Dataobjekt."""
+                  skip=("name", "last_name", "first_name"),
+                  only_empty: bool = False) -> None:
+    """Überträgt die aufgelösten Felder aus einer Zeile auf das Dataobjekt.
+
+    only_empty=True füllt nur Felder, die im Objekt noch leer sind (zum
+    Nachrüsten bereits importierter Stammdaten, ohne Eingaben zu überschreiben).
+    """
     for attr, (col, kind) in fmap.items():
         if attr in skip:
+            continue
+        if only_empty and not _is_empty(attr, getattr(obj, attr, None)):
             continue
         value = rowd.get(col)
         if kind == "float":
             fv = to_float(value)
             if fv is not None:
                 setattr(obj, attr, fv)
+        elif kind == "date":
+            text = _clean_date(value)
+            if text:
+                setattr(obj, attr, text)
         else:
             if value is None:
                 continue
@@ -643,6 +675,9 @@ def import_ships(conn, store: LogbookStore, max_px: int = 1600) -> Dict[str, obj
             existing[_norm(name)] = ship
             result["created"] += 1
         else:
+            # bestehendes Schiff: nur leere Felder nachfüllen
+            _apply_fields(ship, rowd, fmap, only_empty=True)
+            store.update_ship(ship)
             result["matched"] += 1
         if pic_col and isinstance(rowd.get(pic_col), (bytes, bytearray)):
             attach = _attach_photo(bytes(rowd[pic_col]), max_px)
@@ -693,6 +728,9 @@ def import_persons(conn, store: LogbookStore, max_px: int = 1600) -> Dict[str, o
             existing[key] = person
             result["created"] += 1
         else:
+            # bestehende Person: nur leere Felder nachfüllen
+            _apply_fields(person, rowd, fmap, only_empty=True)
+            store.update_person(person)
             result["matched"] += 1
         if pic_col and isinstance(rowd.get(pic_col), (bytes, bytearray)):
             attach = _attach_photo(bytes(rowd[pic_col]), max_px)

@@ -86,10 +86,20 @@ def _build_tripcon_db(path: str) -> None:
     c.execute("CREATE TABLE B109_Weather (ID INTEGER, Comment TEXT, ValueType INTEGER, Value BLOB, ReportDZ TEXT, Filename TEXT, CreateDZ TEXT, Active INTEGER, TextValue TEXT)")
     c.execute("INSERT INTO B109_Weather VALUES (13,'',3,?, '2013-09-26 08:20:16.000Z','OpenPortGuide','2013-10-22 08:20:37.841Z',1,NULL)", (_jpg(),))
 
-    c.execute("CREATE TABLE S003_Ships (ID INTEGER, ShipName TEXT, Picture BLOB)")
-    c.execute("INSERT INTO S003_Ships VALUES (2,'Tymanfaya',?)", (_jpg(),))
-    c.execute("CREATE TABLE S006_Persons (ID INTEGER, LastName TEXT, Picture BLOB)")
-    c.execute("INSERT INTO S006_Persons VALUES (15,'Haudenschild',?)", (_jpg(),))
+    # Schiffe/Personen mit den echten TripCon-Spaltennamen (DB-Version 366)
+    c.execute("CREATE TABLE S003_Ships (ID INTEGER, ShipName TEXT, Number TEXT, ShipType TEXT, "
+              "FlagOf TEXT, PortOfRegistry TEXT, CallSign TEXT, MMSI TEXT, LoA REAL, WoA REAL, "
+              "PassHeight REAL, Keeltype TEXT, Draft_Max REAL, Displace REAL, Picture BLOB, "
+              "TransInstDepth REAL, CorrFactLog REAL, TypeOfDrive TEXT, Active INTEGER)")
+    c.execute("INSERT INTO S003_Ships VALUES (2,'Tymanfaya','CH-1234','Sailing Yacht','CH',"
+              "'Lavagna','HBY1234','269123456',13.5,4.2,19.0,'Fin',2.1,12.0,?,2.3,1.02,'Sail',1)",
+              (_jpg(),))
+    c.execute("CREATE TABLE S006_Persons (ID INTEGER, LastName TEXT, FirstName TEXT, Email TEXT, "
+              "Nationality TEXT, Passport_Nr TEXT, Birthday TEXT, Picture BLOB, Address TEXT, "
+              "ZipCode TEXT, City TEXT, PlaceOfBirth TEXT, Active INTEGER)")
+    c.execute("INSERT INTO S006_Persons VALUES (15,'Haudenschild','Peter','peter@haudenschild.ch',"
+              "'CH','X1234567','1965-03-12 00:00:00.000Z',?,'Seeweg 1','8000','Zürich','Bern',1)",
+              (_jpg(),))
 
     conn.commit()
     conn.close()
@@ -175,6 +185,61 @@ class TripconTest(unittest.TestCase):
         persons = store.all_persons()
         self.assertEqual([p.last_name for p in persons], ["Haudenschild"])
         self.assertIsNotNone(store.get_person_photo(persons[0].id))
+
+    def test_import_maps_ship_fields(self):
+        # Alle relevanten Schiffs-Kennwerte werden aus TripCon übernommen
+        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        tripcon.import_into_masarasi(self.conn, db_path)
+        ship = LogbookStore(db_path).all_ships()[0]
+        self.assertEqual(ship.ship_number, "CH-1234")
+        self.assertEqual(ship.ship_type, "Sailing Yacht")
+        self.assertEqual(ship.flag, "CH")
+        self.assertEqual(ship.home_port, "Lavagna")
+        self.assertEqual(ship.call_sign, "HBY1234")
+        self.assertEqual(ship.mmsi, "269123456")
+        self.assertAlmostEqual(ship.length_m, 13.5)
+        self.assertAlmostEqual(ship.beam_m, 4.2)
+        self.assertAlmostEqual(ship.clearance_height_m, 19.0)
+        self.assertEqual(ship.keel_type, "Fin")
+        self.assertAlmostEqual(ship.max_draft_m, 2.1)
+        self.assertAlmostEqual(ship.displacement_t, 12.0)
+        self.assertAlmostEqual(ship.echo_depth_m, 2.3)
+        self.assertAlmostEqual(ship.log_correction, 1.02)
+        self.assertEqual(ship.sails, "Sail")
+
+    def test_import_maps_person_fields(self):
+        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        tripcon.import_into_masarasi(self.conn, db_path)
+        person = LogbookStore(db_path).all_persons()[0]
+        self.assertEqual(person.first_name, "Peter")
+        self.assertEqual(person.email, "peter@haudenschild.ch")
+        self.assertEqual(person.nationality, "CH")
+        self.assertEqual(person.passport_no, "X1234567")
+        self.assertEqual(person.birth_date, "1965-03-12")   # Uhrzeit/Z entfernt
+        self.assertEqual(person.street, "Seeweg 1")
+        self.assertEqual(person.zip_code, "8000")
+        self.assertEqual(person.city, "Zürich")
+        self.assertEqual(person.birth_place, "Bern")
+
+    def test_reimport_backfills_empty_fields(self):
+        # Bereits angelegte Stammdaten (nur Name) werden beim Re-Import nachgefüllt,
+        # bestehende Eingaben aber nicht überschrieben.
+        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        store = LogbookStore(db_path)
+        from masarasi.storage import Person, Ship
+        store.add_ship(Ship(name="Tymanfaya", home_port="Eigenhafen"))
+        store.add_person(Person(last_name="Haudenschild", first_name="Peter",
+                                nationality="Schweiz"))
+        result = tripcon.import_into_masarasi(self.conn, db_path)
+        self.assertEqual(result["ships_matched"], 1)
+        self.assertEqual(result["persons_matched"], 1)
+        ship = store.all_ships()[0]
+        self.assertEqual(ship.home_port, "Eigenhafen")   # Eingabe bleibt
+        self.assertEqual(ship.call_sign, "HBY1234")       # leeres Feld nachgefüllt
+        self.assertAlmostEqual(ship.log_correction, 1.02)  # Standard 1.0 -> gefüllt
+        person = store.all_persons()[0]
+        self.assertEqual(person.nationality, "Schweiz")   # Eingabe bleibt
+        self.assertEqual(person.passport_no, "X1234567")   # leeres Feld nachgefüllt
 
     def test_import_stammdaten_idempotent(self):
         # Erneuter Import legt keine Dubletten an
