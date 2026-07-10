@@ -27,7 +27,7 @@ from masarasi.config import Config  # noqa: E402
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Importiert ein TripCon-Logbuch (.tcdb).")
     parser.add_argument("tcdb", help="Pfad zur TripCon-Sicherung (.tcdb)")
-    parser.add_argument("--out", required=True, help="Ausgabeordner für Export/Bilder")
+    parser.add_argument("--out", default=None, help="Ausgabeordner für Export/Bilder")
     parser.add_argument(
         "--into-app", action="store_true",
         help="Einträge zusätzlich in die masarasi-Logbuch-DB importieren",
@@ -36,10 +36,30 @@ def main(argv=None) -> int:
         "--only-images", action="store_true", help="nur Bilder extrahieren"
     )
     parser.add_argument(
+        "--show-columns", action="store_true",
+        help="nur die Spalten der Stammdaten-Tabellen anzeigen (zur Diagnose)",
+    )
+    parser.add_argument(
         "--db", default=None,
         help="Ziel-DB für --into-app (Standard: masarasi-Konfiguration)",
     )
     args = parser.parse_args(argv)
+
+    if args.show_columns:
+        print(f"Öffne TripCon-DB: {args.tcdb}")
+        conn = tripcon.connect(args.tcdb)
+        try:
+            for table in ("S003_Ships", "S006_Persons"):
+                cols = tripcon._columns(conn, table)
+                print(f"\n{table} ({len(cols)} Spalten):")
+                for col in cols:
+                    print(f"  {col}")
+        finally:
+            conn.close()
+        return 0
+
+    if not args.out:
+        parser.error("--out ist erforderlich (außer bei --show-columns)")
 
     out = Path(args.out).expanduser()
     out.mkdir(parents=True, exist_ok=True)
