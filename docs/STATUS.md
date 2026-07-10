@@ -58,6 +58,9 @@ nicht mehr an die Oberfläche gebunden.
 - **Foto-Import** (`photos.py`, Knopf „📷 Foto-Import…"): Ordner überwachen →
   Bild in „vernünftige" Größe (max. 1600 px, JPEG) verkleinern → Auto-Eintrag
   mit Bild + NMEA-Daten; Originale wandern nach `verarbeitet/` (braucht Pillow)
+- **Backup** (`backup.py`, Knopf „💾 Backup…"): Logbuch-DB (inkl. Fotos) +
+  Einstellungen als zeitgestempelte ZIP; manuell oder automatisch beim Beenden
+  (letzte N behalten)
 - **Törns** mit Start-/Endwerten (Log/Motorstunden aus NMEA vorbelegt)
 - **Einträge bearbeiten & löschen**, ✎-Marker für Bearbeitetes
 - **Zeitzone** (System oder fester UTC-Versatz); intern UTC gespeichert
@@ -119,6 +122,7 @@ src/masarasi/
   logbook.py     Auto-/Manuell-Logging, Bedingungen, Törns
   autolog.py     AutoLog-Auslöser (Intervall/SOG/Kurs/Tiefe/…)
   photos.py      Foto-Import (Ordner-Watcher, Verkleinern auf JPEG)
+  backup.py      Datensicherung (ZIP: DB inkl. Fotos + Einstellungen)
   storage.py     SQLite: LogEntry/Trip, Migration, CSV/GPX, Bilder
   fields.py      Auswahllisten (Segel/Wetter/Sicht)
   timeutil.py    Zeitzonen-Umrechnung (UTC ↔ Anzeige)

@@ -10,10 +10,10 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
-from masarasi import crewlist, fuel, geo, photos, timeutil
+from masarasi import backup, crewlist, fuel, geo, photos, timeutil
 from masarasi.ais import AisDecoder, AisTargets
 from masarasi.autolog import AutoLogSettings
-from masarasi.config import Config
+from masarasi.config import CONFIG_PATH, Config
 from masarasi.fields import (
     CLOUD_COVER_LABELS,
     MAINSAIL_OPTIONS,
@@ -233,6 +233,9 @@ class Application:
         )
         ttk.Button(bottom, text="Bild ansehen", command=self._on_view_image).pack(
             side="left", padx=4
+        )
+        ttk.Button(bottom, text="💾 Backup…", command=self._on_backup).pack(
+            side="left", padx=(12, 4)
         )
         ttk.Label(bottom, text="(Doppelklick = bearbeiten)", foreground="#999").pack(
             side="left", padx=8
@@ -633,6 +636,25 @@ class Application:
                                   created_dz=utc_now_iso())
         self._root.after(0, self._refresh_logbook)
 
+    # --- Backup -------------------------------------------------------------
+
+    def _on_backup(self) -> None:
+        dialog = _BackupDialog(self._root, self._config, self._make_backup)
+        self._root.wait_window(dialog.top)
+
+    def _make_backup(self, folder: str) -> Optional[str]:
+        """Erstellt ein Backup im Zielordner; gibt den Pfad zurück (oder None)."""
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        try:
+            path = backup.create_backup(
+                self._config.db_path, str(CONFIG_PATH), folder, stamp
+            )
+            backup.prune_backups(folder, int(self._config.backup_keep or 5))
+            return str(path)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("Backup", f"Backup fehlgeschlagen:\n{exc}")
+            return None
+
     def _on_auto_entry(self, entry) -> None:
         # Läuft im Auto-Log-Thread: die Tabelle im GUI-Thread aktualisieren.
         self._root.after(0, self._refresh_logbook)
@@ -907,6 +929,12 @@ class Application:
             src.stop()
         if self._map_server is not None:
             self._map_server.stop()
+        # Automatische Sicherung beim Beenden (best effort, blockiert nie)
+        if self._config.backup_on_close and self._config.backup_folder:
+            try:
+                self._make_backup(self._config.backup_folder)
+            except Exception:  # noqa: BLE001
+                pass
         self._root.destroy()
 
 
@@ -1390,6 +1418,89 @@ class _PhotoDialog:
             "folder": self._folder.get().strip(),
             "enabled": self._enabled.get(),
         }
+        self.top.destroy()
+
+
+class _BackupDialog:
+    """Datensicherung: Zielordner, Auto-beim-Beenden, „Jetzt sichern"."""
+
+    def __init__(self, parent, config, make_backup) -> None:
+        self._config = config
+        self._make_backup = make_backup
+        self.top = tk.Toplevel(parent)
+        self.top.title("Backup")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame, wraplength=470, foreground="#555",
+            text="Sichert die Logbuch-Datenbank (inkl. Fotos) und die Einstellungen "
+                 "als ZIP — eine Datei zum Kopieren, z.B. auf einen USB-Stick.",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+
+        ttk.Label(frame, text="Zielordner:").grid(row=1, column=0, sticky="e", padx=(0, 4), pady=4)
+        self._folder = tk.StringVar(value=config.backup_folder)
+        ttk.Entry(frame, textvariable=self._folder, width=44).grid(row=1, column=1, sticky="w")
+        ttk.Button(frame, text="Wählen…", command=self._choose).grid(row=1, column=2, padx=4)
+
+        self._auto = tk.BooleanVar(value=config.backup_on_close)
+        ttk.Checkbutton(frame, text="beim Beenden automatisch sichern",
+                        variable=self._auto).grid(row=2, column=0, columnspan=2, sticky="w", pady=2)
+
+        keeprow = ttk.Frame(frame)
+        keeprow.grid(row=3, column=0, columnspan=3, sticky="w", pady=2)
+        ttk.Label(keeprow, text="letzte behalten:").pack(side="left")
+        self._keep = tk.StringVar(value=str(int(config.backup_keep or 5)))
+        ttk.Spinbox(keeprow, from_=1, to=99, textvariable=self._keep, width=5).pack(
+            side="left", padx=4)
+
+        self._status = ttk.Label(frame, foreground="#1a7a3a", wraplength=470)
+        self._status.grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self._refresh_status()
+
+        btns = ttk.Frame(frame)
+        btns.grid(row=5, column=0, columnspan=3, pady=(12, 0))
+        ttk.Button(btns, text="Jetzt sichern", command=self._on_now).pack(side="left", padx=4)
+        ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text="Schließen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _choose(self) -> None:
+        directory = filedialog.askdirectory(title="Backup-Zielordner")
+        if directory:
+            self._folder.set(directory)
+            self._refresh_status()
+
+    def _refresh_status(self) -> None:
+        folder = self._folder.get().strip()
+        n = len(backup.list_backups(folder)) if folder else 0
+        self._status.config(text=f"{n} Backup(s) im Zielordner." if folder else "")
+
+    def _save(self) -> None:
+        self._config.backup_folder = self._folder.get().strip()
+        self._config.backup_on_close = self._auto.get()
+        try:
+            self._config.backup_keep = max(1, int(self._keep.get()))
+        except ValueError:
+            self._config.backup_keep = 5
+        self._config.save()
+
+    def _on_now(self) -> None:
+        folder = self._folder.get().strip()
+        if not folder:
+            messagebox.showinfo("Backup", "Bitte zuerst einen Zielordner wählen.")
+            return
+        self._save()
+        path = self._make_backup(folder)
+        if path:
+            import os
+            n = len(backup.list_backups(folder))
+            self._status.config(
+                text=f"Gesichert: {os.path.basename(path)}  ({n} Backup(s))")
+
+    def _on_ok(self) -> None:
+        self._save()
         self.top.destroy()
 
 

@@ -57,6 +57,9 @@ Python.
   Tabelle
 - 💾 **Speicherung** in einer lokalen SQLite-Datenbank
 - 📤 **Export** als **CSV** und **GPX** (optional pro Törn)
+- 💾 **Backup** (Knopf „💾 Backup…"): Logbuch-Datenbank (inkl. Fotos) und
+  Einstellungen als **zeitgestempelte ZIP** — manuell oder automatisch beim
+  Beenden (die letzten N behalten); eine Datei zum Kopieren auf einen USB-Stick
 - 📥 **Import** alter **TripCon**-Logbücher (`.tcdb`)
 - 🧪 **Simulator** zum Testen ohne Boot
 
@@ -263,6 +266,7 @@ masarasi/
 │   ├── logbook.py              ← Auto-/Manuell-Logging-Dienst
 │   ├── autolog.py              ← AutoLog-Auslöser (Intervall/SOG/Kurs/Tiefe/…)
 │   ├── photos.py               ← Foto-Import (Ordner-Watcher + Verkleinern)
+│   ├── backup.py               ← Datensicherung (ZIP: DB + Einstellungen)
 │   ├── storage.py              ← SQLite + CSV/GPX-Export
 │   ├── discover.py             ← Quellen-Scanner (Orca Core, B&G, …)
 │   ├── plotter_capture.py      ← Bild laden/als-PNG (Pillow optional, ungenutzt)

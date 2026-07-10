@@ -47,6 +47,11 @@ class Config:
     photo_import_enabled: bool = False
     photo_max_px: int = 1600
 
+    # Datensicherung (ZIP): Zielordner, automatisch beim Beenden, wie viele behalten
+    backup_folder: str = ""
+    backup_on_close: bool = False
+    backup_keep: int = 5
+
     # Speicherort der Datenbank
     db_path: str = str(_app_dir() / "logbook.sqlite3")
 
