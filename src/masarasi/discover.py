@@ -16,6 +16,7 @@ import argparse
 import concurrent.futures
 import json
 import socket
+import time
 from typing import Dict, List, Optional
 
 from masarasi.nmea import NmeaParser
@@ -316,12 +317,18 @@ def listen_gofree(seconds: float = 8.0, iface: Optional[str] = None,
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
         if iface:
             sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, if_addr)
-        sock.settimeout(seconds)
+        # Gesamtdauer begrenzen (nicht pro Paket): ein chattiges MFD sendet
+        # sonst ununterbrochen und der Lauf endet nie.
+        end = time.monotonic() + seconds
         while True:
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                break
+            sock.settimeout(min(0.5, remaining))
             try:
                 data, addr = sock.recvfrom(8192)
             except socket.timeout:
-                break
+                continue
             ann = parse_gofree_announcement(data)
             if on_packet is not None:
                 on_packet(addr, data, ann)
@@ -355,15 +362,25 @@ def scan_gofree(seconds: float = 8.0, iface: Optional[str] = None,
           f"({GOFREE_MULTICAST}:{GOFREE_PORT}){where} …")
 
     packets: List = []
+    seen: set = set()   # identische Ankündigungen nur einmal ausgeben
 
     def _on_packet(addr, data, parsed):
         packets.append((addr, data, parsed))
-        if raw:
-            text = _printable(data[:200])
-            print(f"\n  ⟵ {len(data)} B von {addr[0]}:{addr[1]}  "
-                  f"({'JSON erkannt' if parsed else 'roh/unbekannt'})")
-            print(f"      Text: {text}")
-            print(f"      Hex : {data[:64].hex(' ')}")
+        if not raw:
+            return
+        key = hash(data)
+        if key in seen:
+            return
+        seen.add(key)
+        kind = "JSON erkannt" if parsed else "roh/unbekannt"
+        print(f"\n  ⟵ {len(data)} B von {addr[0]}:{addr[1]}  ({kind}) "
+              f"[weitere identische werden unterdrückt]")
+        if parsed:
+            # vollständiges JSON hübsch ausgeben (die Dienste stehen mittendrin)
+            print(json.dumps(parsed.get("raw", {}), indent=2, ensure_ascii=False))
+        else:
+            print(f"      Text: {_printable(data, limit=1400)}")
+            print(f"      Hex : {data[:96].hex(' ')}")
 
     devices = listen_gofree(seconds, iface=iface, on_packet=_on_packet)
 
