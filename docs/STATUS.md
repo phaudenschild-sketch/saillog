@@ -52,7 +52,9 @@ nicht mehr an die Oberfläche gebunden.
 - Flaches „Console"-Layout: Messwerte | Bedingungen nebeneinander
 - **Dauerhafte Bedingungsfelder** (Anlass, Motor, Segel, Wetter, Sicht,
   Seegang, Bemerkung) — bei **jedem** Log (auto + manuell) mitgeschrieben
-- Auto-Logging (Intervall) + „✎ Eintrag speichern"
+- **AutoLog-Auslöser** (wie TripCon, `autolog.py`): Intervall, SOG-/STW-Schwelle,
+  Kurswechsel (geglättet), Flachwasser, abrupte Verzögerung, Strecke seit letztem
+  Eintrag — der Auslösegrund wird als Anlass gespeichert. Knopf „AutoLog…"
 - **Törns** mit Start-/Endwerten (Log/Motorstunden aus NMEA vorbelegt)
 - **Einträge bearbeiten & löschen**, ✎-Marker für Bearbeitetes
 - **Zeitzone** (System oder fester UTC-Versatz); intern UTC gespeichert
@@ -112,6 +114,7 @@ src/masarasi/
   fuel.py        Verbrauchsberechnung (l/h) aus den Tank-Einträgen
   livedata.py    thread-sicherer Messwert-Speicher
   logbook.py     Auto-/Manuell-Logging, Bedingungen, Törns
+  autolog.py     AutoLog-Auslöser (Intervall/SOG/Kurs/Tiefe/…)
   storage.py     SQLite: LogEntry/Trip, Migration, CSV/GPX, Bilder
   fields.py      Auswahllisten (Segel/Wetter/Sicht)
   timeutil.py    Zeitzonen-Umrechnung (UTC ↔ Anzeige)

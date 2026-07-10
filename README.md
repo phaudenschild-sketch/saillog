@@ -45,8 +45,11 @@ Python.
   Wind, Motor, Segel, Anlass, Notiz). Ein Ebenen-Umschalter blendet
   Logbuch/Track/AIS ein und aus. Der Kartenserver läuft nur lokal
   (`127.0.0.1`); Karten-Kacheln kommen vom CDN (an Bord über Starlink).
-- ⏱️ **Automatisches Logging** in einstellbarem Intervall (dem aktiven Törn
-  zugeordnet, inkl. der Bedingungswerte)
+- ⏱️ **AutoLog mit Auslösern** (wie TripCon, Knopf „AutoLog…"): Intervall,
+  Fahrt über Grund/durchs Wasser ≥ Schwelle, Kurswechsel (geglättet),
+  Wassertiefe ≤ Schwelle, abrupte Fahrtreduzierung, Strecke seit letztem
+  Eintrag — der Auslösegrund wird als **Anlass** mitgeschrieben (dem aktiven
+  Törn zugeordnet, inkl. der Bedingungswerte)
 - ✏️ **Einträge bearbeiten & löschen** — Doppelklick öffnet den Eintrag;
   geänderte Einträge werden mit einem **✎-Marker** gekennzeichnet
 - 🕐 **Zeitzone** einstellbar (Systemzeit oder fester UTC-Versatz); intern
@@ -256,6 +259,7 @@ masarasi/
 │   ├── source.py               ← TCP/UDP/seriell-Client (Thread, AIS-Routing)
 │   ├── livedata.py             ← Thread-sicherer Messwert-Speicher
 │   ├── logbook.py              ← Auto-/Manuell-Logging-Dienst
+│   ├── autolog.py              ← AutoLog-Auslöser (Intervall/SOG/Kurs/Tiefe/…)
 │   ├── storage.py              ← SQLite + CSV/GPX-Export
 │   ├── discover.py             ← Quellen-Scanner (Orca Core, B&G, …)
 │   ├── plotter_capture.py      ← Bild laden/als-PNG (Pillow optional, ungenutzt)

@@ -37,8 +37,10 @@ class Config:
     sources: Optional[list] = None
 
     # Automatisches Logging
-    auto_interval_seconds: int = 300  # alle 5 Minuten
+    auto_interval_seconds: int = 300  # alle 5 Minuten (Alt-Wert)
     auto_enabled_on_start: bool = False
+    # AutoLog-Auslöser (siehe autolog.AutoLogSettings); None = Standardwerte
+    autolog: Optional[dict] = None
 
     # Speicherort der Datenbank
     db_path: str = str(_app_dir() / "logbook.sqlite3")

@@ -12,6 +12,7 @@ from typing import Deque, Dict, List, Optional
 
 from masarasi import crewlist, fuel, geo, timeutil
 from masarasi.ais import AisDecoder, AisTargets
+from masarasi.autolog import AutoLogSettings
 from masarasi.config import Config
 from masarasi.fields import (
     CLOUD_COVER_LABELS,
@@ -61,6 +62,8 @@ class Application:
         self._ais_decoders: list = []
         # Lokaler Webserver für die AIS-Karte (Leaflet + OpenFreeMap)
         self._map_server: Optional[MapServer] = None
+        # AutoLog-Auslöser (aus der Konfiguration)
+        self._autolog_settings = AutoLogSettings.from_dict(self._config.autolog)
 
         self._value_labels: Dict[str, tk.Label] = {}
         # Ringpuffer für die Rohdaten-Anzeige (Thread-sicher via deque.append)
@@ -158,17 +161,13 @@ class Application:
         controls = ttk.LabelFrame(self._root, text="Logbuch")
         controls.pack(fill="x", **pad)
 
-        ttk.Label(controls, text="Auto-Intervall (Sek.):").grid(
-            row=0, column=0, sticky="e", padx=4, pady=6
-        )
-        self._interval_var = tk.StringVar(value=str(self._config.auto_interval_seconds))
-        ttk.Entry(controls, textvariable=self._interval_var, width=8).grid(
-            row=0, column=1, padx=4
-        )
         self._auto_btn = ttk.Button(
             controls, text="Auto-Logging starten", command=self._on_toggle_auto
         )
-        self._auto_btn.grid(row=0, column=2, padx=8)
+        self._auto_btn.grid(row=0, column=0, padx=(8, 4), pady=6)
+        ttk.Button(controls, text="AutoLog…", command=self._on_autolog_settings).grid(
+            row=0, column=1, padx=4
+        )
 
         ttk.Button(
             controls, text="✎ Eintrag speichern", command=self._on_save_entry
@@ -569,15 +568,20 @@ class Application:
             self._logbook.stop_auto()
             self._auto_btn.config(text="Auto-Logging starten")
             return
-        try:
-            interval = int(self._interval_var.get())
-        except ValueError:
-            messagebox.showerror("Ungültig", "Intervall muss eine Zahl (Sekunden) sein.")
-            return
-        self._config.auto_interval_seconds = interval
-        self._config.save()
-        self._logbook.start_auto(interval, on_entry=self._on_auto_entry)
+        self._logbook.start_auto(self._autolog_settings, on_entry=self._on_auto_entry)
         self._auto_btn.config(text="Auto-Logging stoppen")
+
+    def _on_autolog_settings(self) -> None:
+        dialog = _AutoLogDialog(self._root, self._autolog_settings)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        self._autolog_settings = dialog.result
+        self._config.autolog = dialog.result.to_dict()
+        self._config.save()
+        # Läuft das Auto-Logging schon, mit den neuen Auslösern neu starten
+        if self._logbook.auto_running:
+            self._logbook.start_auto(self._autolog_settings, on_entry=self._on_auto_entry)
 
     def _on_auto_entry(self, entry) -> None:
         # Läuft im Auto-Log-Thread: die Tabelle im GUI-Thread aktualisieren.
@@ -1122,6 +1126,140 @@ class _ManualEntryDialog:
 def _fmt_live(snapshot: Dict[str, float], key: str) -> str:
     value = (snapshot or {}).get(key)
     return "" if value is None else f"{value:.1f}"
+
+
+class _AutoLogDialog:
+    """Einstellungen der AutoLog-Auslöser (nach dem Vorbild von TripCon)."""
+
+    _INTERVALS = [
+        ("5 Minuten", 300), ("10 Minuten", 600), ("15 Minuten", 900),
+        ("30 Minuten", 1800), ("volle Stunde", 3600), ("2 Stunden", 7200),
+    ]
+    _AVG = ["30 s", "60 s", "120 s", "300 s"]
+    _DECEL = ["2 kn/s", "3 kn/s", "5 kn/s", "8 kn/s"]
+
+    def __init__(self, parent, settings: AutoLogSettings) -> None:
+        self.result: Optional[AutoLogSettings] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("AutoLog-Auslöser")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        self._enabled = tk.BooleanVar(value=settings.enabled)
+        ttk.Checkbutton(frame, text="AutoLog aktivieren", variable=self._enabled).grid(
+            row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+
+        box = ttk.LabelFrame(frame, text="Logbucheintrag auslösen:")
+        box.grid(row=1, column=0, columnspan=3, sticky="we")
+        r = 0
+
+        self._interval_on = tk.BooleanVar(value=settings.interval_enabled)
+        ttk.Checkbutton(box, text="zu jeder", variable=self._interval_on).grid(
+            row=r, column=0, sticky="w", padx=6, pady=3)
+        self._interval = tk.StringVar(value=self._interval_label(settings.interval_seconds))
+        ttk.Combobox(box, textvariable=self._interval, width=14, state="readonly",
+                     values=[label for label, _ in self._INTERVALS]).grid(
+            row=r, column=1, columnspan=2, sticky="w")
+        r += 1
+
+        self._sog_on = tk.BooleanVar(value=settings.sog_enabled)
+        ttk.Checkbutton(box, text="wenn Fahrt über Grund ≥ (1–100)",
+                        variable=self._sog_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
+        self._sog = tk.StringVar(value=f"{settings.sog_threshold:g}")
+        ttk.Entry(box, textvariable=self._sog, width=8).grid(row=r, column=1, sticky="w")
+        ttk.Label(box, text="kn").grid(row=r, column=2, sticky="w")
+        r += 1
+
+        self._stw_on = tk.BooleanVar(value=settings.stw_enabled)
+        ttk.Checkbutton(box, text="wenn Fahrt durchs Wasser ≥ (1–100)",
+                        variable=self._stw_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
+        self._stw = tk.StringVar(value=f"{settings.stw_threshold:g}")
+        ttk.Entry(box, textvariable=self._stw, width=8).grid(row=r, column=1, sticky="w")
+        ttk.Label(box, text="kn").grid(row=r, column=2, sticky="w")
+        r += 1
+
+        self._course_on = tk.BooleanVar(value=settings.course_enabled)
+        ttk.Checkbutton(box, text="wenn Kurswechsel ≥ (20–170)",
+                        variable=self._course_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
+        self._course = tk.StringVar(value=f"{settings.course_threshold:g}")
+        ttk.Entry(box, textvariable=self._course, width=8).grid(row=r, column=1, sticky="w")
+        ttk.Label(box, text="°").grid(row=r, column=2, sticky="w")
+        r += 1
+        ttk.Label(box, text="   Mittelwertbildung über").grid(row=r, column=0, sticky="w", padx=6)
+        self._avg = tk.StringVar(value=f"{int(settings.course_avg_seconds)} s")
+        ttk.Combobox(box, textvariable=self._avg, width=8, state="readonly",
+                     values=self._AVG).grid(row=r, column=1, sticky="w")
+        r += 1
+
+        self._depth_on = tk.BooleanVar(value=settings.depth_enabled)
+        ttk.Checkbutton(box, text="wenn Wassertiefe ≤ (0,5–25)",
+                        variable=self._depth_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
+        self._depth = tk.StringVar(value=f"{settings.depth_threshold:g}")
+        ttk.Entry(box, textvariable=self._depth, width=8).grid(row=r, column=1, sticky="w")
+        ttk.Label(box, text="m").grid(row=r, column=2, sticky="w")
+        r += 1
+
+        self._decel_on = tk.BooleanVar(value=settings.decel_enabled)
+        ttk.Checkbutton(box, text="bei abrupter Fahrtreduzierung",
+                        variable=self._decel_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
+        self._decel = tk.StringVar(value=f"{settings.decel_threshold:g} kn/s")
+        ttk.Combobox(box, textvariable=self._decel, width=8, state="readonly",
+                     values=self._DECEL).grid(row=r, column=1, sticky="w")
+        r += 1
+
+        self._dist_on = tk.BooleanVar(value=settings.distance_enabled)
+        ttk.Checkbutton(box, text="wenn Entfernung zum letzten Eintrag ≥ (0,1–2)",
+                        variable=self._dist_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
+        self._dist = tk.StringVar(value=f"{settings.distance_threshold:g}")
+        ttk.Entry(box, textvariable=self._dist, width=8).grid(row=r, column=1, sticky="w")
+        ttk.Label(box, text="NM").grid(row=r, column=2, sticky="w")
+        r += 1
+
+        ttk.Label(frame, foreground="#777", wraplength=420,
+                  text="Der Auslösegrund wird als Anlass im Eintrag gespeichert. "
+                       "Die GPS-Spur für die Karte ergibt sich aus den Einträgen.").grid(
+            row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+
+        btns = ttk.Frame(frame)
+        btns.grid(row=3, column=0, columnspan=3, pady=(10, 0))
+        ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _interval_label(self, seconds: int) -> str:
+        for label, sec in self._INTERVALS:
+            if sec == seconds:
+                return label
+        return "volle Stunde"
+
+    def _interval_seconds(self, label: str) -> int:
+        for lab, sec in self._INTERVALS:
+            if lab == label:
+                return sec
+        return 3600
+
+    def _on_ok(self) -> None:
+        self.result = AutoLogSettings(
+            enabled=self._enabled.get(),
+            interval_enabled=self._interval_on.get(),
+            interval_seconds=self._interval_seconds(self._interval.get()),
+            align_boundary=True,
+            sog_enabled=self._sog_on.get(),
+            sog_threshold=_parse_float(self._sog.get()) or 8.0,
+            stw_enabled=self._stw_on.get(),
+            stw_threshold=_parse_float(self._stw.get()) or 4.0,
+            course_enabled=self._course_on.get(),
+            course_threshold=_parse_float(self._course.get()) or 40.0,
+            course_avg_seconds=int(self._avg.get().split()[0]),
+            depth_enabled=self._depth_on.get(),
+            depth_threshold=_parse_float(self._depth.get()) or 2.0,
+            decel_enabled=self._decel_on.get(),
+            decel_threshold=float(self._decel.get().split()[0]),
+            distance_enabled=self._dist_on.get(),
+            distance_threshold=_parse_float(self._dist.get()) or 0.5,
+        )
+        self.top.destroy()
 
 
 class _CrewListDialog:

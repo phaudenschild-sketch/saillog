@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
+from masarasi.autolog import AutoLogEngine, AutoLogSettings
 from masarasi.livedata import LiveData
 from masarasi.nmea import engine_running
 from masarasi.storage import LogbookStore, LogEntry, Trip
@@ -27,7 +28,7 @@ class LogbookService:
         self._live = live
         self._auto_thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
-        self._interval = 300
+        self._engine: Optional[AutoLogEngine] = None
         self._on_auto_entry: Optional[Callable[[LogEntry], None]] = None
         # Aktiver Törn, dem neue Einträge zugeordnet werden (vom GUI gesetzt)
         self.current_trip_id: Optional[int] = None
@@ -146,16 +147,22 @@ class LogbookService:
     # --- automatische Einträge ---------------------------------------------
 
     def record_auto(
-        self, trip_id: Optional[int] = None, conditions: Optional[dict] = None
+        self,
+        trip_id: Optional[int] = None,
+        conditions: Optional[dict] = None,
+        reason: Optional[str] = None,
     ) -> Optional[LogEntry]:
         """Schreibt einen Auto-Eintrag aus Snapshot + Maskenwerten.
 
+        `reason` (der AutoLog-Auslöser) wird als Anlass gespeichert.
         Gibt None zurück, wenn (noch) keine Messwerte vorliegen.
         """
         measurements = self._live.snapshot()
         if not measurements:
             return None
         fields = self._conditions_to_fields(conditions, measurements)
+        if reason:
+            fields["logevent"] = reason
         entry = LogEntry.from_snapshot(
             timestamp=utc_now_iso(),
             entry_type="auto",
@@ -169,12 +176,12 @@ class LogbookService:
 
     def start_auto(
         self,
-        interval_seconds: int,
+        settings: AutoLogSettings,
         on_entry: Optional[Callable[[LogEntry], None]] = None,
     ) -> None:
-        """Startet das automatische Logging im gegebenen Intervall."""
+        """Startet das automatische Logging mit den AutoLog-Auslösern."""
         self.stop_auto()
-        self._interval = max(5, int(interval_seconds))
+        self._engine = AutoLogEngine(settings)
         self._on_auto_entry = on_entry
         self._stop.clear()
         self._auto_thread = threading.Thread(target=self._auto_loop, daemon=True)
@@ -192,15 +199,21 @@ class LogbookService:
         return self._auto_thread is not None and self._auto_thread.is_alive()
 
     def _auto_loop(self) -> None:
+        self._engine.start(time.time())
         while not self._stop.is_set():
-            conditions = self.conditions_provider() if self.conditions_provider else None
-            entry = self.record_auto(
-                trip_id=self.current_trip_id, conditions=conditions
-            )
-            if entry is not None and self._on_auto_entry is not None:
-                self._on_auto_entry(entry)
-            # In kleinen Schritten warten, damit stop_auto schnell greift
-            waited = 0.0
-            while waited < self._interval and not self._stop.is_set():
-                self._stop.wait(min(1.0, self._interval - waited))
-                waited += 1.0
+            now = time.time()
+            snapshot = self._live.snapshot()
+            reason = self._engine.evaluate(snapshot, now)
+            if reason:
+                conditions = (
+                    self.conditions_provider() if self.conditions_provider else None
+                )
+                entry = self.record_auto(
+                    trip_id=self.current_trip_id, conditions=conditions, reason=reason
+                )
+                if entry is not None:
+                    self._engine.note_entry(now, snapshot)
+                    if self._on_auto_entry is not None:
+                        self._on_auto_entry(entry)
+            # alle 2 s prüfen (responsiv für Tiefe/Verzögerung/Kurs)
+            self._stop.wait(2.0)
