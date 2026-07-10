@@ -54,7 +54,11 @@ nicht mehr an die Oberfläche gebunden.
   Seegang, Bemerkung) — bei **jedem** Log (auto + manuell) mitgeschrieben
 - **AutoLog-Auslöser** (wie TripCon, `autolog.py`): Intervall, SOG-/STW-Schwelle,
   Kurswechsel (geglättet), Flachwasser, abrupte Verzögerung, Strecke seit letztem
-  Eintrag — der Auslösegrund wird als Anlass gespeichert. Knopf „AutoLog…"
+  Eintrag — der Auslösegrund wird als Anlass gespeichert. Knopf „AutoLog…".
+  Automatische Einträge (AutoLog **und** Foto-Import) gehen **immer in den
+  offenen Törn** (`status='open'`), unabhängig davon, welcher Törn gerade zum
+  Ansehen ausgewählt ist (`logbook.open_trip_id()`). Werkzeug `fix_trips.py`
+  hängt versehentlich falsch zugeordnete Einträge nachträglich um.
 - **Foto-Import** (`photos.py`, Knopf „📷 Foto-Import…"): Ordner überwachen →
   Bild in „vernünftige" Größe (max. 1600 px, JPEG) verkleinern → Auto-Eintrag
   mit Bild + NMEA-Daten; Originale wandern nach `verarbeitet/` (braucht Pillow)

@@ -277,6 +277,28 @@ class LogbookServiceTest(unittest.TestCase):
         entry = self.service.record_auto(trip_id=self.service.current_trip_id)
         self.assertEqual(entry.trip_id, trip.id)
 
+    def test_open_trip_id_returns_open_trip(self):
+        self.assertIsNone(self.service.open_trip_id())
+        trip = self.service.start_trip(Trip(name="X", start_location="A"))
+        self.assertEqual(self.service.open_trip_id(), trip.id)
+        self.service.close_trip(trip)
+        self.assertIsNone(self.service.open_trip_id())
+
+    def test_open_trip_id_ignores_selected_closed_trip(self):
+        # Der Bug: ein alter Törn ist zum Ansehen ausgewählt, ein neuer ist offen.
+        old = self.service.start_trip(Trip(name="Alt", start_location="A"))
+        self.service.close_trip(old)                     # alter Törn abgeschlossen
+        current = self.service.start_trip(Trip(name="Heute", start_location="B"))
+        self.service.current_trip_id = old.id            # alten Törn ansehen
+        # Live-Einträge müssen trotzdem in den offenen (neuen) Törn gehen
+        self.assertEqual(self.service.open_trip_id(), current.id)
+
+    def test_open_trip_id_prefers_newest_when_multiple_open(self):
+        first = self.service.start_trip(Trip(name="Erst", start_location="A"))
+        second = self.service.start_trip(Trip(name="Zweit", start_location="B"))
+        self.assertIn(self.service.open_trip_id(), (first.id, second.id))
+        self.assertEqual(self.service.open_trip_id(), second.id)
+
     def test_conditions_logged_in_auto_and_manual(self):
         # Dauerhafte Maskenwerte werden bei Auto- und Manuell-Log mitgeschrieben
         self.live.update({"lat": 47.0, "lon": 9.0, "log_total_nm": 305.7})

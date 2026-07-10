@@ -30,7 +30,9 @@ class LogbookService:
         self._stop = threading.Event()
         self._engine: Optional[AutoLogEngine] = None
         self._on_auto_entry: Optional[Callable[[LogEntry], None]] = None
-        # Aktiver Törn, dem neue Einträge zugeordnet werden (vom GUI gesetzt)
+        # Zum Ansehen ausgewählter Törn (vom GUI gesetzt): steuert Tabelle,
+        # Karte und Export. NICHT maßgeblich für automatische Live-Einträge —
+        # die gehen immer in den offenen Törn (siehe open_trip_id()).
         self.current_trip_id: Optional[int] = None
         # Liefert die aktuell in der Maske eingestellten Bedingungen (dict).
         # Wird vom Hauptthread aktuell gehalten; der Auto-Thread liest nur.
@@ -82,6 +84,17 @@ class LogbookService:
         return entry
 
     # --- Törns --------------------------------------------------------------
+
+    def open_trip_id(self) -> Optional[int]:
+        """ID des aktuell *offenen* Törns (status='open').
+
+        Dahin gehen automatische Live-Einträge (AutoLog, Foto-Import) — egal
+        welcher Törn gerade zum Ansehen ausgewählt ist. Gibt None zurück, wenn
+        kein Törn offen ist (dann bleiben die Einträge ohne Törn-Zuordnung).
+        Bei mehreren offenen Törns wird der neueste genommen.
+        """
+        trip = self._store.open_trip()
+        return trip.id if trip else None
 
     def start_trip(self, trip: Trip) -> Trip:
         """Beginnt einen neuen Törn (Startort/Wasser/Diesel/Std/Log)."""
@@ -233,7 +246,7 @@ class LogbookService:
                     self.conditions_provider() if self.conditions_provider else None
                 )
                 entry = self.record_auto(
-                    trip_id=self.current_trip_id, conditions=conditions, reason=reason
+                    trip_id=self.open_trip_id(), conditions=conditions, reason=reason
                 )
                 if entry is not None:
                     self._engine.note_entry(now, snapshot)

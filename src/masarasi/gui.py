@@ -638,7 +638,7 @@ class Application:
         # Läuft im Watcher-Thread: Eintrag + Bild anlegen, dann GUI aktualisieren.
         conditions = dict(getattr(self, "_condition_values", {}) or {})
         entry = self._logbook.record_photo(
-            trip_id=self._logbook.current_trip_id, conditions=conditions
+            trip_id=self._logbook.open_trip_id(), conditions=conditions
         )
         if entry is not None:
             self._store.set_image(entry.id, jpeg, "image/jpeg",
