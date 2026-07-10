@@ -47,6 +47,48 @@ REQUESTS = [
 
 HTTP_PATHS = ["/", "/Navico", "/valueList", "/api", "/gofree", "/dataList"]
 
+RTSP_PORT = 554
+RTSP_PATHS = ["/", "/stream", "/live", "/0", "/1", "/ch0", "/video",
+              "/navico", "/mfd", "/screen", "/h264"]
+
+
+def _rtsp_request(host, port, method, url, cseq, extra=""):
+    req = (f"{method} {url} RTSP/1.0\r\nCSeq: {cseq}\r\n"
+           f"User-Agent: masarasi\r\n{extra}\r\n")
+    try:
+        with socket.create_connection((host, port), timeout=4.0) as s:
+            s.settimeout(4.0)
+            s.sendall(req.encode())
+            data = b""
+            try:
+                while len(data) < 8192:
+                    chunk = s.recv(4096)
+                    if not chunk:
+                        break
+                    data += chunk
+            except socket.timeout:
+                pass
+            return data
+    except OSError as exc:
+        return f"(Fehler: {exc})".encode()
+
+
+def probe_rtsp(host: str, port: int = RTSP_PORT) -> None:
+    """Fragt den RTSP-Server nach Methoden (OPTIONS) und Streams (DESCRIBE)."""
+    print(f"\n== RTSP an {host}:{port} ==")
+    base = f"rtsp://{host}:{port}"
+    opt = _rtsp_request(host, port, "OPTIONS", base + "/", 1)
+    print("-- OPTIONS / --")
+    print("  " + _printable(opt, 500).replace("\n", "\n  "))
+    for i, path in enumerate(RTSP_PATHS, start=2):
+        resp = _rtsp_request(host, port, "DESCRIBE", base + path, i,
+                             "Accept: application/sdp\r\n")
+        first = resp.split(b"\r\n", 1)[0].decode("ascii", "ignore") if resp else "(leer)"
+        print(f"-- DESCRIBE {path}  ->  {first}")
+        # bei Erfolg (oder Auth-Anforderung) die Antwort/SDP zeigen
+        if b" 200 " in resp[:40] or b"401" in resp[:20] or b"sdp" in resp.lower():
+            print("  " + _printable(resp, 900).replace("\n", "\n  "))
+
 
 def probe_http(host: str) -> None:
     print(f"== GoFree-HTTP-API an {host}:80 ==")
@@ -125,10 +167,21 @@ def main(argv=None) -> int:
                         help="Lauschdauer nach den Anfragen (Standard 8)")
     parser.add_argument("--http", action="store_true",
                         help="zusätzlich die HTTP-API (Port 80) abfragen")
+    parser.add_argument("--rtsp", action="store_true",
+                        help="zusätzlich den RTSP-Dienst (Port 554) abfragen")
+    parser.add_argument("--ws", action="store_true",
+                        help="nur die WebSocket-Daten-API prüfen (Standard, wenn nichts anderes)")
     args = parser.parse_args(argv)
+
+    do_ws = args.ws or not (args.http or args.rtsp)
 
     if args.http:
         probe_http(args.host)
+    if args.rtsp:
+        probe_rtsp(args.host)
+    if not do_ws:
+        print("\nFertig. Bitte die komplette Ausgabe kopieren und schicken.")
+        return 0
 
     print(f"\n== GoFree nav-ws an {args.host}:{args.port} ==")
     ok = probe_ws(args.host, args.port, args.seconds)
