@@ -174,6 +174,30 @@ class LogbookService:
         self._store.add(entry)
         return entry
 
+    def record_photo(
+        self,
+        trip_id: Optional[int] = None,
+        conditions: Optional[dict] = None,
+        reason: str = "Foto",
+    ) -> LogEntry:
+        """Erzeugt einen Auto-Eintrag für ein importiertes Foto.
+
+        Anders als record_auto wird immer ein Eintrag angelegt — auch ohne
+        Live-Messwerte (das Foto soll nicht verloren gehen)."""
+        measurements = self._live.snapshot()
+        fields = self._conditions_to_fields(conditions, measurements)
+        fields["logevent"] = reason
+        entry = LogEntry.from_snapshot(
+            timestamp=utc_now_iso(),
+            entry_type="auto",
+            measurements=measurements,
+            trip_id=trip_id,
+            note=(conditions or {}).get("note", ""),
+            **fields,
+        )
+        self._store.add(entry)
+        return entry
+
     def start_auto(
         self,
         settings: AutoLogSettings,

@@ -42,6 +42,11 @@ class Config:
     # AutoLog-Auslöser (siehe autolog.AutoLogSettings); None = Standardwerte
     autolog: Optional[dict] = None
 
+    # Foto-Import: Ordner überwachen, Bilder verkleinern, Auto-Eintrag anlegen
+    photo_folder: str = ""
+    photo_import_enabled: bool = False
+    photo_max_px: int = 1600
+
     # Speicherort der Datenbank
     db_path: str = str(_app_dir() / "logbook.sqlite3")
 

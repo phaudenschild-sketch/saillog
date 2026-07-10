@@ -10,7 +10,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
-from masarasi import crewlist, fuel, geo, timeutil
+from masarasi import crewlist, fuel, geo, photos, timeutil
 from masarasi.ais import AisDecoder, AisTargets
 from masarasi.autolog import AutoLogSettings
 from masarasi.config import Config
@@ -64,6 +64,8 @@ class Application:
         self._map_server: Optional[MapServer] = None
         # AutoLog-Auslöser (aus der Konfiguration)
         self._autolog_settings = AutoLogSettings.from_dict(self._config.autolog)
+        # Foto-Import (Ordner-Überwachung)
+        self._photo_watcher: Optional[photos.PhotoWatcher] = None
 
         self._value_labels: Dict[str, tk.Label] = {}
         # Ringpuffer für die Rohdaten-Anzeige (Thread-sicher via deque.append)
@@ -80,6 +82,7 @@ class Application:
         self._refresh_trips()
         self._refresh_logbook()
         self._schedule_live_update()
+        self._maybe_start_photo_watcher()
 
         root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -168,6 +171,9 @@ class Application:
         ttk.Button(controls, text="AutoLog…", command=self._on_autolog_settings).grid(
             row=0, column=1, padx=4
         )
+        ttk.Button(controls, text="📷 Foto-Import…", command=self._on_photo_settings).grid(
+            row=0, column=2, padx=4
+        )
 
         ttk.Button(
             controls, text="✎ Eintrag speichern", command=self._on_save_entry
@@ -197,15 +203,15 @@ class Application:
         table_frame.pack(fill="both", expand=True, **pad)
 
         cols = ("time", "ed", "anlass", "type", "pos", "sog", "wind", "depth",
-                "motor", "segel", "note")
+                "motor", "segel", "img", "note")
         headers = {
             "time": "Zeit", "ed": "✎", "anlass": "Anlass", "type": "Typ",
             "pos": "Position", "sog": "SOG", "wind": "Wind", "depth": "Tiefe",
-            "motor": "Motor", "segel": "Segel", "note": "Notiz",
+            "motor": "Motor", "segel": "Segel", "img": "📷", "note": "Notiz",
         }
         widths = {
             "time": 145, "ed": 26, "anlass": 100, "type": 58, "pos": 140, "sog": 48,
-            "wind": 95, "depth": 52, "motor": 46, "segel": 120, "note": 150,
+            "wind": 95, "depth": 52, "motor": 46, "segel": 120, "img": 28, "note": 150,
         }
         self._tree = ttk.Treeview(table_frame, columns=cols, show="headings")
         for col in cols:
@@ -223,6 +229,9 @@ class Application:
         bottom.pack(fill="x", **pad)
         ttk.Button(bottom, text="Bearbeiten…", command=self._on_edit_entry).pack(side="left")
         ttk.Button(bottom, text="Eintrag löschen", command=self._on_delete_entry).pack(
+            side="left", padx=4
+        )
+        ttk.Button(bottom, text="Bild ansehen", command=self._on_view_image).pack(
             side="left", padx=4
         )
         ttk.Label(bottom, text="(Doppelklick = bearbeiten)", foreground="#999").pack(
@@ -583,6 +592,47 @@ class Application:
         if self._logbook.auto_running:
             self._logbook.start_auto(self._autolog_settings, on_entry=self._on_auto_entry)
 
+    # --- Foto-Import --------------------------------------------------------
+
+    def _on_photo_settings(self) -> None:
+        dialog = _PhotoDialog(self._root, self._config)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        self._config.photo_folder = dialog.result["folder"]
+        self._config.photo_import_enabled = dialog.result["enabled"]
+        self._config.save()
+        self._stop_photo_watcher()
+        self._maybe_start_photo_watcher()
+
+    def _maybe_start_photo_watcher(self) -> None:
+        if not (self._config.photo_import_enabled and self._config.photo_folder):
+            return
+        if not photos.available():
+            return  # ohne Pillow kein Foto-Import (Hinweis kommt im Dialog)
+        self._photo_watcher = photos.PhotoWatcher(
+            self._config.photo_folder,
+            on_photo=self._on_photo_imported,
+            max_px=int(self._config.photo_max_px or 1600),
+        )
+        self._photo_watcher.start()
+
+    def _stop_photo_watcher(self) -> None:
+        if self._photo_watcher is not None:
+            self._photo_watcher.stop()
+            self._photo_watcher = None
+
+    def _on_photo_imported(self, jpeg: bytes, source_name: str) -> None:
+        # Läuft im Watcher-Thread: Eintrag + Bild anlegen, dann GUI aktualisieren.
+        conditions = dict(getattr(self, "_condition_values", {}) or {})
+        entry = self._logbook.record_photo(
+            trip_id=self._logbook.current_trip_id, conditions=conditions
+        )
+        if entry is not None:
+            self._store.set_image(entry.id, jpeg, "image/jpeg",
+                                  created_dz=utc_now_iso())
+        self._root.after(0, self._refresh_logbook)
+
     def _on_auto_entry(self, entry) -> None:
         # Läuft im Auto-Log-Thread: die Tabelle im GUI-Thread aktualisieren.
         self._root.after(0, self._refresh_logbook)
@@ -728,6 +778,7 @@ class Application:
             self._tree.delete(item)
         trip_id = self._logbook.current_trip_id
         offset = self._tz_offset()
+        with_images = self._store.entries_with_images()
         self._tree.heading("time", text=f"Zeit ({timeutil.label(self._config.timezone_mode, self._config.timezone_offset_hours)})")
         positions = []  # (lat, lon) der Törn-Einträge — für die Strecke
         for entry in self._store.all(limit=20000, newest_first=True, trip_id=trip_id):
@@ -759,6 +810,7 @@ class Application:
                     "" if entry.depth_m is None else f"{entry.depth_m:.1f}",
                     motor,
                     ", ".join(sail_parts),
+                    "📷" if entry.id in with_images else "",
                     entry.note,
                 ),
             )
@@ -781,6 +833,24 @@ class Application:
         for iid in selection:
             self._store.delete(int(iid))
         self._refresh_logbook()
+
+    def _on_view_image(self) -> None:
+        selection = self._tree.selection()
+        if not selection:
+            return
+        data = self._store.get_image(int(selection[0]))
+        if not data:
+            messagebox.showinfo("Bild", "Zu diesem Eintrag ist kein Bild gespeichert.")
+            return
+        import tempfile
+        try:
+            fd, path = tempfile.mkstemp(suffix=".jpg", prefix="masarasi_foto_")
+            with __import__("os").fdopen(fd, "wb") as fh:
+                fh.write(data)
+        except OSError as exc:  # noqa: BLE001
+            messagebox.showerror("Bild", f"Konnte das Bild nicht öffnen:\n{exc}")
+            return
+        webbrowser.open(Path(path).as_uri())
 
     def _on_edit_entry(self) -> None:
         selection = self._tree.selection()
@@ -832,6 +902,7 @@ class Application:
 
     def _on_close(self) -> None:
         self._logbook.stop_auto()
+        self._stop_photo_watcher()
         for src in self._sources:
             src.stop()
         if self._map_server is not None:
@@ -1259,6 +1330,66 @@ class _AutoLogDialog:
             distance_enabled=self._dist_on.get(),
             distance_threshold=_parse_float(self._dist.get()) or 0.5,
         )
+        self.top.destroy()
+
+
+class _PhotoDialog:
+    """Einstellungen für den Foto-Import (Ordner überwachen)."""
+
+    def __init__(self, parent, config) -> None:
+        self.result: Optional[Dict] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Foto-Import")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame, wraplength=470, foreground="#555",
+            text="Bilder in den gewählten Ordner legen → masarasi erzeugt automatisch "
+                 "einen Logbuch-Eintrag mit dem (verkleinerten) Bild und den aktuellen "
+                 "NMEA-Daten. Verarbeitete Originale wandern in den Unterordner "
+                 "„verarbeitet\".",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+
+        self._enabled = tk.BooleanVar(value=config.photo_import_enabled)
+        ttk.Checkbutton(frame, text="Foto-Import aktivieren", variable=self._enabled).grid(
+            row=1, column=0, columnspan=3, sticky="w", pady=2)
+
+        ttk.Label(frame, text="Ordner:").grid(row=2, column=0, sticky="e", padx=(0, 4), pady=4)
+        self._folder = tk.StringVar(value=config.photo_folder)
+        ttk.Entry(frame, textvariable=self._folder, width=44).grid(row=2, column=1, sticky="w")
+        ttk.Button(frame, text="Wählen…", command=self._choose).grid(row=2, column=2, padx=4)
+
+        ttk.Label(
+            frame, foreground="#777",
+            text=f"Bilder werden auf max. {int(config.photo_max_px or 1600)} px "
+                 "verkleinert und als JPEG gespeichert.",
+        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(2, 0))
+
+        if not photos.available():
+            ttk.Label(
+                frame, foreground="#b25000", wraplength=470,
+                text="Hinweis: Für den Foto-Import wird Pillow benötigt — "
+                     "installieren mit:  pip install pillow",
+            ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
+        btns = ttk.Frame(frame)
+        btns.grid(row=5, column=0, columnspan=3, pady=(12, 0))
+        ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _choose(self) -> None:
+        directory = filedialog.askdirectory(title="Foto-Import-Ordner")
+        if directory:
+            self._folder.set(directory)
+
+    def _on_ok(self) -> None:
+        self.result = {
+            "folder": self._folder.get().strip(),
+            "enabled": self._enabled.get(),
+        }
         self.top.destroy()
 
 

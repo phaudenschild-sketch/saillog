@@ -66,6 +66,8 @@ Python.
   standardmäßig dabei)
 - **Optional** `pyserial` (nur für serielle Quellen wie den Maretron USB100):
   `pip install pyserial`. Ohne läuft alles andere unverändert.
+- **Optional** `pillow` (nur für den **Foto-Import**, verkleinert die Bilder):
+  `pip install pillow`. Ohne Pillow ist der Foto-Import deaktiviert.
 - Für die **AIS-Karte** genügt ein Browser; die Kartenkacheln werden online
   von OpenFreeMap geladen (an Bord über Starlink).
 
@@ -260,6 +262,7 @@ masarasi/
 │   ├── livedata.py             ← Thread-sicherer Messwert-Speicher
 │   ├── logbook.py              ← Auto-/Manuell-Logging-Dienst
 │   ├── autolog.py              ← AutoLog-Auslöser (Intervall/SOG/Kurs/Tiefe/…)
+│   ├── photos.py               ← Foto-Import (Ordner-Watcher + Verkleinern)
 │   ├── storage.py              ← SQLite + CSV/GPX-Export
 │   ├── discover.py             ← Quellen-Scanner (Orca Core, B&G, …)
 │   ├── plotter_capture.py      ← Bild laden/als-PNG (Pillow optional, ungenutzt)
