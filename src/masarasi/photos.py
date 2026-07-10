@@ -29,23 +29,44 @@ def available() -> bool:
         return False
 
 
+def _encode(im, max_px: int, quality: int) -> bytes:
+    from PIL import ImageOps
+    im = ImageOps.exif_transpose(im)          # Orientierung aus EXIF
+    im = im.convert("RGB")
+    im.thumbnail((max_px, max_px))             # Seitenverhältnis bleibt
+    buf = io.BytesIO()
+    im.save(buf, format="JPEG", quality=quality, optimize=True)
+    return buf.getvalue()
+
+
 def resize_to_jpeg(path, max_px: int = 1600, quality: int = 82) -> Optional[bytes]:
-    """Lädt ein Bild, dreht es nach EXIF, verkleinert es und gibt JPEG-Bytes.
+    """Lädt ein Bild (Pfad), dreht es nach EXIF, verkleinert es -> JPEG-Bytes.
 
     Gibt None zurück, wenn Pillow fehlt oder das Bild nicht lesbar ist.
     """
     try:
-        from PIL import Image, ImageOps
+        from PIL import Image
     except Exception:  # noqa: BLE001
         return None
     try:
         with Image.open(path) as im:
-            im = ImageOps.exif_transpose(im)      # Orientierung aus EXIF
-            im = im.convert("RGB")
-            im.thumbnail((max_px, max_px))         # Seitenverhältnis bleibt
-            buf = io.BytesIO()
-            im.save(buf, format="JPEG", quality=quality, optimize=True)
-            return buf.getvalue()
+            return _encode(im, max_px, quality)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def resize_bytes_to_jpeg(data: bytes, max_px: int = 1600,
+                         quality: int = 82) -> Optional[bytes]:
+    """Wie resize_to_jpeg, aber aus Bild-Bytes (z.B. BLOB aus einer DB)."""
+    if not data:
+        return None
+    try:
+        from PIL import Image
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            return _encode(im, max_px, quality)
     except Exception:  # noqa: BLE001
         return None
 

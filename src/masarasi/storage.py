@@ -442,6 +442,21 @@ class LogbookStore:
             )
         return len(rows)
 
+    def add_many_returning_ids(self, entries: List[LogEntry]) -> List[int]:
+        """Fügt viele Einträge in EINER Transaktion ein und setzt/liefert die ids."""
+        cols = [c for c in _COLUMN_NAMES if c != "id"]
+        placeholders = ", ".join("?" for _ in cols)
+        ids: List[int] = []
+        with self._connect() as conn:
+            for entry in entries:
+                cursor = conn.execute(
+                    f"INSERT INTO log_entries ({', '.join(cols)}) VALUES ({placeholders})",
+                    [getattr(entry, c) for c in cols],
+                )
+                entry.id = cursor.lastrowid
+                ids.append(entry.id)
+        return ids
+
     def delete_by_type(self, entry_type: str) -> int:
         """Löscht alle Einträge eines Typs (z.B. vor erneutem Import)."""
         with self._connect() as conn:

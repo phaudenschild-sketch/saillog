@@ -92,6 +92,16 @@ def _table_exists(conn, name: str) -> bool:
     )
 
 
+def _columns(conn, table: str) -> List[str]:
+    """Spaltennamen einer Tabelle (leer, falls Tabelle fehlt)."""
+    if not _table_exists(conn, table):
+        return []
+    try:
+        return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+    except sqlite3.Error:
+        return []
+
+
 # --- Törns & Einträge -------------------------------------------------------
 
 def load_trips(conn) -> Dict[int, Dict[str, str]]:
@@ -191,8 +201,8 @@ def _resolve_code(code, pv_labels: Dict[int, int], texts: Dict[int, str]) -> str
     return texts.get(label_id, "")
 
 
-def build_entries(conn, trip_id_map: Optional[Dict[int, int]] = None) -> List[LogEntry]:
-    """Baut aus B100_Log + Messwert-Tabellen masarasi-Logbuch-Einträge.
+def _iter_entries(conn, trip_id_map: Optional[Dict[int, int]] = None):
+    """Erzeugt (TripCon-LogID, LogEntry)-Paare aus B100_Log + Messwerten.
 
     trip_id_map: {TripCon-Trip-ID: masarasi-Trip-ID} zum Verknüpfen der
     Einträge mit den importierten Törns.
@@ -213,7 +223,6 @@ def build_entries(conn, trip_id_map: Optional[Dict[int, int]] = None) -> List[Lo
     pv_labels = _paramvalue_labelids(conn)
     texts = _label_texts(conn)
 
-    entries: List[LogEntry] = []
     for log_id, trip_id, trip_dz, create_dz, logevent_code, clouds, precip, sight in conn.execute(
         "SELECT ID, Trip, TripDZ, CreateDZ, LogEvent, Clouds, Precipitation, Sight "
         "FROM B100_Log ORDER BY TripDZ, ID"
@@ -267,21 +276,23 @@ def build_entries(conn, trip_id_map: Optional[Dict[int, int]] = None) -> List[Lo
             continue
 
         entry_trip = trip_id_map.get(trip_id) if trip_id_map else None
-        entries.append(
-            LogEntry.from_snapshot(
-                timestamp=timestamp,
-                entry_type="tripcon",
-                measurements=measurements,
-                note=note,
-                location=location,
-                trip_id=entry_trip,
-                logevent=_resolve_code(logevent_code, pv_labels, texts),
-                cloud_cover=_resolve_code(clouds, pv_labels, texts),
-                precipitation=_resolve_code(precip, pv_labels, texts),
-                visibility=_resolve_code(sight, pv_labels, texts),
-            )
+        yield log_id, LogEntry.from_snapshot(
+            timestamp=timestamp,
+            entry_type="tripcon",
+            measurements=measurements,
+            note=note,
+            location=location,
+            trip_id=entry_trip,
+            logevent=_resolve_code(logevent_code, pv_labels, texts),
+            cloud_cover=_resolve_code(clouds, pv_labels, texts),
+            precipitation=_resolve_code(precip, pv_labels, texts),
+            visibility=_resolve_code(sight, pv_labels, texts),
         )
-    return entries
+
+
+def build_entries(conn, trip_id_map: Optional[Dict[int, int]] = None) -> List[LogEntry]:
+    """Baut die masarasi-Logbuch-Einträge (ohne die TripCon-LogID)."""
+    return [entry for _log_id, entry in _iter_entries(conn, trip_id_map)]
 
 
 def _trip_engine_hours(conn, old_trip_id: int) -> Tuple[Optional[float], Optional[float]]:
@@ -340,15 +351,265 @@ def import_trips(conn, store: LogbookStore) -> Dict[int, int]:
     return mapping
 
 
-def import_into_masarasi(conn, db_path: str, replace: bool = True) -> int:
-    """Importiert Törns + Einträge in die masarasi-Logbuch-DB. Gibt Anzahl zurück."""
+# --- Bilder an importierte Einträge hängen ----------------------------------
+
+# Mögliche Spaltennamen, mit denen B104_BinDat direkt auf B100_Log.ID zeigt.
+_BINDAT_LOGID_COLS = ("LogID", "Log", "B100_LogID", "LogRef", "B100Log")
+# Mögliche Spaltennamen in B100_Log, die auf B104_BinDat.ID zeigen.
+_LOG_BINDAT_COLS = (
+    "BinDat", "BinDatID", "B104_BinDatID", "B104_ID",
+    "Picture", "Image", "ImageID", "Plotter", "PlotterID",
+)
+
+
+def _bindat_images(conn) -> Dict[int, bytes]:
+    """{B104_BinDat.ID: rohe Bild-Bytes} für alle echten Bilder."""
+    result: Dict[int, bytes] = {}
+    if not _table_exists(conn, "B104_BinDat"):
+        return result
+    try:
+        cursor = conn.execute("SELECT ID, Value FROM B104_BinDat")
+    except sqlite3.Error:
+        return result
+    for row_id, blob in cursor:
+        if row_id is None or not isinstance(blob, (bytes, bytearray)):
+            continue
+        data = bytes(blob)
+        if image_ext(data[:16]):
+            result[row_id] = data
+    return result
+
+
+def _entry_image_links(conn) -> Tuple[Dict[int, int], str]:
+    """Ermittelt {B100_Log.ID: B104_BinDat.ID} und die verwendete Methode.
+
+    Das Schema der Bild-Verknüpfung ist je TripCon-Version unterschiedlich, daher
+    probieren wir mehrere Wege durch und melden, welcher gegriffen hat:
+
+    - ``bindat_logid``: B104_BinDat hat eine Spalte, die auf B100_Log.ID zeigt.
+    - ``log_bindat``:   B100_Log hat eine Spalte, die auf B104_BinDat.ID zeigt.
+    - ``timestamp``:    Notlösung über gleiche Zeitstempel (CreateDZ).
+    - ``none``:         keine Verknüpfung gefunden.
+    """
+    bindat_cols = _columns(conn, "B104_BinDat")
+    log_cols = _columns(conn, "B100_Log")
+
+    # Methode A: Fremdschlüssel in B104_BinDat -> B100_Log.ID
+    for col in _BINDAT_LOGID_COLS:
+        if col in bindat_cols:
+            links: Dict[int, int] = {}
+            try:
+                cursor = conn.execute(f"SELECT ID, {col} FROM B104_BinDat")
+            except sqlite3.Error:
+                continue
+            for bindat_id, log_id in cursor:
+                if bindat_id is not None and log_id is not None:
+                    links.setdefault(int(log_id), int(bindat_id))
+            if links:
+                return links, "bindat_logid"
+
+    # Methode B: Fremdschlüssel in B100_Log -> B104_BinDat.ID
+    for col in _LOG_BINDAT_COLS:
+        if col in log_cols:
+            links = {}
+            try:
+                cursor = conn.execute(f"SELECT ID, {col} FROM B100_Log")
+            except sqlite3.Error:
+                continue
+            for log_id, bindat_id in cursor:
+                if log_id is not None and bindat_id is not None:
+                    links[int(log_id)] = int(bindat_id)
+            if links:
+                return links, "log_bindat"
+
+    # Methode C: Notlösung über gleiche Zeitstempel
+    if "CreateDZ" in bindat_cols and "CreateDZ" in log_cols:
+        by_time: Dict[str, int] = {}
+        try:
+            for bindat_id, create_dz in conn.execute(
+                "SELECT ID, CreateDZ FROM B104_BinDat"
+            ):
+                iso = to_iso(create_dz)
+                if iso and bindat_id is not None:
+                    by_time.setdefault(iso, int(bindat_id))
+        except sqlite3.Error:
+            by_time = {}
+        if by_time:
+            links = {}
+            for log_id, create_dz in conn.execute("SELECT ID, CreateDZ FROM B100_Log"):
+                iso = to_iso(create_dz)
+                if log_id is not None and iso in by_time:
+                    links[int(log_id)] = by_time[iso]
+            if links:
+                return links, "timestamp"
+
+    return {}, "none"
+
+
+def import_entry_images(conn, store: LogbookStore, logid_map: Dict[int, int],
+                        max_px: int = 1600) -> Dict[str, object]:
+    """Hängt TripCon-Plotterbilder (B104_BinDat) an die importierten Einträge.
+
+    logid_map: {TripCon-B100_Log.ID: masarasi-Eintrags-ID}. Die Bilder werden
+    vor dem Speichern auf ``max_px`` verkleinert (JPEG), sofern Pillow vorhanden
+    ist; sonst wird das Original abgelegt.
+
+    Gibt {"images": Anzahl, "method": Verknüpfungsmethode} zurück.
+    """
+    from masarasi import photos
+
+    images = _bindat_images(conn)
+    if not images:
+        return {"images": 0, "method": "none"}
+    links, method = _entry_image_links(conn)
+    if not links:
+        return {"images": 0, "method": "none"}
+
+    count = 0
+    for old_log_id, bindat_id in links.items():
+        entry_id = logid_map.get(old_log_id)
+        if entry_id is None:
+            continue
+        raw = images.get(bindat_id)
+        if raw is None:
+            continue
+        jpeg = photos.resize_bytes_to_jpeg(raw, max_px=max_px)
+        if jpeg:
+            store.set_image(entry_id, jpeg, "image/jpeg")
+        else:
+            # Pillow fehlt oder unlesbar -> Original mit passendem MIME ablegen
+            ext = image_ext(raw[:16])
+            mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext or 'png'}"
+            store.set_image(entry_id, raw, mime)
+        count += 1
+    return {"images": count, "method": method}
+
+
+# --- Schiffs-/Crew-Fotos in die Stammdaten übernehmen -----------------------
+
+def _norm(text) -> str:
+    if text is None:
+        return ""
+    if isinstance(text, bytes):
+        text = text.decode("utf-8", "replace")
+    return " ".join(str(text).split()).strip().lower()
+
+
+def _pick_col(cols: List[str], candidates) -> Optional[str]:
+    lower = {c.lower(): c for c in cols}
+    for cand in candidates:
+        if cand.lower() in lower:
+            return lower[cand.lower()]
+    return None
+
+
+def import_stammdaten_photos(conn, store: LogbookStore,
+                             max_px: int = 1600) -> Dict[str, int]:
+    """Ordnet Schiffs-/Personen-Fotos aus TripCon den Stammdaten zu.
+
+    Fotos werden nur übernommen, wenn ein Schiff bzw. eine Person mit passendem
+    Namen bereits in masarasi angelegt ist. Gibt {"ships": n, "persons": m}
+    zurück.
+    """
+    from masarasi import photos
+
+    result = {"ships": 0, "persons": 0}
+
+    # Schiffsfotos (S003_Ships.ShipName -> Ship.name)
+    ship_cols = _columns(conn, "S003_Ships")
+    if ship_cols:
+        name_col = _pick_col(ship_cols, ("ShipName", "Name"))
+        pic_col = _pick_col(ship_cols, ("Picture", "Image", "Photo"))
+        if name_col and pic_col:
+            by_name = {_norm(s.name): s for s in store.all_ships() if s.name.strip()}
+            try:
+                cursor = conn.execute(
+                    f"SELECT {name_col}, {pic_col} FROM S003_Ships"
+                )
+            except sqlite3.Error:
+                cursor = []
+            for name, blob in cursor:
+                if not isinstance(blob, (bytes, bytearray)):
+                    continue
+                raw = bytes(blob)
+                if not image_ext(raw[:16]):
+                    continue
+                ship = by_name.get(_norm(name))
+                if ship is None:
+                    continue
+                jpeg = photos.resize_bytes_to_jpeg(raw, max_px=max_px) or raw
+                mime = "image/jpeg" if jpeg is not raw else "image/png"
+                store.set_ship_photo(ship.id, jpeg, mime)
+                result["ships"] += 1
+
+    # Personenfotos (S006_Persons.LastName/FirstName -> Person)
+    person_cols = _columns(conn, "S006_Persons")
+    if person_cols:
+        last_col = _pick_col(person_cols, ("LastName", "Name", "Surname"))
+        first_col = _pick_col(person_cols, ("FirstName", "Vorname", "GivenName"))
+        pic_col = _pick_col(person_cols, ("Picture", "Image", "Photo"))
+        if last_col and pic_col:
+            by_name = {}
+            for p in store.all_persons():
+                by_name.setdefault((_norm(p.last_name), _norm(p.first_name)), p)
+            sel = f"SELECT {last_col}, {pic_col}"
+            sel += f", {first_col}" if first_col else ", NULL"
+            try:
+                cursor = conn.execute(sel + " FROM S006_Persons")
+            except sqlite3.Error:
+                cursor = []
+            for last, blob, first in cursor:
+                if not isinstance(blob, (bytes, bytearray)):
+                    continue
+                raw = bytes(blob)
+                if not image_ext(raw[:16]):
+                    continue
+                key = (_norm(last), _norm(first))
+                person = by_name.get(key)
+                if person is None and first_col:
+                    # zweiter Versuch: nur über den Nachnamen
+                    matches = [
+                        p for (ln, _fn), p in by_name.items() if ln == _norm(last)
+                    ]
+                    person = matches[0] if len(matches) == 1 else None
+                if person is None:
+                    continue
+                jpeg = photos.resize_bytes_to_jpeg(raw, max_px=max_px) or raw
+                mime = "image/jpeg" if jpeg is not raw else "image/png"
+                store.set_person_photo(person.id, jpeg, mime)
+                result["persons"] += 1
+
+    return result
+
+
+def import_into_masarasi(conn, db_path: str, replace: bool = True,
+                         max_px: int = 1600) -> Dict[str, object]:
+    """Importiert Törns, Einträge und Bilder in die masarasi-Logbuch-DB.
+
+    Gibt {"entries": n, "images": m, "image_method": str,
+    "ship_photos": p, "person_photos": q} zurück.
+    """
     store = LogbookStore(db_path)
     if replace:
         store.delete_by_type("tripcon")
     trip_map = import_trips(conn, store)
-    entries = build_entries(conn, trip_id_map=trip_map)
-    store.add_many(entries)
-    return len(entries)
+
+    pairs = list(_iter_entries(conn, trip_id_map=trip_map))
+    store.add_many_returning_ids([entry for _log_id, entry in pairs])
+    logid_map = {
+        old_log_id: entry.id for old_log_id, entry in pairs if old_log_id is not None
+    }
+
+    image_info = import_entry_images(conn, store, logid_map, max_px=max_px)
+    photo_info = import_stammdaten_photos(conn, store, max_px=max_px)
+
+    return {
+        "entries": len(pairs),
+        "images": image_info["images"],
+        "image_method": image_info["method"],
+        "ship_photos": photo_info["ships"],
+        "person_photos": photo_info["persons"],
+    }
 
 
 # --- CSV --------------------------------------------------------------------

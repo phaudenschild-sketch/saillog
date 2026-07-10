@@ -138,14 +138,46 @@ class TripconTest(unittest.TestCase):
 
     def test_import_into_masarasi(self):
         db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
-        n = tripcon.import_into_masarasi(self.conn, db_path)
-        self.assertEqual(n, 2)
+        result = tripcon.import_into_masarasi(self.conn, db_path)
+        self.assertEqual(result["entries"], 2)
         store = LogbookStore(db_path)
         self.assertEqual(store.count(), 2)
         # Erneuter Import ersetzt, verdoppelt nicht
-        n2 = tripcon.import_into_masarasi(self.conn, db_path)
-        self.assertEqual(n2, 2)
+        result2 = tripcon.import_into_masarasi(self.conn, db_path)
+        self.assertEqual(result2["entries"], 2)
         self.assertEqual(store.count(), 2)
+
+    def test_import_links_entry_image(self):
+        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        result = tripcon.import_into_masarasi(self.conn, db_path)
+        # B104_BinDat 216 zeigt über LogID 1362 auf einen Eintrag
+        self.assertEqual(result["image_method"], "bindat_logid")
+        self.assertEqual(result["images"], 1)
+        store = LogbookStore(db_path)
+        # Genau ein Eintrag hat ein Bild bekommen
+        with_images = store.entries_with_images()
+        self.assertEqual(len(with_images), 1)
+        (entry_id,) = tuple(with_images)
+        self.assertIsNotNone(store.get_image(entry_id))
+
+    def test_import_stammdaten_photos(self):
+        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        store = LogbookStore(db_path)
+        from masarasi.storage import Person, Ship
+        ship_id = store.add_ship(Ship(name="Tymanfaya"))
+        person_id = store.add_person(Person(last_name="Haudenschild"))
+        result = tripcon.import_into_masarasi(self.conn, db_path)
+        self.assertEqual(result["ship_photos"], 1)
+        self.assertEqual(result["person_photos"], 1)
+        self.assertIsNotNone(store.get_ship_photo(ship_id))
+        self.assertIsNotNone(store.get_person_photo(person_id))
+
+    def test_import_stammdaten_photos_skips_unknown(self):
+        # Ohne passende Stammdaten werden keine Fotos übernommen
+        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        result = tripcon.import_into_masarasi(self.conn, db_path)
+        self.assertEqual(result["ship_photos"], 0)
+        self.assertEqual(result["person_photos"], 0)
 
     def test_import_creates_and_links_trips(self):
         db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")

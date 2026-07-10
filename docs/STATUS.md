@@ -92,7 +92,13 @@ nicht mehr an die Oberfläche gebunden.
 - Werkzeuge: `discover.py` (`--full/--udp/--gofree/--sweep`),
   `inspect_backup.py`, `import_tripcon.py`, NMEA-Simulator
 - **TripCon-Import** (.tcdb): Törns, Messwerte, Tracks, Bilder, **Anlass**
-  (LogEvent) + Wetter/Sicht aus den Übersetzungstabellen aufgelöst
+  (LogEvent) + Wetter/Sicht aus den Übersetzungstabellen aufgelöst.
+  **Plotterbilder** (B104_BinDat) werden beim Import an die passenden Einträge
+  gehängt und dabei auf 1600 px (JPEG) verkleinert; **Schiffs-/Personenfotos**
+  (S003_Ships/S006_Persons) wandern in die Stammdaten, sofern Schiff/Person
+  mit passendem Namen bereits angelegt ist. Die Bild-Verknüpfung ist
+  schema-adaptiv (Fremdschlüssel oder Zeitstempel) und meldet die verwendete
+  Methode.
 
 ## Offene Punkte / nächste Schritte
 
@@ -100,8 +106,13 @@ nicht mehr an die Oberfläche gebunden.
    sinnvoll gefüllt ist. Falls nicht: je 2 Zeilen aus `B100_Log` (Spalte
    `LogEvent`), `S005_ParamValue`, `S000_Translation` → Mapping in
    `src/masarasi/tripcon.py` (`_resolve_code`) anpassen.
-2. **Optional:** TripCon-Plotterbilder (`…/bilder/plotter/`) an die importierten
-   Einträge hängen; CSV-Export wahlweise in Lokalzeit; weitere Zeitzonen;
+2. **Plotterbild-Verknüpfung prüfen:** Nach dem Import meldet
+   `import_tripcon.py --into-app` die verwendete Bild-Verknüpfungs-Methode
+   (`bindat_logid` / `log_bindat` / `timestamp` / `none`) und die Anzahl
+   verknüpfter Bilder. Falls `none` oder eine unerwartet niedrige Zahl:
+   Spaltennamen der echten `.tcdb` prüfen und `_BINDAT_LOGID_COLS` /
+   `_LOG_BINDAT_COLS` in `src/masarasi/tripcon.py` ergänzen.
+3. **Optional:** CSV-Export wahlweise in Lokalzeit; weitere Zeitzonen;
    Rate-of-Turn (`ROT`) / Ruderlage-Anzeige.
 
 *(Orca Core: untersucht und geparkt — proprietäres WebSocket-Protokoll,

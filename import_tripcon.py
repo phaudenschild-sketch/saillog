@@ -75,8 +75,18 @@ def main(argv=None) -> int:
         if args.into_app:
             db_path = args.db or Config.load().db_path
             print(f"Importiere in masarasi-DB: {db_path}")
-            n = tripcon.import_into_masarasi(conn, db_path)
-            print(f"  {n} Eintrag/Einträge importiert (Typ 'tripcon').")
+            result = tripcon.import_into_masarasi(conn, db_path)
+            print(f"  {result['entries']} Eintrag/Einträge importiert (Typ 'tripcon').")
+            method = result["image_method"]
+            if result["images"]:
+                print(f"  {result['images']} Plotterbild(er) an Einträge gehängt "
+                      f"(Verknüpfung: {method}).")
+            else:
+                print(f"  Keine Plotterbilder verknüpft (Methode: {method}).")
+            if result["ship_photos"]:
+                print(f"  {result['ship_photos']} Schiffsfoto(s) in die Stammdaten übernommen.")
+            if result["person_photos"]:
+                print(f"  {result['person_photos']} Personenfoto(s) in die Stammdaten übernommen.")
             print("  → In masarasi sichtbar (ältere Törns ggf. über Export/Scrollen).")
     finally:
         conn.close()
