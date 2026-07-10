@@ -16,7 +16,6 @@ import argparse
 import concurrent.futures
 import json
 import socket
-import struct
 from typing import Dict, List, Optional
 
 from masarasi.nmea import NmeaParser
@@ -292,25 +291,40 @@ def parse_gofree_announcement(data: bytes) -> Optional[Dict]:
     }
 
 
-def listen_gofree(seconds: float = 8.0) -> List[Dict]:
-    """Lauscht auf GoFree-Ankündigungen (Multicast 239.2.1.1:2052)."""
+def listen_gofree(seconds: float = 8.0, iface: Optional[str] = None,
+                  on_packet=None) -> List[Dict]:
+    """Lauscht auf GoFree-Ankündigungen (Multicast 239.2.1.1:2052).
+
+    iface: lokale Interface-IP für den Multicast-Beitritt (wie TripCon, das an
+    eine bestimmte IP bindet). Ohne Angabe = alle Interfaces (INADDR_ANY) —
+    auf Rechnern mit mehreren Netzen (VM/WLAN+LAN) sollte man die richtige IP
+    angeben, sonst wird evtl. auf dem falschen Netz gelauscht.
+    on_packet(addr, data, parsed): optionaler Rückruf für JEDES empfangene
+    Paket (auch nicht parsebare) — für die Roh-Diagnose.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     found: Dict[str, Dict] = {}
+    if_addr = socket.inet_aton(iface) if iface else socket.inet_aton("0.0.0.0")
     try:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:  # nicht überall vorhanden (z.B. Windows)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except (AttributeError, OSError):
+            pass
         sock.bind(("", GOFREE_PORT))
-        mreq = struct.pack(
-            "4sl", socket.inet_aton(GOFREE_MULTICAST), socket.INADDR_ANY
-        )
+        mreq = socket.inet_aton(GOFREE_MULTICAST) + if_addr
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        if iface:
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, if_addr)
         sock.settimeout(seconds)
-        deadline_reached = False
-        while not deadline_reached:
+        while True:
             try:
                 data, addr = sock.recvfrom(8192)
             except socket.timeout:
                 break
             ann = parse_gofree_announcement(data)
+            if on_packet is not None:
+                on_packet(addr, data, ann)
             if ann:
                 if not ann.get("ip"):
                     ann["ip"] = addr[0]
@@ -322,14 +336,50 @@ def listen_gofree(seconds: float = 8.0) -> List[Dict]:
     return list(found.values())
 
 
-def scan_gofree(seconds: float = 8.0) -> None:
+def gofree_source_hints(device: Dict) -> List[str]:
+    """Liefert masarasi-Quellzeilen (TCP host:port) für die NMEA-Dienste."""
+    ip = device.get("ip")
+    hints: List[str] = []
+    for s in device.get("services", []):
+        name = str(s.get("name") or "").lower()
+        port = s.get("port")
+        if port and ("nmea" in name or "0183" in name or "tcp" in name):
+            hints.append(f"TCP {ip}:{port}")
+    return hints
+
+
+def scan_gofree(seconds: float = 8.0, iface: Optional[str] = None,
+                raw: bool = False) -> None:
+    where = f" über {iface}" if iface else ""
     print(f"\nLausche {int(seconds)} s auf GoFree-Ankündigungen "
-          f"({GOFREE_MULTICAST}:{GOFREE_PORT}) …")
-    devices = listen_gofree(seconds)
+          f"({GOFREE_MULTICAST}:{GOFREE_PORT}){where} …")
+
+    packets: List = []
+
+    def _on_packet(addr, data, parsed):
+        packets.append((addr, data, parsed))
+        if raw:
+            text = _printable(data[:200])
+            print(f"\n  ⟵ {len(data)} B von {addr[0]}:{addr[1]}  "
+                  f"({'JSON erkannt' if parsed else 'roh/unbekannt'})")
+            print(f"      Text: {text}")
+            print(f"      Hex : {data[:64].hex(' ')}")
+
+    devices = listen_gofree(seconds, iface=iface, on_packet=_on_packet)
+
     if not devices:
-        print("  Keine GoFree-Geräte gehört. Ist der PC im Plotter-WLAN und GoFree am")
-        print("  MFD aktiviert? (Manche MFDs senden nur bei aktivem GoFree.)")
+        if packets:
+            print(f"\n  {len(packets)} Paket(e) empfangen, aber keins als GoFree-JSON")
+            print("  erkennbar. Bitte die obige Roh-Ausgabe (mit --raw) schicken —")
+            print("  daraus lässt sich das Format ableiten.")
+            if not raw:
+                print("  Tipp: nochmal mit  --gofree --raw  starten.")
+        else:
+            print("  Keine Pakete gehört. Ist der PC im Plotter-Netz und GoFree am")
+            print("  MFD aktiviert? Auf Rechnern mit mehreren Netzen die richtige")
+            print("  lokale IP angeben:  --gofree --iface 192.168.0.123")
         return
+
     for d in devices:
         print(f"\n  ✓ {d.get('name') or '?'}  ({d.get('model') or '?'})  IP {d.get('ip')}")
         if not d["services"]:
@@ -337,6 +387,8 @@ def scan_gofree(seconds: float = 8.0) -> None:
         for s in d["services"]:
             print(f"      · {s['name']}  Port {s['port']}"
                   + (f"  v{s['version']}" if s['version'] is not None else ""))
+        for hint in gofree_source_hints(d):
+            print(f"      → in masarasi als Quelle eintragen:  {hint}")
     print("\n  Hinweis: Der Live-Plotterbildschirm läuft über einen lizenzierten")
     print("  Navico-Videokanal (Tier 3) und ist in dieser Liste NICHT als offener")
     print("  Dienst enthalten. Datendienste (NMEA/WebSocket) sind nutzbar.")
@@ -358,6 +410,18 @@ def main(argv=None) -> int:
         help="auf GoFree-Dienstankündigungen von B&G/Navico-MFDs lauschen",
     )
     parser.add_argument(
+        "--iface", default=None, metavar="IP",
+        help="lokale Interface-IP für GoFree-Multicast (z.B. 192.168.0.123)",
+    )
+    parser.add_argument(
+        "--raw", action="store_true",
+        help="empfangene GoFree-Pakete roh anzeigen (Text + Hex) — zur Diagnose",
+    )
+    parser.add_argument(
+        "--seconds", type=float, default=8.0,
+        help="Dauer des GoFree-Lauschens in Sekunden (Standard 8)",
+    )
+    parser.add_argument(
         "--sweep", action="store_true",
         help="breiter Portscan (alle offenen Ports am Host finden, z.B. Orca)",
     )
@@ -367,7 +431,7 @@ def main(argv=None) -> int:
         parser.error("Bitte eine Host-IP angeben oder --udp / --gofree verwenden.")
 
     if args.gofree:
-        scan_gofree()
+        scan_gofree(seconds=args.seconds, iface=args.iface, raw=args.raw)
 
     if args.host and args.sweep:
         scan_sweep(args.host)

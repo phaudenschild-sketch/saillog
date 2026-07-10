@@ -84,6 +84,19 @@ class GoFreeAnnouncementTest(unittest.TestCase):
         from masarasi.discover import parse_gofree_announcement
         self.assertIsNone(parse_gofree_announcement(b"$GPRMC,not json"))
 
+    def test_source_hints_for_nmea_service(self):
+        from masarasi.discover import parse_gofree_announcement, gofree_source_hints
+        import json
+        payload = json.dumps({
+            "Model": "Zeus3", "IP": "192.168.9.224",
+            "Services": [
+                {"Service": "nmea-0183", "Port": 10110},
+                {"Service": "websocket", "Port": 443},
+            ],
+        }).encode("utf-8")
+        hints = gofree_source_hints(parse_gofree_announcement(payload))
+        self.assertEqual(hints, ["TCP 192.168.9.224:10110"])
+
 
 class ProbeUdpTest(unittest.TestCase):
     def test_receives_broadcast(self):

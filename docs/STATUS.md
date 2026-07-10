@@ -38,10 +38,22 @@ eigene Schiff, alle AIS-Ziele mit **echter Richtung** (COG/Heading) und den
 Track des **ausgewählten Törns**. Kartenhintergrund/Leaflet werden vom CDN
 geladen (an Bord über Starlink); ohne Netz bleibt nur der Hintergrund leer.
 
-**Kartenplotter (GoFree):** entfernt — Live-Mirroring ist ein lizenzierter
-Navico-Videokanal (Tier 3), ohne Lizenz/HDMI nicht zugänglich; funktionierte
-nicht. `plotter_capture.py` bleibt als Bild-Hilfsmodul erhalten, ist aber
-nicht mehr an die Oberfläche gebunden.
+**Kartenplotter (GoFree):** Live-*Bildschirm*-Mirroring ist ein lizenzierter
+Navico-Videokanal (Tier 3), ohne Lizenz/HDMI nicht zugänglich; entfernt.
+`plotter_capture.py` bleibt als Bild-Hilfsmodul erhalten, ist aber nicht mehr
+an die Oberfläche gebunden.
+
+**GoFree-*Daten*-Discovery** (kostenlos, Tier 1): B&G/Navico-MFDs kündigen ihre
+Dienste per Multicast **239.2.1.1:2052** an (bestätigt über TripCons
+Statuszeile „listen … to multicast '239.2.1.1:2052'"). `discover.py --gofree`
+tritt dieser Gruppe bei, liest die Ankündigung (JSON) und schlägt die passende
+masarasi-Quelle vor (`TCP <ip>:<port>` des `nmea-0183`-Dienstes).
+- `--iface 192.168.0.123` bindet an eine bestimmte lokale IP (wie TripCon) —
+  nötig auf Rechnern mit mehreren Netzen (VM/WLAN+LAN), sonst wird evtl. auf
+  dem falschen Netz gelauscht.
+- `--raw` zeigt jedes empfangene Paket roh (Text + Hex) — falls die Firmware
+  kein JSON, sondern ein Binärformat sendet, sieht man es so und kann es
+  nachrüsten. `--seconds N` verlängert die Lauschzeit.
 
 ## Umgesetzt
 
