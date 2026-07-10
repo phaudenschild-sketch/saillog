@@ -70,6 +70,10 @@ Fazit NMEA: GoFree liefert über 0183 nichts Zusätzliches (= Port 10110, schon
 genutzt). Neue Türen: `navico-nav-ws:2053` (mehr Daten, `gofree_probe.py`
 erschließt das Protokoll) und `rtsp:554` (Plotterbild).
 
+Im **Quellen-Dialog** gibt es den Knopf **„🔍 GoFree suchen"**: lauscht kurz,
+findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
+(Duplikate werden vermieden).
+
 ## Umgesetzt
 
 - Mehrquellen-Eingang **TCP / UDP / seriell**, zusammengeführt in `LiveData`

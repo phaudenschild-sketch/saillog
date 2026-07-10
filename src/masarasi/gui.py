@@ -2638,6 +2638,10 @@ class _SourcesDialog:
         ttk.Label(tmpl, text="Vorlagen:", foreground="#555").pack(side="left")
         ttk.Button(tmpl, text="B&G (TCP 10110)", command=self._tmpl_bg).pack(side="left", padx=3)
         ttk.Button(tmpl, text="Maretron (COM)", command=self._tmpl_maretron).pack(side="left", padx=3)
+        self._gofree_btn = ttk.Button(
+            tmpl, text="🔍 GoFree suchen", command=self._on_gofree_search
+        )
+        self._gofree_btn.pack(side="left", padx=(12, 3))
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=5, column=0, columnspan=6, pady=(12, 0))
@@ -2672,6 +2676,57 @@ class _SourcesDialog:
         if sel:
             del self._defs[sel[0]]
             self._refresh_list()
+
+    def _on_gofree_search(self) -> None:
+        """Lauscht kurz auf GoFree-Ankündigungen und trägt die NMEA-Quelle ein."""
+        import threading
+        from masarasi import discover
+
+        self._gofree_btn.config(state="disabled")
+        self._hint.config(text="Suche GoFree-Geräte (bis 6 s) …")
+
+        def work():
+            try:
+                devices = discover.listen_gofree(seconds=6.0)
+            except Exception:  # noqa: BLE001
+                devices = []
+            self.top.after(0, lambda: self._gofree_done(devices))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _gofree_done(self, devices) -> None:
+        from masarasi import discover
+
+        self._gofree_btn.config(state="normal")
+        self._update_hint()
+        if not devices:
+            messagebox.showinfo(
+                "GoFree",
+                "Kein GoFree-Gerät gehört.\n\n"
+                "• Ist am MFD GoFree/Drahtlos aktiv und der Laptop im Plotter-Netz?\n"
+                "• Windows-Firewall für UDP 2052 freigeben und das Netzprofil auf\n"
+                "  'Privat' stellen (Details: find_sources.py --gofree --raw).",
+            )
+            return
+
+        existing = {
+            (str(d.get("host")), str(d.get("port"))) for d in self._defs
+        }
+        added, names = 0, []
+        for dev in devices:
+            names.append(dev.get("model") or dev.get("name") or dev.get("ip"))
+            for hint in discover.gofree_source_hints(dev):
+                _, _, addr = hint.partition(" ")          # "TCP ip:port"
+                host, _, port = addr.rpartition(":")
+                if host and port and (host, port) not in existing:
+                    self._defs.append({"protocol": "tcp", "host": host, "port": port})
+                    existing.add((host, port))
+                    added += 1
+        self._refresh_list()
+        msg = "Gefunden: " + ", ".join(str(n) for n in names)
+        msg += (f"\n{added} NMEA-Quelle(n) hinzugefügt."
+                if added else "\nQuelle(n) waren bereits vorhanden.")
+        messagebox.showinfo("GoFree", msg)
 
     def _tmpl_bg(self) -> None:
         self._proto.set("tcp"); self._host.set("192.168.9.224"); self._port.set("10110")
