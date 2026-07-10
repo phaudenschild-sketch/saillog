@@ -55,6 +55,21 @@ masarasi-Quelle vor (`TCP <ip>:<port>` des `nmea-0183`-Dienstes).
   kein JSON, sondern ein Binärformat sendet, sieht man es so und kann es
   nachrüsten. `--seconds N` verlängert die Lauschzeit.
 
+**Diensteverzeichnis Zeus3S 9** (aus der Ankündigung, IP 192.168.9.224):
+
+| Port | Dienst | Nutzen |
+|---|---|---|
+| **10110** | NMEA0183 / nmea-0183 | Klartext-NMEA-0183 (TCP) — **das nutzt masarasi bereits** |
+| 80 | http | Web-/GoFree-HTTP-API |
+| 21 | ftp | Dateizugriff |
+| 554 | rtsp | **Plotter-Bildschirm als Video** (mit VLC testbar) |
+| 6633 | navico-mfd-rp | MFD-Fernbedienung |
+| **2053** | navico-nav-ws | **GoFree-WebSocket-Daten-API** (evtl. voller N2K-Satz inkl. Motor) |
+
+Fazit NMEA: GoFree liefert über 0183 nichts Zusätzliches (= Port 10110, schon
+genutzt). Neue Türen: `navico-nav-ws:2053` (mehr Daten, `gofree_probe.py`
+erschließt das Protokoll) und `rtsp:554` (Plotterbild).
+
 ## Umgesetzt
 
 - Mehrquellen-Eingang **TCP / UDP / seriell**, zusammengeführt in `LiveData`
