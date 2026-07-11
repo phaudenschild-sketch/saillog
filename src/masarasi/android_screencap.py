@@ -57,9 +57,63 @@ def devices(adb_path: str = "adb", timeout: float = 10.0) -> List[Tuple[str, str
     return result
 
 
+def connect(address: str, adb_path: str = "adb",
+            timeout: float = 10.0) -> Tuple[bool, str]:
+    """`adb connect <ip:port>` für drahtloses ADB. (ok, Meldung)."""
+    if not address:
+        return False, "keine Adresse"
+    try:
+        proc = subprocess.run(
+            [adb_path or "adb", "connect", address],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, str(exc)
+    out = (proc.stdout or "").strip() or (proc.stderr or "").strip()
+    # "connected to ..." und "already connected to ..." gelten als Erfolg
+    ok = "connected to" in out.lower()
+    return ok, out
+
+
+def enable_tcpip(adb_path: str = "adb", serial: str = "", port: int = 5555,
+                 timeout: float = 10.0) -> Tuple[bool, str]:
+    """`adb tcpip <port>` — schaltet das (per USB verbundene) Tablet auf WLAN-ADB."""
+    cmd = _adb_base(adb_path, serial) + ["tcpip", str(port)]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, str(exc)
+    out = (proc.stdout or "").strip() or (proc.stderr or "").strip()
+    ok = proc.returncode == 0 and "error" not in out.lower()
+    return ok, out
+
+
+def wlan_ip(adb_path: str = "adb", serial: str = "",
+            timeout: float = 10.0) -> Optional[str]:
+    """Liest die WLAN-IP des Tablets (`ip addr show wlan0`)."""
+    import re
+    cmd = _adb_base(adb_path, serial) + ["shell", "ip", "-o", "-4", "addr", "show", "wlan0"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"inet (\d+\.\d+\.\d+\.\d+)", proc.stdout or "")
+    return match.group(1) if match else None
+
+
+def _ensure_network(adb_path: str, serial: str) -> None:
+    """Bei einer Netzwerk-Adresse (ip:port) vor dem Zugriff (re)connecten.
+
+    ``adb connect`` ist idempotent — ist die Verbindung schon da, kostet es
+    fast nichts; war sie weg (WLAN-Aussetzer), wird sie neu aufgebaut."""
+    if serial and ":" in serial:
+        connect(serial, adb_path)
+
+
 def capture_png(adb_path: str = "adb", serial: str = "",
                 timeout: float = 15.0) -> Optional[bytes]:
     """Holt den Tablet-Bildschirm als PNG-Bytes. None bei Fehler/kein Bild."""
+    _ensure_network(adb_path, serial)
     cmd = _adb_base(adb_path, serial) + ["exec-out", "screencap", "-p"]
     try:
         proc = subprocess.run(cmd, capture_output=True, timeout=timeout)

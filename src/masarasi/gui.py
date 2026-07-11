@@ -1590,25 +1590,35 @@ class _PlotterDialog:
         ttk.Entry(frame, textvariable=self._adb, width=44).grid(row=1, column=1, sticky="w")
         ttk.Button(frame, text="Wählen…", command=self._choose).grid(row=1, column=2, padx=4)
 
-        ttk.Label(frame, text="Gerät (Serial):").grid(row=2, column=0, sticky="e", padx=(0, 4), pady=4)
+        ttk.Label(frame, text="Gerät (Serial / IP:Port):").grid(
+            row=2, column=0, sticky="e", padx=(0, 4), pady=4)
         self._serial = tk.StringVar(value=config.plotter_adb_serial)
         ttk.Entry(frame, textvariable=self._serial, width=30).grid(row=2, column=1, sticky="w")
         ttk.Button(frame, text="Geräte suchen", command=self._find).grid(row=2, column=2, padx=4)
         ttk.Label(frame, foreground="#777",
-                  text="leer lassen, wenn nur ein Gerät verbunden ist").grid(
-            row=3, column=1, sticky="w")
+                  text="USB: leer lassen (ein Gerät). WLAN: <Tablet-IP>:5555 eintragen.").grid(
+            row=3, column=1, columnspan=2, sticky="w")
+
+        # WLAN-ADB-Steuerung
+        wlan = ttk.Frame(frame)
+        wlan.grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 2))
+        ttk.Label(wlan, text="WLAN:", foreground="#555").pack(side="left")
+        ttk.Button(wlan, text="Per USB für WLAN aktivieren",
+                   command=self._wlan_prepare).pack(side="left", padx=3)
+        ttk.Button(wlan, text="Drahtlos verbinden",
+                   command=self._wlan_connect).pack(side="left", padx=3)
 
         self._autolog = tk.BooleanVar(value=config.plotter_autolog)
         ttk.Checkbutton(
             frame, text="Bei jedem Auto-Eintrag einen Plotter-Screenshot mitspeichern",
             variable=self._autolog,
-        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 2))
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 2))
 
         self._status = ttk.Label(frame, text="", foreground="#555", wraplength=480)
-        self._status.grid(row=5, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        self._status.grid(row=6, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         btns = ttk.Frame(frame)
-        btns.grid(row=6, column=0, columnspan=3, pady=(12, 0))
+        btns.grid(row=7, column=0, columnspan=3, pady=(12, 0))
         ttk.Button(btns, text="Test", command=self._test).pack(side="left", padx=4)
         ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
         ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
@@ -1635,6 +1645,45 @@ class _PlotterDialog:
         self._status.config(
             text="Gefunden: " + ", ".join(f"{s} [{st}]" for s, st in devs),
             foreground="#227722")
+
+    def _wlan_prepare(self) -> None:
+        """Per USB: tcpip aktivieren, Tablet-IP holen, WLAN-Adresse setzen + verbinden."""
+        from masarasi import android_screencap as scr
+        adb = self._adb.get().strip() or "adb"
+        self._status.config(text="Aktiviere WLAN-ADB über USB …", foreground="#555")
+        self.top.update_idletasks()
+        ok, msg = scr.enable_tcpip(adb)
+        if not ok:
+            self._status.config(
+                text=f"tcpip fehlgeschlagen: {msg}\nIst das Tablet per USB verbunden?",
+                foreground="#b25000")
+            return
+        ip = scr.wlan_ip(adb)
+        if not ip:
+            self._status.config(
+                text="WLAN-ADB aktiv, aber Tablet-IP nicht gefunden. Bitte "
+                     "<Tablet-IP>:5555 von Hand eintragen und 'Drahtlos verbinden'.",
+                foreground="#b25000")
+            return
+        address = f"{ip}:5555"
+        self._serial.set(address)
+        cok, cmsg = scr.connect(address, adb)
+        self._status.config(
+            text=(f"WLAN-ADB aktiv, verbunden mit {address}. USB kann jetzt ab."
+                  if cok else f"tcpip ok, aber connect fehlte: {cmsg}"),
+            foreground="#227722" if cok else "#b25000")
+
+    def _wlan_connect(self) -> None:
+        from masarasi import android_screencap as scr
+        address = self._serial.get().strip()
+        if ":" not in address:
+            self._status.config(
+                text="Bitte erst <Tablet-IP>:5555 im Feld 'Gerät' eintragen.",
+                foreground="#b25000")
+            return
+        ok, msg = scr.connect(address, self._adb.get().strip() or "adb")
+        self._status.config(text=msg or "(keine Antwort)",
+                            foreground="#227722" if ok else "#b25000")
 
     def _test(self) -> None:
         from masarasi import android_screencap

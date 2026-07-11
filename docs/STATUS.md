@@ -99,8 +99,12 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   beim manuellen Eintrag (kein Bild / Plotter / Datei) und Option **„bei jedem
   Auto-Eintrag mitspeichern"**. Einstellungen unter Menü **Extras →
   Plotter-Screenshot (ADB)…** (adb-Pfad, Gerät, Test). Setup: Tablet koppeln
-  (Entwickleroptionen → USB-/Drahtlos-Debugging, „immer erlauben"); am
-  einfachsten per USB, dann optional `adb tcpip 5555` + `adb connect ip:5555`.
+  (Entwickleroptionen → USB-/Drahtlos-Debugging, „immer erlauben"). **WLAN:**
+  im Dialog „Per USB für WLAN aktivieren" (setzt `adb tcpip 5555`, liest die
+  Tablet-IP, trägt `<ip>:5555` ein und verbindet) — danach USB abziehen. Vor
+  jeder Aufnahme wird bei einer Netzwerk-Adresse automatisch neu verbunden
+  (übersteht WLAN-Aussetzer). Nach einem Tablet-Neustart einmal per USB
+  „aktivieren" wiederholen.
 - **Backup** (`backup.py`, Knopf „💾 Backup…"): Logbuch-DB (inkl. Fotos) +
   Einstellungen als zeitgestempelte ZIP; manuell oder automatisch beim Beenden
   (letzte N behalten)

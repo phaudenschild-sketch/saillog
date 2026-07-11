@@ -78,5 +78,50 @@ class CaptureTest(unittest.TestCase):
         self.assertIn("ZX10108TA12E00234", seen["cmd"])
 
 
+class WlanTest(unittest.TestCase):
+    def _patch(self, fn):
+        orig = subprocess.run
+        subprocess.run = fn
+        self.addCleanup(lambda: setattr(subprocess, "run", orig))
+
+    def test_connect_success(self):
+        self._patch(lambda cmd, **kw: subprocess.CompletedProcess(
+            cmd, 0, stdout="connected to 192.168.9.215:5555\n", stderr=""))
+        ok, msg = scr.connect("192.168.9.215:5555")
+        self.assertTrue(ok)
+        self.assertIn("connected to", msg)
+
+    def test_connect_already(self):
+        self._patch(lambda cmd, **kw: subprocess.CompletedProcess(
+            cmd, 0, stdout="already connected to 192.168.9.215:5555\n", stderr=""))
+        ok, _ = scr.connect("192.168.9.215:5555")
+        self.assertTrue(ok)
+
+    def test_connect_failure(self):
+        self._patch(lambda cmd, **kw: subprocess.CompletedProcess(
+            cmd, 1, stdout="", stderr="cannot connect: connection refused"))
+        ok, _ = scr.connect("192.168.9.215:5555")
+        self.assertFalse(ok)
+
+    def test_wlan_ip_parsed(self):
+        out = "2: wlan0    inet 192.168.9.215/24 brd 192.168.9.255 scope global wlan0\n"
+        self._patch(lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout=out, stderr=""))
+        self.assertEqual(scr.wlan_ip(), "192.168.9.215")
+
+    def test_capture_autoconnects_for_network_serial(self):
+        calls = []
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            if "connect" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="connected to x", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout=_PNG, stderr=b"")
+
+        self._patch(fake_run)
+        scr.capture_png(serial="192.168.9.215:5555")
+        self.assertTrue(any("connect" in c for c in calls),
+                        "network serial should trigger adb connect first")
+
+
 if __name__ == "__main__":
     unittest.main()
