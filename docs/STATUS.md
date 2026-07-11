@@ -10,7 +10,7 @@ Das Repo ist eigenständig: `github.com/phaudenschild-sketch/masarasi`
 cd C:\claude\masarasi
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 212 Tests
+python -m unittest discover -s tests   # 213 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
@@ -122,14 +122,21 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   „voll-zu-voll" berechnet — unabhängig von der schwankenden Tankanzeige.
   **Restfüllstand + Reichweite** (Rest-Motorstunden) aus Tankgröße (Standard
   160 L, einstellbar) und aktuellen Motorstunden (`fuel.py`)
+- **Törn-Ebene (Voyage) über den Etappen:** In masarasi ist ein „Trip" eine
+  Etappe (Tagesschlag). Mehrere Etappen lassen sich zu einem **Törn** (voyages-
+  Tabelle, `trip.voyage_id`) zusammenfassen — Menü **Extras → „Törns/Etappen
+  gruppieren…"** (Törn anlegen/umbenennen/löschen, Etappen zuordnen). Löschen
+  eines Törns lässt die Etappen bestehen.
 - **Berichte** (`reports.py`, Knopf „📄 Bericht…" in der Törn-Leiste): druckbares
   HTML (im Browser → „Als PDF speichern"), nach TripCon-Vorbild:
-  **Törn-Bericht** (ein Törn, jeder Eintrag mit vollem Raster: Position im
-  Grad/Dezimalminuten-Format, FüG/KüG, wahrer Wind, Tiefe, kumulatives Log,
-  Luft/Bewölkung/Sicht, Segel, Notiz), **Etappenbericht mit Bildern** (Bilder
-  als base64-Data-URIs eingebettet, kein Server nötig) und **Fahrtenbuch**
-  (alle Törns: Schiffsdaten, Etappen-Karten, Meilen-Summe gesegelt/Motor/gesamt
-  aus der GPS-Spur).
+  **Törn-Bericht** (ganzer Törn über mehrere Etappen: Titel mit Törnname/Revier/
+  Zeitraum, Schiffsdaten, kombinierte Crew, Etappenübersicht + je Etappe
+  Detail-Einträge + Zusammenfassung), **Etappen-Bericht** (einzelne Etappe =
+  aktueller Trip), jeweils **mit Bildern** (base64-Data-URIs eingebettet, kein
+  Server nötig) und **Fahrtenbuch** (alle Törns: Schiffsdaten, Etappen-Karten,
+  Meilen-Summe gesegelt/Motor/gesamt aus der GPS-Spur). Eintrags-Raster:
+  Position in Grad/Dezimalminuten, FüG/KüG, wahrer Wind, Tiefe, kumulatives
+  Log, Luft/Bewölkung/Sicht, Segel, Notiz.
 - **Crewliste** (Ein-/Ausklarieren): Bootsangaben + Ort/Datum (gespeichert)
   + Crew je Törn; **Personen-Speicher** (einmal erfasste Personen sind über
   ein Auswahlmenü wiederverwendbar); druckbare, zweisprachige HTML-Liste

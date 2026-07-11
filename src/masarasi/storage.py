@@ -146,6 +146,17 @@ class Trip:
     end_engine_hours: Optional[float] = None
     end_log_nm: Optional[float] = None
     note: str = ""
+    voyage_id: Optional[int] = None     # Zugehöriger Törn (mehrere Etappen)
+
+
+@dataclass
+class Voyage:
+    """Ein Törn — fasst mehrere Etappen (Trips) zusammen."""
+
+    id: Optional[int] = None
+    name: str = ""
+    revier: str = ""
+    note: str = ""
 
 
 @dataclass
@@ -224,6 +235,7 @@ class FuelEntry:
 
 _COLUMN_NAMES = [f.name for f in fields(LogEntry)]
 _TRIP_COLUMNS = [f.name for f in fields(Trip)]
+_VOYAGE_COLUMNS = [f.name for f in fields(Voyage)]
 _CREW_COLUMNS = [f.name for f in fields(CrewMember)]
 _PERSON_COLUMNS = [f.name for f in fields(Person)]
 _FUEL_COLUMNS = [f.name for f in fields(FuelEntry)]
@@ -305,11 +317,19 @@ class LogbookStore:
                 "end_engine_hours REAL",
                 "end_log_nm REAL",
                 "note TEXT DEFAULT ''",
+                "voyage_id INTEGER",
             ]
         )
         with self._connect() as conn:
             conn.execute(f"CREATE TABLE IF NOT EXISTS log_entries (\n{log_columns}\n)")
             conn.execute(f"CREATE TABLE IF NOT EXISTS trips (\n{trip_columns}\n)")
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS voyages (\n"
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+                "  name TEXT DEFAULT '',\n"
+                "  revier TEXT DEFAULT '',\n"
+                "  note TEXT DEFAULT ''\n)"
+            )
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS entry_images (\n"
                 "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
@@ -405,6 +425,11 @@ class LogbookStore:
         for name in ("email", "street", "zip_code", "city"):
             if name not in existing_p:
                 conn.execute(f"ALTER TABLE persons ADD COLUMN {name} TEXT DEFAULT ''")
+
+        # Törn-Gruppierung: Etappen (trips) können zu einem Törn (voyage) gehören
+        existing_t = {r[1] for r in conn.execute("PRAGMA table_info(trips)")}
+        if "voyage_id" not in existing_t:
+            conn.execute("ALTER TABLE trips ADD COLUMN voyage_id INTEGER")
 
         # entry_images: von „ein Bild pro Eintrag" (entry_id = PK) auf mehrere
         # Bilder je Eintrag umstellen (eigene id, entry_id nur noch indiziert).
@@ -702,6 +727,63 @@ class LogbookStore:
     def _row_to_trip(row: sqlite3.Row) -> Trip:
         data = {k: row[k] for k in row.keys() if k in _TRIP_COLUMNS}
         return Trip(**data)
+
+    # --- Törns (Voyage: fasst mehrere Etappen/Trips zusammen) --------------
+
+    def add_voyage(self, voyage: Voyage) -> int:
+        cols = [c for c in _VOYAGE_COLUMNS if c != "id"]
+        placeholders = ", ".join("?" for _ in cols)
+        with self._connect() as conn:
+            cursor = conn.execute(
+                f"INSERT INTO voyages ({', '.join(cols)}) VALUES ({placeholders})",
+                [getattr(voyage, c) for c in cols],
+            )
+            voyage.id = cursor.lastrowid
+        return voyage.id
+
+    def update_voyage(self, voyage: Voyage) -> None:
+        cols = [c for c in _VOYAGE_COLUMNS if c != "id"]
+        assignments = ", ".join(f"{c} = ?" for c in cols)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE voyages SET {assignments} WHERE id = ?",
+                [getattr(voyage, c) for c in cols] + [voyage.id],
+            )
+
+    def get_voyage(self, voyage_id: int) -> Optional[Voyage]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM voyages WHERE id = ?", (voyage_id,)).fetchone()
+        return self._row_to_voyage(row) if row else None
+
+    def all_voyages(self) -> List[Voyage]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM voyages ORDER BY name, id").fetchall()
+        return [self._row_to_voyage(r) for r in rows]
+
+    def delete_voyage(self, voyage_id: int) -> None:
+        """Löscht den Törn; die Etappen bleiben erhalten (voyage_id -> NULL)."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE trips SET voyage_id = NULL WHERE voyage_id = ?", (voyage_id,))
+            conn.execute("DELETE FROM voyages WHERE id = ?", (voyage_id,))
+
+    def set_trip_voyage(self, trip_id: int, voyage_id: Optional[int]) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE trips SET voyage_id = ? WHERE id = ?", (voyage_id, trip_id))
+
+    def trips_for_voyage(self, voyage_id: int) -> List[Trip]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM trips WHERE voyage_id = ? ORDER BY start_dz, id",
+                (voyage_id,),
+            ).fetchall()
+        return [self._row_to_trip(r) for r in rows]
+
+    @staticmethod
+    def _row_to_voyage(row: sqlite3.Row) -> Voyage:
+        data = {k: row[k] for k in row.keys() if k in _VOYAGE_COLUMNS}
+        return Voyage(**data)
 
     # --- Crew (Crewliste) ---------------------------------------------------
 

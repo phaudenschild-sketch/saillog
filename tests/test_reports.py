@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from masarasi import reports
-from masarasi.storage import LogbookStore, LogEntry, Ship, Trip
+from masarasi.storage import LogbookStore, LogEntry, Ship, Trip, Voyage
 
 
 class _Cfg:
@@ -113,6 +113,34 @@ class ReportTest(unittest.TestCase):
         html = reports.trip_report_html(self.store, self.cfg, self.trip, 0.0)
         self.assertTrue(html.lstrip().startswith("<!doctype html>"))
         self.assertIn("</html>", html)
+
+    def test_voyage_report_multi_leg(self):
+        # zweite Etappe + beide einem Törn zuordnen
+        t2 = Trip(name="SY MASARASI", status="closed", start_location="Uvala Gradina",
+                  end_location="Vela Luka", start_dz="2024-07-26T08:00:00Z",
+                  end_dz="2024-07-26T14:00:00Z")
+        self.store.add_trip(t2)
+        e = LogEntry.from_snapshot(
+            timestamp="2024-07-26T08:00:00Z", entry_type="manual",
+            measurements={"lat": 42.9, "lon": 16.6, "tws_kn": 8}, logevent="Ablegen",
+            trip_id=t2.id)
+        self.store.add(e)
+        v = Voyage(name="Schwerwetter Ausbildung", revier="Adria")
+        self.store.add_voyage(v)
+        self.store.set_trip_voyage(self.trip.id, v.id)
+        self.store.set_trip_voyage(t2.id, v.id)
+        trips = self.store.trips_for_voyage(v.id)
+        self.assertEqual(len(trips), 2)
+        html = reports.voyage_report_html(self.store, self.cfg, v, trips, 0.0)
+        self.assertIn("Törnbericht", html)
+        self.assertIn("Schwerwetter Ausbildung", html)
+        self.assertIn("Adria", html)                    # Revier
+        self.assertIn("Etappenübersicht", html)
+        self.assertEqual(html.count("Etappe: "), 2)     # zwei Etappen-Detailteile
+        # mit Bildern -> Data-URI (Bild hängt an self.trip)
+        html_img = reports.voyage_report_html(self.store, self.cfg, v, trips, 0.0,
+                                              with_images=True)
+        self.assertIn("data:image/jpeg;base64,", html_img)
 
 
 if __name__ == "__main__":

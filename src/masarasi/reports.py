@@ -21,7 +21,7 @@ from typing import Dict, List, Optional
 from xml.sax.saxutils import escape
 
 from masarasi import geo, timeutil
-from masarasi.storage import LogEntry, Ship, Trip
+from masarasi.storage import LogEntry, Ship, Trip, Voyage
 
 _COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
             "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
@@ -326,6 +326,7 @@ h3 { font-size: 15px; margin: 16px 0 6px; }
 .leggrid { display:grid; grid-template-columns: repeat(3, 1fr); gap:2px 16px; }
 .leggrid .k { color:#667; } .leggrid .v { font-weight:600; margin-left:6px; }
 .legcrew { color:#556; margin-top:4px; font-size:12px; }
+.roles { color:#556; margin: 2px 0 8px; font-size:12px; }
 .summary { margin-top:16px; padding:10px; background:#f2f5f7; border-radius:6px; font-size:15px; }
 .pb { page-break-before: always; }
 @media print { body { padding: 0; } .noprint { display:none; } }
@@ -377,6 +378,93 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
         f'Gesamt: {_de(stats["total"])} NM · Gesegelt: {_de(stats["sailed"])} NM · '
         f'Motor: {_de(stats["motor"])} NM<br>{len(entries)} Einträge</div>')
     return _doc(f"{kind} {trip.name}", "".join(parts))
+
+
+# --- Törn-Bericht über mehrere Etappen (Voyage) ----------------------------
+
+def _active_ship(store, config) -> Optional[Ship]:
+    ship = None
+    if getattr(config, "active_ship_id", None):
+        ship = store.get_ship(config.active_ship_id)
+    if ship is None:
+        ships = store.all_ships()
+        ship = ships[0] if ships else None
+    return ship
+
+
+def _combined_crew(store, trips: List[Trip]) -> List:
+    seen = set()
+    out = []
+    for t in trips:
+        for c in store.crew_for_trip(t.id):
+            key = (c.last_name.lower(), c.first_name.lower())
+            if key not in seen:
+                seen.add(key)
+                out.append(c)
+    return out
+
+
+def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
+                       offset: float = 0.0, with_images: bool = False) -> str:
+    """Törnbericht/Etappenbericht über MEHRERE Etappen (ein Törn)."""
+    kind = "Etappenbericht" if with_images else "Törnbericht"
+    ship = _active_ship(store, config)
+    crew = _combined_crew(store, trips)
+
+    dzs = [t.start_dz for t in trips if t.start_dz] + [t.end_dz for t in trips if t.end_dz]
+    period = (_date_only(min(dzs), offset) + " – " + _date_only(max(dzs), offset)) if dzs else ""
+    von = trips[0].start_location if trips else ""
+    nach = trips[-1].end_location if trips else ""
+
+    parts = [
+        f'<div class="title-page"><div class="big">{escape(kind)}</div>'
+        f'<div>Logbuch der <b>{escape(ship.name if ship else "")}</b></div>'
+        f'<div class="sub">{escape(period)}<br><b>{escape(voyage.name)}</b><br>'
+        f'{escape(von)} → {escape(nach)}'
+        + (f'<br>Revier: {escape(voyage.revier)}' if voyage.revier else "")
+        + '</div></div><div class="pb"></div>',
+        ship_block(ship),
+        crew_block(crew),
+        '<h2 class="pb">Etappenübersicht</h2>',
+    ]
+
+    total = sailed = motor = 0.0
+    leg_entries: Dict[int, List[LogEntry]] = {}
+    for t in trips:
+        ents = store.all(newest_first=False, trip_id=t.id, limit=50000)
+        leg_entries[t.id] = ents
+        parts.append(leg_card(store, t, ents, offset, store.crew_for_trip(t.id)))
+        s = leg_stats(ents)
+        total += s["total"]; sailed += s["sailed"]; motor += s["motor"]
+
+    for t in trips:
+        ents = leg_entries[t.id]
+        when = _date_only(t.start_dz, offset)
+        legcrew = store.crew_for_trip(t.id)
+        roles = ""
+        if legcrew:
+            roles = "<div class='roles'>" + " · ".join(
+                f"{escape(getattr(c,'position','') or 'Crew')}: {escape(c.last_name)}, {escape(c.first_name)}"
+                for c in legcrew) + "</div>"
+        parts.append(
+            f'<h2 class="pb">Etappe: {escape(t.start_location or "?")} → '
+            f'{escape(t.end_location or "…")}</h2>'
+            f'<div class="sub">{escape(when)}</div>{roles}')
+        cum = _cumulative_nm(ents)
+        for i, e in enumerate(ents):
+            imgs = store.get_entry_images(e.id) if with_images else None
+            parts.append(entry_card(e, offset, cum.get(i, 0.0), imgs))
+        st = leg_stats(ents)
+        parts.append(
+            f'<div class="summary">Etappe {escape(t.start_location or "")} → '
+            f'{escape(t.end_location or "")}: Gesamt {_de(st["total"])} NM · '
+            f'Gesegelt {_de(st["sailed"])} NM · Motor {_de(st["motor"])} NM</div>')
+
+    parts.append(
+        f'<div class="summary pb"><b>Zusammenfassung {escape(voyage.name)}</b><br>'
+        f'{len(trips)} Etappen · Gesamt: {_de(total)} NM · '
+        f'Gesegelt: {_de(sailed)} NM · Motor: {_de(motor)} NM</div>')
+    return _doc(f"{kind} {voyage.name}", "".join(parts))
 
 
 # --- Fahrtenbuch / Übersicht (mehrere Törns) -------------------------------

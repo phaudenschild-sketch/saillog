@@ -32,7 +32,9 @@ from masarasi.source import (
     STATUS_ERROR,
     NmeaSource,
 )
-from masarasi.storage import CrewMember, FuelEntry, LogbookStore, Person, Ship, Trip
+from masarasi.storage import (
+    CrewMember, FuelEntry, LogbookStore, Person, Ship, Trip, Voyage,
+)
 from masarasi.webmap import MapServer
 
 _STATUS_TEXT = {
@@ -100,6 +102,8 @@ class Application:
         stamm.add_command(label="Schiffe verwalten…", command=self._on_manage_ships)
         menubar.add_cascade(label="Stammdaten", menu=stamm)
         extras = tk.Menu(menubar, tearoff=0)
+        extras.add_command(label="Törns/Etappen gruppieren…",
+                           command=self._on_manage_voyages)
         extras.add_command(label="Plotter-Screenshot (ADB)…",
                            command=self._on_plotter_settings)
         menubar.add_cascade(label="Extras", menu=extras)
@@ -871,13 +875,14 @@ class Application:
 
     def _on_report(self) -> None:
         has_trip = self._logbook.current_trip_id is not None
-        dialog = _ReportDialog(self._root, has_trip)
+        dialog = _ReportDialog(self._root, has_trip, self._store.all_voyages())
         self._root.wait_window(dialog.top)
         if dialog.result is None:
             return
+        res = dialog.result
         offset = self._tz_offset()
         try:
-            if dialog.result == "voyage":
+            if res["kind"] == "fahrtenbuch":
                 trips = self._store.all_trips(newest_first=False)
                 if not trips:
                     messagebox.showinfo("Bericht", "Noch keine Törns vorhanden.")
@@ -885,15 +890,27 @@ class Application:
                 html = reports.voyage_log_html(
                     self._store, self._config, trips, offset, "Fahrtenbuch")
                 name = "fahrtenbuch.html"
+            elif res["kind"] == "voyage":
+                voyage = self._store.get_voyage(res["voyage_id"])
+                trips = self._store.trips_for_voyage(res["voyage_id"]) if voyage else []
+                if not trips:
+                    messagebox.showinfo(
+                        "Bericht", "Diesem Törn sind noch keine Etappen zugeordnet "
+                        "(Extras → 'Törns/Etappen gruppieren…').")
+                    return
+                html = reports.voyage_report_html(
+                    self._store, self._config, voyage, trips, offset,
+                    with_images=res["with_images"])
+                name = "toern_bericht.html"
             else:
                 trip = self._store.get_trip(self._logbook.current_trip_id)
                 if trip is None:
-                    messagebox.showinfo("Bericht", "Bitte oben einen Törn auswählen.")
+                    messagebox.showinfo("Bericht", "Bitte oben eine Etappe auswählen.")
                     return
                 html = reports.trip_report_html(
                     self._store, self._config, trip, offset,
-                    with_images=(dialog.result == "trip_img"))
-                name = "toern_bericht.html"
+                    with_images=res["with_images"])
+                name = "etappen_bericht.html"
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
             return
@@ -904,6 +921,11 @@ class Application:
             messagebox.showerror("Bericht", f"Konnte den Bericht nicht speichern:\n{exc}")
             return
         webbrowser.open(path.as_uri())
+
+    def _on_manage_voyages(self) -> None:
+        dialog = _VoyageDialog(self._root, self._store)
+        self._root.wait_window(dialog.top)
+        self._refresh_trips()
 
     # --- Stammdaten ---------------------------------------------------------
 
@@ -3042,11 +3064,144 @@ class _TripCloseDialog:
         self.top.destroy()
 
 
+class _VoyageDialog:
+    """Törns anlegen und Etappen (Trips) zuordnen."""
+
+    def __init__(self, parent: tk.Tk, store) -> None:
+        self._store = store
+        self.top = tk.Toplevel(parent)
+        self.top.title("Törns / Etappen gruppieren")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame, wraplength=560, foreground="#555",
+            text="Fasse mehrere Etappen zu einem Törn zusammen: oben einen Törn "
+                 "wählen oder 'Neu…' anlegen, unten die Etappen markieren und "
+                 "'→ zuordnen'.",
+        ).grid(row=0, column=0, columnspan=5, sticky="w", pady=(0, 8))
+
+        ttk.Label(frame, text="Törn:").grid(row=1, column=0, sticky="e")
+        self._voy_var = tk.StringVar()
+        self._voy_combo = ttk.Combobox(frame, textvariable=self._voy_var,
+                                       state="readonly", width=30)
+        self._voy_combo.grid(row=1, column=1, sticky="w", padx=4)
+        ttk.Button(frame, text="Neu…", command=self._new).grid(row=1, column=2, padx=2)
+        ttk.Button(frame, text="Umbenennen…", command=self._rename).grid(row=1, column=3, padx=2)
+        ttk.Button(frame, text="Löschen", command=self._delete).grid(row=1, column=4, padx=2)
+
+        ttk.Label(frame, text="Etappen (mehrere markierbar):").grid(
+            row=2, column=0, columnspan=5, sticky="w", pady=(10, 2))
+        self._list = tk.Listbox(frame, width=74, height=12, selectmode="extended")
+        self._list.grid(row=3, column=0, columnspan=5, sticky="we")
+
+        btns = ttk.Frame(frame)
+        btns.grid(row=4, column=0, columnspan=5, pady=10)
+        ttk.Button(btns, text="→ dem gewählten Törn zuordnen",
+                   command=self._assign).pack(side="left", padx=4)
+        ttk.Button(btns, text="aus Törn entfernen",
+                   command=self._remove).pack(side="left", padx=4)
+        ttk.Button(btns, text="Schließen", command=self.top.destroy).pack(side="left", padx=16)
+
+        self._voy_ids: Dict[str, int] = {}
+        self._trip_ids: List[int] = []
+        self._refresh_voyages()
+        self._refresh_trips()
+
+    def _refresh_voyages(self) -> None:
+        voyages = self._store.all_voyages()
+        self._voy_ids = {(v.name or f"Törn #{v.id}"): v.id for v in voyages}
+        self._voy_combo["values"] = list(self._voy_ids.keys())
+        if self._voy_ids and self._voy_var.get() not in self._voy_ids:
+            self._voy_var.set(next(iter(self._voy_ids)))
+        elif not self._voy_ids:
+            self._voy_var.set("")
+
+    def _refresh_trips(self) -> None:
+        self._list.delete(0, "end")
+        self._trip_ids = []
+        names = {v.id: (v.name or f"Törn #{v.id}") for v in self._store.all_voyages()}
+        for t in self._store.all_trips(newest_first=False):
+            route = f"{t.start_location or '?'} → {t.end_location or '…'}"
+            vn = names.get(t.voyage_id, "—") if t.voyage_id else "—"
+            self._list.insert("end", f"#{t.id}  {t.name or route}   [{route}]   → {vn}")
+            self._trip_ids.append(t.id)
+
+    def _cur_voyage_id(self) -> Optional[int]:
+        return self._voy_ids.get(self._voy_var.get())
+
+    def _selected_trip_ids(self) -> List[int]:
+        return [self._trip_ids[i] for i in self._list.curselection()]
+
+    def _new(self) -> None:
+        from tkinter import simpledialog
+        name = simpledialog.askstring("Neuer Törn", "Name des Törns:", parent=self.top)
+        if not name or not name.strip():
+            return
+        revier = simpledialog.askstring("Neuer Törn", "Revier (optional):",
+                                        parent=self.top) or ""
+        vid = self._store.add_voyage(Voyage(name=name.strip(), revier=revier.strip()))
+        self._refresh_voyages()
+        self._voy_var.set(name.strip())
+        self._refresh_trips()
+
+    def _rename(self) -> None:
+        vid = self._cur_voyage_id()
+        if vid is None:
+            return
+        from tkinter import simpledialog
+        v = self._store.get_voyage(vid)
+        name = simpledialog.askstring("Umbenennen", "Name:", initialvalue=v.name,
+                                      parent=self.top)
+        if name is None:
+            return
+        revier = simpledialog.askstring("Umbenennen", "Revier:", initialvalue=v.revier,
+                                        parent=self.top)
+        v.name = name.strip()
+        if revier is not None:
+            v.revier = revier.strip()
+        self._store.update_voyage(v)
+        self._refresh_voyages()
+        self._voy_var.set(v.name or f"Törn #{v.id}")
+
+    def _delete(self) -> None:
+        vid = self._cur_voyage_id()
+        if vid is None:
+            return
+        if not messagebox.askyesno(
+                "Törn löschen", "Diesen Törn löschen?\n(Die Etappen bleiben erhalten.)"):
+            return
+        self._store.delete_voyage(vid)
+        self._refresh_voyages()
+        self._refresh_trips()
+
+    def _assign(self) -> None:
+        vid = self._cur_voyage_id()
+        if vid is None:
+            messagebox.showinfo("Törn", "Bitte oben einen Törn wählen oder 'Neu…'.")
+            return
+        ids = self._selected_trip_ids()
+        if not ids:
+            messagebox.showinfo("Etappen", "Bitte unten eine oder mehrere Etappen markieren.")
+            return
+        for tid in ids:
+            self._store.set_trip_voyage(tid, vid)
+        self._refresh_trips()
+
+    def _remove(self) -> None:
+        for tid in self._selected_trip_ids():
+            self._store.set_trip_voyage(tid, None)
+        self._refresh_trips()
+
+
 class _ReportDialog:
     """Auswahl des Bericht-Typs (öffnet druckbares HTML im Browser)."""
 
-    def __init__(self, parent: tk.Tk, has_trip: bool) -> None:
-        self.result: Optional[str] = None
+    def __init__(self, parent: tk.Tk, has_trip: bool, voyages: list) -> None:
+        self.result: Optional[dict] = None
+        self._voyages = voyages
         self.top = tk.Toplevel(parent)
         self.top.title("Bericht erzeugen")
         self.top.transient(parent)
@@ -3055,33 +3210,59 @@ class _ReportDialog:
         frame.pack(fill="both", expand=True)
 
         ttk.Label(
-            frame, wraplength=460, foreground="#555",
+            frame, wraplength=480, foreground="#555",
             text="Berichte werden als HTML im Browser geöffnet — dort über "
                  "Drucken → 'Als PDF speichern' ausgeben.",
-        ).grid(row=0, column=0, sticky="w", pady=(0, 10))
+        ).pack(anchor="w", pady=(0, 10))
 
-        b1 = ttk.Button(frame, text="Törn-Bericht (aktueller Törn)", width=44,
-                        command=lambda: self._pick("trip"))
-        b1.grid(row=1, column=0, sticky="we", pady=3)
-        b2 = ttk.Button(frame, text="Etappenbericht mit Bildern (aktueller Törn)",
-                        width=44, command=lambda: self._pick("trip_img"))
-        b2.grid(row=2, column=0, sticky="we", pady=3)
-        ttk.Button(frame, text="Fahrtenbuch (alle Törns)", width=44,
-                   command=lambda: self._pick("voyage")).grid(
-            row=3, column=0, sticky="we", pady=3)
+        # 1) Ganzer Törn (mehrere Etappen)
+        vg = ttk.LabelFrame(frame, text="Ganzer Törn (mehrere Etappen)", padding=8)
+        vg.pack(fill="x", pady=4)
+        self._voy_map = {f"{v.name or ('Törn #' + str(v.id))}": v.id for v in voyages}
+        self._voy_var = tk.StringVar()
+        if self._voy_map:
+            self._voy_var.set(next(iter(self._voy_map)))
+        row = ttk.Frame(vg); row.pack(fill="x")
+        ttk.Label(row, text="Törn:").pack(side="left")
+        combo = ttk.Combobox(row, textvariable=self._voy_var, state="readonly",
+                             width=34, values=list(self._voy_map.keys()))
+        combo.pack(side="left", padx=6)
+        bv1 = ttk.Button(vg, text="Törn-Bericht", width=42,
+                         command=lambda: self._pick("voyage", False))
+        bv1.pack(fill="x", pady=(6, 2))
+        bv2 = ttk.Button(vg, text="Etappenbericht mit Bildern", width=42,
+                         command=lambda: self._pick("voyage", True))
+        bv2.pack(fill="x", pady=2)
+        if not self._voy_map:
+            combo.config(state="disabled"); bv1.config(state="disabled")
+            bv2.config(state="disabled")
+            ttk.Label(vg, foreground="#b25000",
+                      text="(Noch keine Törns — unter Extras → 'Törns/Etappen "
+                           "gruppieren…' anlegen.)", wraplength=380).pack(anchor="w")
 
+        # 2) Einzelne Etappe (aktueller Törn)
+        eg = ttk.LabelFrame(frame, text="Einzelne Etappe (aktueller Törn)", padding=8)
+        eg.pack(fill="x", pady=4)
+        be1 = ttk.Button(eg, text="Etappen-Bericht", width=42,
+                         command=lambda: self._pick("trip", False))
+        be1.pack(fill="x", pady=2)
+        be2 = ttk.Button(eg, text="Etappen-Bericht mit Bildern", width=42,
+                         command=lambda: self._pick("trip", True))
+        be2.pack(fill="x", pady=2)
         if not has_trip:
-            b1.config(state="disabled")
-            b2.config(state="disabled")
-            ttk.Label(frame, foreground="#b25000",
-                      text="(Kein Törn ausgewählt — nur Fahrtenbuch möglich.)").grid(
-                row=4, column=0, sticky="w", pady=(6, 0))
+            be1.config(state="disabled"); be2.config(state="disabled")
+            ttk.Label(eg, foreground="#b25000",
+                      text="(Oben keine Etappe ausgewählt.)").pack(anchor="w")
 
-        ttk.Button(frame, text="Abbrechen", command=self.top.destroy).grid(
-            row=5, column=0, pady=(12, 0))
+        # 3) Fahrtenbuch
+        ttk.Button(frame, text="Fahrtenbuch (alle Törns)", width=42,
+                   command=lambda: self._pick("fahrtenbuch", False)).pack(
+            fill="x", pady=(8, 2))
+        ttk.Button(frame, text="Abbrechen", command=self.top.destroy).pack(pady=(10, 0))
 
-    def _pick(self, kind: str) -> None:
-        self.result = kind
+    def _pick(self, kind: str, with_images: bool) -> None:
+        voyage_id = self._voy_map.get(self._voy_var.get()) if kind == "voyage" else None
+        self.result = {"kind": kind, "with_images": with_images, "voyage_id": voyage_id}
         self.top.destroy()
 
 
