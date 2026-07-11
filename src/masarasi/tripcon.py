@@ -446,43 +446,104 @@ def _entry_image_links(conn) -> Tuple[Dict[int, int], str]:
     return {}, "none"
 
 
+def _bindat_per_log_trip(conn, images: Dict[int, bytes]):
+    """Ordnet Bilder Einträgen/Törns zu — MEHRERE je Eintrag möglich.
+
+    Gibt (per_log, per_trip, method):
+    - per_log:  {B100_Log.ID: [B104.ID, …]}  (Bilder mit LogID)
+    - per_trip: {TripCon-Trip-ID: [B104.ID, …]}  (Bilder nur mit TripID)
+    Fällt auf die alten Einzel-Verknüpfungen zurück, wenn keine LogID-Spalte da.
+    """
+    bindat_cols = _columns(conn, "B104_BinDat")
+    logid_col = _pick_col(bindat_cols, _BINDAT_LOGID_COLS)
+    trip_col = _pick_col(bindat_cols, ("TripID", "Trip", "TripId", "B105_TripID"))
+    per_log: Dict[int, List[int]] = {}
+    per_trip: Dict[int, List[int]] = {}
+
+    if logid_col:
+        wanted = ["ID", logid_col] + ([trip_col] if trip_col else [])
+        for row in _row_dict(conn, "B104_BinDat", wanted):
+            bindat_id = row.get("ID")
+            if bindat_id is None or int(bindat_id) not in images:
+                continue
+            log_id = row.get(logid_col)
+            trip_id = row.get(trip_col) if trip_col else None
+            if log_id is not None:
+                per_log.setdefault(int(log_id), []).append(int(bindat_id))
+            elif trip_id is not None:
+                per_trip.setdefault(int(trip_id), []).append(int(bindat_id))
+        if per_log or per_trip:
+            return per_log, per_trip, "bindat_logid"
+
+    # Notlösungen (log_bindat / timestamp): nur je ein Bild pro Eintrag
+    links, method = _entry_image_links(conn)
+    for log_id, bindat_id in links.items():
+        if bindat_id in images:
+            per_log.setdefault(int(log_id), []).append(int(bindat_id))
+    return per_log, per_trip, method
+
+
+def _trip_first_entry(conn, logid_map: Dict[int, int]) -> Dict[int, int]:
+    """{TripCon-Trip-ID: erster masarasi-Eintrag des Törns} (nach Zeit)."""
+    result: Dict[int, int] = {}
+    for log_id, trip in conn.execute(
+        "SELECT ID, Trip FROM B100_Log ORDER BY TripDZ, ID"
+    ):
+        if trip is None:
+            continue
+        entry_id = logid_map.get(int(log_id))
+        if entry_id is not None:
+            result.setdefault(int(trip), entry_id)   # erster gewinnt
+    return result
+
+
 def import_entry_images(conn, store: LogbookStore, logid_map: Dict[int, int],
                         max_px: int = 1600) -> Dict[str, object]:
     """Hängt TripCon-Plotterbilder (B104_BinDat) an die importierten Einträge.
 
-    logid_map: {TripCon-B100_Log.ID: masarasi-Eintrags-ID}. Die Bilder werden
-    vor dem Speichern auf ``max_px`` verkleinert (JPEG), sofern Pillow vorhanden
-    ist; sonst wird das Original abgelegt.
-
-    Gibt {"images": Anzahl, "method": Verknüpfungsmethode} zurück.
+    Mehrere Bilder je Eintrag werden angehängt. Bilder ohne LogID (nur am Törn)
+    werden an den ersten Eintrag des jeweiligen Törns gehängt, damit nichts
+    verloren geht. Gibt {"images", "trip_images", "method"} zurück.
     """
     from masarasi import photos
 
-    images = _bindat_images(conn)
-    if not images:
-        return {"images": 0, "method": "none"}
-    links, method = _entry_image_links(conn)
-    if not links:
-        return {"images": 0, "method": "none"}
-
-    count = 0
-    for old_log_id, bindat_id in links.items():
-        entry_id = logid_map.get(old_log_id)
-        if entry_id is None:
-            continue
-        raw = images.get(bindat_id)
-        if raw is None:
-            continue
+    def attach(entry_id: int, raw: bytes) -> bool:
         jpeg = photos.resize_bytes_to_jpeg(raw, max_px=max_px)
         if jpeg:
-            store.set_image(entry_id, jpeg, "image/jpeg")
+            store.add_entry_image(entry_id, jpeg, "image/jpeg")
         else:
-            # Pillow fehlt oder unlesbar -> Original mit passendem MIME ablegen
             ext = image_ext(raw[:16])
             mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext or 'png'}"
-            store.set_image(entry_id, raw, mime)
-        count += 1
-    return {"images": count, "method": method}
+            store.add_entry_image(entry_id, raw, mime)
+        return True
+
+    images = _bindat_images(conn)
+    if not images:
+        return {"images": 0, "trip_images": 0, "method": "none"}
+
+    per_log, per_trip, method = _bindat_per_log_trip(conn, images)
+
+    count = 0
+    for log_id, bindat_ids in per_log.items():
+        entry_id = logid_map.get(log_id)
+        if entry_id is None:
+            continue
+        for bindat_id in bindat_ids:
+            if attach(entry_id, images[bindat_id]):
+                count += 1
+
+    trip_count = 0
+    if per_trip:
+        first_entry = _trip_first_entry(conn, logid_map)
+        for trip_id, bindat_ids in per_trip.items():
+            entry_id = first_entry.get(trip_id)
+            if entry_id is None:
+                continue
+            for bindat_id in bindat_ids:
+                if attach(entry_id, images[bindat_id]):
+                    trip_count += 1
+
+    return {"images": count, "trip_images": trip_count, "method": method}
 
 
 # --- Schiffe & Personen als Stammdaten übernehmen ---------------------------
@@ -765,6 +826,7 @@ def import_into_masarasi(conn, db_path: str, replace: bool = True,
     return {
         "entries": len(pairs),
         "images": image_info["images"],
+        "trip_images": image_info.get("trip_images", 0),
         "image_method": image_info["method"],
         "ships_created": ship_info["created"],
         "ships_matched": ship_info["matched"],
@@ -775,6 +837,77 @@ def import_into_masarasi(conn, db_path: str, replace: bool = True,
         "person_photos": person_info["photos"],
         "person_fields": person_info["fields"],
     }
+
+
+# --- Analyse (prüfen, ob ein .tcdb in Ordnung/vollständig ist) -------------
+
+def _count(conn, table: str) -> int:
+    if not _table_exists(conn, table):
+        return 0
+    try:
+        return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    except sqlite3.Error:
+        return 0
+
+
+def _valid_image_count(conn, table: str, blob_col: str) -> int:
+    if not _table_exists(conn, table):
+        return 0
+    n = 0
+    try:
+        cursor = conn.execute(f"SELECT {blob_col} FROM {table}")
+    except sqlite3.Error:
+        return 0
+    for (blob,) in cursor:
+        if isinstance(blob, (bytes, bytearray)) and image_ext(bytes(blob[:16])):
+            n += 1
+    return n
+
+
+def analyze_tcdb(conn) -> Dict[str, object]:
+    """Liest Kennzahlen einer TripCon-Sicherung, um sie zu beurteilen.
+
+    Enthält u.a. Integritätsprüfung, Törn-/Eintrags-/Bildzahlen und den
+    Zeitraum. Verändert nichts (nur Lesezugriff)."""
+    info: Dict[str, object] = {}
+    try:
+        integrity = conn.execute("PRAGMA integrity_check").fetchone()
+        info["integrity"] = integrity[0] if integrity else "?"
+    except sqlite3.Error as exc:
+        info["integrity"] = f"Fehler: {exc}"
+
+    trips = load_trips(conn)
+    info["trips"] = len(trips)
+    dzs = []
+    for t in trips.values():
+        for key in ("from_dz", "to_dz"):
+            iso = to_iso(t.get(key))
+            if iso:
+                dzs.append(iso)
+    info["date_from"] = min(dzs) if dzs else ""
+    info["date_to"] = max(dzs) if dzs else ""
+
+    info["log_entries"] = _count(conn, "B100_Log")
+    info["track_points"] = _count(conn, "B111_TrackInfo")
+
+    images = _bindat_images(conn)
+    info["plotter_images"] = len(images)
+    if images:
+        per_log, per_trip, method = _bindat_per_log_trip(conn, images)
+        info["plotter_with_log"] = sum(len(v) for v in per_log.values())
+        info["plotter_trip_only"] = sum(len(v) for v in per_trip.values())
+        info["image_method"] = method
+    else:
+        info["plotter_with_log"] = 0
+        info["plotter_trip_only"] = 0
+        info["image_method"] = "none"
+
+    info["weather_images"] = _valid_image_count(conn, "B109_Weather", "Value")
+    info["ships"] = _count(conn, "S003_Ships")
+    info["ship_images"] = _valid_image_count(conn, "S003_Ships", "Picture")
+    info["persons"] = _count(conn, "S006_Persons")
+    info["person_images"] = _valid_image_count(conn, "S006_Persons", "Picture")
+    return info
 
 
 # --- CSV --------------------------------------------------------------------

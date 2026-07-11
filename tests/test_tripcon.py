@@ -82,6 +82,8 @@ def _build_tripcon_db(path: str) -> None:
     c.execute("CREATE TABLE B104_BinDat (ID INTEGER, BinType INTEGER, Value BLOB, LogID INTEGER, TripID INTEGER, DefBinDat INTEGER, Active INTEGER, EditDZ TEXT, CreateDZ TEXT)")
     c.execute("INSERT INTO B104_BinDat VALUES (211,1,?,NULL,37,0,1,NULL,'')", (_jpg(),))
     c.execute("INSERT INTO B104_BinDat VALUES (216,1,?,1362,NULL,1,1,NULL,'2013-07-17 14:48:11.125Z')", (_png(),))
+    # zweites Bild am selben Eintrag (mehrere Bilder je Eintrag)
+    c.execute("INSERT INTO B104_BinDat VALUES (217,1,?,1362,NULL,1,1,NULL,'2013-07-17 14:49:00.000Z')", (_png(),))
 
     c.execute("CREATE TABLE B109_Weather (ID INTEGER, Comment TEXT, ValueType INTEGER, Value BLOB, ReportDZ TEXT, Filename TEXT, CreateDZ TEXT, Active INTEGER, TextValue TEXT)")
     c.execute("INSERT INTO B109_Weather VALUES (13,'',3,?, '2013-09-26 08:20:16.000Z','OpenPortGuide','2013-10-22 08:20:37.841Z',1,NULL)", (_jpg(),))
@@ -157,18 +159,31 @@ class TripconTest(unittest.TestCase):
         self.assertEqual(result2["entries"], 2)
         self.assertEqual(store.count(), 2)
 
-    def test_import_links_entry_image(self):
+    def test_import_links_entry_images_multiple(self):
         db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
         result = tripcon.import_into_masarasi(self.conn, db_path)
-        # B104_BinDat 216 zeigt über LogID 1362 auf einen Eintrag
         self.assertEqual(result["image_method"], "bindat_logid")
-        self.assertEqual(result["images"], 1)
+        # 216 und 217 hängen über LogID 1362 am selben Eintrag → 2 Bilder
+        self.assertEqual(result["images"], 2)
+        # 211 hat keine LogID (nur TripID 37) → an den ersten Eintrag des Törns
+        self.assertEqual(result["trip_images"], 1)
         store = LogbookStore(db_path)
-        # Genau ein Eintrag hat ein Bild bekommen
-        with_images = store.entries_with_images()
-        self.assertEqual(len(with_images), 1)
-        (entry_id,) = tuple(with_images)
-        self.assertIsNotNone(store.get_image(entry_id))
+        entries = store.all(newest_first=False)
+        first = [e for e in entries if e.timestamp == "2013-07-14T08:15:00Z"][0]
+        # erster Eintrag: 216 + 217 (Eintrag) + 211 (törnweit) = 3 Bilder
+        self.assertEqual(store.count_entry_images(first.id), 3)
+
+    def test_analyze_tcdb(self):
+        info = tripcon.analyze_tcdb(self.conn)
+        self.assertEqual(info["integrity"], "ok")
+        self.assertEqual(info["trips"], 1)
+        self.assertEqual(info["log_entries"], 2)
+        self.assertEqual(info["plotter_images"], 3)      # 211, 216, 217
+        self.assertEqual(info["plotter_with_log"], 2)     # 216, 217
+        self.assertEqual(info["plotter_trip_only"], 1)    # 211
+        self.assertEqual(info["ships"], 1)
+        self.assertEqual(info["persons"], 1)
+        self.assertTrue(info["date_from"].startswith("2013-07-14"))
 
     def test_import_creates_stammdaten_with_photos(self):
         # Schiff und Person werden automatisch angelegt und mit Foto versehen
@@ -300,13 +315,13 @@ class TripconTest(unittest.TestCase):
         from pathlib import Path
         out = Path(self.tmp.name) / "bilder"
         counts = tripcon.extract_images(self.conn, out)
-        self.assertEqual(counts.get("plotter"), 2)
+        self.assertEqual(counts.get("plotter"), 3)
         self.assertEqual(counts.get("wetter"), 1)
         self.assertEqual(counts.get("schiffe"), 1)
         self.assertEqual(counts.get("crew"), 1)
         self.assertTrue((out / "plotter").is_dir())
         files = os.listdir(out / "plotter")
-        self.assertEqual(len(files), 2)
+        self.assertEqual(len(files), 3)
 
 
 if __name__ == "__main__":

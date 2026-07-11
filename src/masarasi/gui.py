@@ -949,10 +949,14 @@ class Application:
             self._tree.delete(item)
         trip_id = self._logbook.current_trip_id
         offset = self._tz_offset()
-        with_images = self._store.entries_with_images()
         self._tree.heading("time", text=f"Zeit ({timeutil.label(self._config.timezone_mode, self._config.timezone_offset_hours)})")
         positions = []  # (lat, lon) der Törn-Einträge — für die Strecke
-        for entry in self._store.all(limit=20000, newest_first=True, trip_id=trip_id):
+        rows = self._store.all(limit=20000, newest_first=True, trip_id=trip_id)
+        img_counts = {
+            eid: len(ids)
+            for eid, ids in self._store.image_ids_map([e.id for e in rows]).items()
+        }
+        for entry in rows:
             pos = ""
             if entry.lat is not None and entry.lon is not None:
                 pos = f"{entry.lat:.4f}, {entry.lon:.4f}"
@@ -981,7 +985,7 @@ class Application:
                     "" if entry.depth_m is None else f"{entry.depth_m:.1f}",
                     motor,
                     ", ".join(sail_parts),
-                    "📷" if entry.id in with_images else "",
+                    str(img_counts[entry.id]) if entry.id in img_counts else "",
                     entry.note,
                 ),
             )

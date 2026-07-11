@@ -146,7 +146,11 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
 - **TripCon-Import** (.tcdb): Törns, Messwerte, Tracks, Bilder, **Anlass**
   (LogEvent) + Wetter/Sicht aus den Übersetzungstabellen aufgelöst.
   **Plotterbilder** (B104_BinDat) werden beim Import an die passenden Einträge
-  gehängt und dabei auf 1600 px (JPEG) verkleinert. **Schiffe und Personen**
+  gehängt (**mehrere je Eintrag**) und dabei auf 1600 px (JPEG) verkleinert;
+  Bilder ohne LogID (nur am Törn) kommen an den ersten Eintrag des Törns.
+  `import_tripcon.py --info <datei.tcdb>` **analysiert** eine Sicherung
+  (Integrität, Törns, Einträge, Bild-/Track-Zahlen, Zeitraum), ohne zu
+  importieren. **Schiffe und Personen**
   (S003_Ships/S006_Persons) werden als Stammdaten angelegt (idempotent über den
   Namen; vorhandene Einträge werden erkannt, nicht dupliziert) — mit adaptiv
   gemappten Feldern (Kennwerte/Adresse etc.) und ihrem Foto. Die

@@ -40,6 +40,10 @@ def main(argv=None) -> int:
         help="nur die Spalten der Stammdaten-Tabellen anzeigen (zur Diagnose)",
     )
     parser.add_argument(
+        "--info", action="store_true",
+        help="nur analysieren (Integrität, Törns, Einträge, Bilder, Zeitraum)",
+    )
+    parser.add_argument(
         "--db", default=None,
         help="Ziel-DB für --into-app (Standard: masarasi-Konfiguration)",
     )
@@ -56,6 +60,32 @@ def main(argv=None) -> int:
                     print(f"  {col}")
         finally:
             conn.close()
+        return 0
+
+    if args.info:
+        print(f"Analysiere TripCon-DB: {args.tcdb}")
+        conn = tripcon.connect(args.tcdb)
+        try:
+            info = tripcon.analyze_tcdb(conn)
+        finally:
+            conn.close()
+        ok = info.get("integrity") == "ok"
+        print(f"  Integrität:      {info.get('integrity')}"
+              + ("  ✓" if ok else "  ⚠ (Datei evtl. beschädigt)"))
+        print(f"  Törns:           {info.get('trips')}")
+        print(f"  Zeitraum:        {info.get('date_from', '')[:10]}"
+              f" … {info.get('date_to', '')[:10]}")
+        print(f"  Logbuch-Zeilen:  {info.get('log_entries')}")
+        print(f"  Track-Punkte:    {info.get('track_points')}")
+        print(f"  Plotterbilder:   {info.get('plotter_images')}  "
+              f"(mit Eintrag: {info.get('plotter_with_log')}, "
+              f"nur Törn: {info.get('plotter_trip_only')}, "
+              f"Verknüpfung: {info.get('image_method')})")
+        print(f"  Wetterbilder:    {info.get('weather_images')}")
+        print(f"  Schiffe:         {info.get('ships')}  "
+              f"(mit Foto: {info.get('ship_images')})")
+        print(f"  Personen:        {info.get('persons')}  "
+              f"(mit Foto: {info.get('person_images')})")
         return 0
 
     if not args.out:
@@ -98,9 +128,11 @@ def main(argv=None) -> int:
             result = tripcon.import_into_masarasi(conn, db_path)
             print(f"  {result['entries']} Eintrag/Einträge importiert (Typ 'tripcon').")
             method = result["image_method"]
-            if result["images"]:
-                print(f"  {result['images']} Plotterbild(er) an Einträge gehängt "
-                      f"(Verknüpfung: {method}).")
+            trip_imgs = result.get("trip_images", 0)
+            if result["images"] or trip_imgs:
+                extra = f" + {trip_imgs} törnweite" if trip_imgs else ""
+                print(f"  {result['images']} Plotterbild(er) an Einträge gehängt"
+                      f"{extra} (Verknüpfung: {method}).")
             else:
                 print(f"  Keine Plotterbilder verknüpft (Methode: {method}).")
             print(f"  Schiffe: {result['ships_created']} neu, "
