@@ -10,7 +10,7 @@ Das Repo ist eigenständig: `github.com/phaudenschild-sketch/masarasi`
 cd C:\claude\masarasi
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 116 Tests
+python -m unittest discover -s tests   # 203 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
@@ -25,7 +25,7 @@ Konfiguration & Datenbank liegen unter `~/.masarasi/`
 |---|---|---|
 | **B&G Zeus** (Plotter) | TCP `192.168.9.224:10110` | Position, SOG/COG, Wind (MWV/MWD), Tiefe, Wassertemp, Kurs (HDG/VHW), **Log** (VLW, Grunddistanz-Fallback), Lufttemp/**Luftdruck**/Krängung/Trimm/Ruder (XDR), AIS. **Keine Motordaten.** |
 | **Maretron USB100** | seriell `COM11 @ 115200` | NMEA2000→0183: **Drehzahl** (`IIRPM`), **Kühlwassertemperatur**, **Lichtmaschinenspannung**, **Motorstunden** (aus `$PMAREPD`), **Log** (`IIVLW`). Öldruck-Feld leer (kein Sensor). |
-| **Orca Core** | `192.168.9.100` | **Geparkt.** Proprietär: kein NMEA0183, sondern HTTP-Status (8080/8085/8090) + WebSocket 9000 (`Server: Python/websockets`). WS sendet nach Connect nur `{"event":"imuBegin"}`, streamt Daten erst nach einem unbekannten App-`subscribe`. Nicht erschlossen (Aufwand ≫ Nutzen, Daten bereits über B&G/Maretron vorhanden). Diagnose: `orca_probe.py`. |
+| **Orca Core** | `192.168.9.100` | **Geparkt** (Details: `docs/ORCA_CORE.md`). REST-APIs (8080 JSON, 9001 Flask, 8085 Watchdog, 8090 Firmware-Upload) liefern nur Verwaltung/Kalibrierung — **keine Live-Daten** (87 Pfade geprüft). Live-Daten nur über **WebSocket 9000 binär** (`imuBegin` + sporadische Binärframes; Ping→Pong nötig). Kern-Mehrwert wäre IMU-Heading/Lage — Krängung/Trimm/Ruder liefert B&G aber schon (XDR). Nächster Schritt (später): App-Traffic mitschneiden. Diagnose: `orca_probe.py` (`--api`/`--deep`/`--listen`/`--fetch`). |
 | **PredictWind DataHub** | `192.168.9.113` | Multiplexer; aktuell nicht nötig. |
 
 **Mehrquellen-Betrieb:** In der App unter „Quellen…" B&G (TCP) **und** Maretron
@@ -141,8 +141,11 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   - **Automatische COG-Korrektur:** erkennt Feeds, die COG fälschlich in ganzen
     Grad statt Zehntelgrad liefern (B&G-Multiplexer an Bord), und rechnet um
   - `python -m masarasi.ais "<!AIVDM-Zeile>"` — Sätze am Boot einzeln prüfen
-- Werkzeuge: `discover.py` (`--full/--udp/--gofree/--sweep`),
-  `inspect_backup.py`, `import_tripcon.py`, NMEA-Simulator
+- Werkzeuge (Repo-Root/Module): `find_sources.py`/`discover.py`
+  (`--gofree --iface --raw`), `gofree_probe.py` (GoFree nav-ws/RTSP),
+  `orca_probe.py` (Orca Core, siehe `docs/ORCA_CORE.md`), `import_tripcon.py`
+  (`--info`/`--show-columns`/`--into-app`), `fix_trips.py` (Einträge
+  umhängen/löschen, mit Backup), `inspect_backup.py`, NMEA-Simulator
 - **TripCon-Import** (.tcdb): Törns, Messwerte, Tracks, Bilder, **Anlass**
   (LogEvent) + Wetter/Sicht aus den Übersetzungstabellen aufgelöst.
   **Plotterbilder** (B104_BinDat) werden beim Import an die passenden Einträge
@@ -159,21 +162,23 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
 
 ## Offene Punkte / nächste Schritte
 
-1. **TripCon-Anlass verifizieren:** nach Neu-Import prüfen, ob die Anlass-Spalte
-   sinnvoll gefüllt ist. Falls nicht: je 2 Zeilen aus `B100_Log` (Spalte
-   `LogEvent`), `S005_ParamValue`, `S000_Translation` → Mapping in
+1. **Orca Core (geparkt, gut vorbereitet):** Live-Daten nur über WebSocket
+   9000 (binär). Nächster Schritt: `orca_probe.py --listen --seconds 60` beim
+   Bewegen des Boots; sonst App-Traffic mitschneiden (PCAPdroid). Vollständige
+   Doku: **`docs/ORCA_CORE.md`**. Kosten/Nutzen gering (B&G liefert
+   Krängung/Trimm/Ruder/Heading schon via XDR) — bewusst zurückgestellt.
+2. **B&G/GoFree NICHT weiter vertiefen** (Nutzer-Entscheidung, B&G bleibt).
+   GoFree-Discovery bleibt als „Gerät finden" (`discover.py --gofree`,
+   „🔍 GoFree suchen" im Quellen-Dialog). `gofree_probe.py` (nav-ws:2053)
+   liegt für spätere Neubewertung bereit.
+3. **Plotter-Screenshot per WLAN-ADB:** Stolpersteine dokumentiert — **VPN
+   aus** (blockiert LAN/adb komplett), feste Tablet-IP per DHCP-Reservierung,
+   nach Tablet-Neustart einmal `adb tcpip 5555` per USB. Dialog: Extras →
+   Plotter-Screenshot (ADB)…
+4. **TripCon-Anlass verifizieren** (falls nötig): Mapping in
    `src/masarasi/tripcon.py` (`_resolve_code`) anpassen.
-2. **Plotterbild-Verknüpfung prüfen:** Nach dem Import meldet
-   `import_tripcon.py --into-app` die verwendete Bild-Verknüpfungs-Methode
-   (`bindat_logid` / `log_bindat` / `timestamp` / `none`) und die Anzahl
-   verknüpfter Bilder. Falls `none` oder eine unerwartet niedrige Zahl:
-   Spaltennamen der echten `.tcdb` prüfen und `_BINDAT_LOGID_COLS` /
-   `_LOG_BINDAT_COLS` in `src/masarasi/tripcon.py` ergänzen.
-3. **Optional:** CSV-Export wahlweise in Lokalzeit; weitere Zeitzonen;
-   Rate-of-Turn (`ROT`) / Ruderlage-Anzeige.
-
-*(Orca Core: untersucht und geparkt — proprietäres WebSocket-Protokoll,
-kein Nutzen; siehe Hardware-Tabelle.)*
+5. **Optional:** CSV-Export wahlweise in Lokalzeit; weitere Zeitzonen;
+   Rate-of-Turn (`ROT`)-Anzeige.
 
 ### Erledigt (Motordaten, Juli 2026)
 Maretron `$PMAREPD` dekodiert → Kühlwassertemperatur, Lichtmaschinenspannung,
@@ -198,6 +203,7 @@ src/masarasi/
   logbook.py     Auto-/Manuell-Logging, Bedingungen, Törns
   autolog.py     AutoLog-Auslöser (Intervall/SOG/Kurs/Tiefe/…)
   photos.py      Foto-Import (Ordner-Watcher, Verkleinern auf JPEG)
+  android_screencap.py  Plotter-Screenshot per ADB (USB/WLAN, Auto-Reconnect)
   backup.py      Datensicherung (ZIP: DB inkl. Fotos + Einstellungen)
   storage.py     SQLite: LogEntry/Trip, Migration, CSV/GPX, Bilder
   fields.py      Auswahllisten (Segel/Wetter/Sicht)
