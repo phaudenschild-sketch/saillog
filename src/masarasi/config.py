@@ -47,6 +47,11 @@ class Config:
     photo_import_enabled: bool = False
     photo_max_px: int = 1600
 
+    # Plotter-Screenshot per ADB (Android-Tablet mit Orca-/Plotter-Anzeige)
+    plotter_adb_path: str = "adb"       # Pfad zu adb(.exe); "adb" = im PATH
+    plotter_adb_serial: str = ""        # Geräte-Serial (leer = einziges Gerät)
+    plotter_autolog: bool = False       # bei jedem Auto-Eintrag mitspeichern
+
     # Datensicherung (ZIP): Zielordner, automatisch beim Beenden, wie viele behalten
     backup_folder: str = ""
     backup_on_close: bool = False

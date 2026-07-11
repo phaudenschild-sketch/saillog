@@ -93,6 +93,14 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
 - **Foto-Import** (`photos.py`, Knopf „📷 Foto-Import…"): Ordner überwachen →
   Bild in „vernünftige" Größe (max. 1600 px, JPEG) verkleinern → Auto-Eintrag
   mit Bild + NMEA-Daten; Originale wandern nach `verarbeitet/` (braucht Pillow)
+- **Plotter-Screenshot** (`android_screencap.py`): holt den Bildschirm des
+  Android-Tablets (Orca-/Plotter-Anzeige) per **adb** (`exec-out screencap -p`)
+  ins Logbuch. Knopf **„📸 Plotter"** (sofort Eintrag mit Bild), Bild-Auswahl
+  beim manuellen Eintrag (kein Bild / Plotter / Datei) und Option **„bei jedem
+  Auto-Eintrag mitspeichern"**. Einstellungen unter Menü **Extras →
+  Plotter-Screenshot (ADB)…** (adb-Pfad, Gerät, Test). Setup: Tablet koppeln
+  (Entwickleroptionen → USB-/Drahtlos-Debugging, „immer erlauben"); am
+  einfachsten per USB, dann optional `adb tcpip 5555` + `adb connect ip:5555`.
 - **Backup** (`backup.py`, Knopf „💾 Backup…"): Logbuch-DB (inkl. Fotos) +
   Einstellungen als zeitgestempelte ZIP; manuell oder automatisch beim Beenden
   (letzte N behalten)

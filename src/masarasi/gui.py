@@ -52,6 +52,8 @@ class Application:
         self._live = LiveData()
         self._store = LogbookStore(self._config.db_path)
         self._logbook = LogbookService(self._store, self._live)
+        # Plotter-Screenshot bei Auto-Einträgen (falls aktiviert)
+        self._apply_plotter_autolog()
         # Datenquellen: Definitionen + aktive Verbindungen + Status je Quelle
         self._source_defs = self._load_source_defs()
         self._sources: list = []
@@ -97,6 +99,10 @@ class Application:
         stamm.add_command(label="Personen verwalten…", command=self._on_manage_persons)
         stamm.add_command(label="Schiffe verwalten…", command=self._on_manage_ships)
         menubar.add_cascade(label="Stammdaten", menu=stamm)
+        extras = tk.Menu(menubar, tearoff=0)
+        extras.add_command(label="Plotter-Screenshot (ADB)…",
+                           command=self._on_plotter_settings)
+        menubar.add_cascade(label="Extras", menu=extras)
         self._root.config(menu=menubar)
 
         # Kopfzeile: Datenquellen (mehrere gleichzeitig möglich)
@@ -183,9 +189,20 @@ class Application:
             row=0, column=2, padx=4
         )
 
+        entry_grp = ttk.Frame(controls)
+        entry_grp.grid(row=0, column=3, padx=8)
+        ttk.Label(entry_grp, text="Bild:").pack(side="left")
+        self._entry_img_src = tk.StringVar(value="kein Bild")
+        ttk.Combobox(
+            entry_grp, textvariable=self._entry_img_src, width=17, state="readonly",
+            values=["kein Bild", "Plotter-Screenshot", "Bild von Festplatte…"],
+        ).pack(side="left", padx=(2, 6))
         ttk.Button(
-            controls, text="✎ Eintrag speichern", command=self._on_save_entry
-        ).grid(row=0, column=3, padx=8)
+            entry_grp, text="✎ Eintrag speichern", command=self._on_save_entry
+        ).pack(side="left")
+        ttk.Button(
+            entry_grp, text="📸 Plotter", command=self._on_plotter_entry
+        ).pack(side="left", padx=(6, 0))
 
         ttk.Button(controls, text="CSV exportieren", command=self._on_export_csv).grid(
             row=0, column=4, padx=4
@@ -340,12 +357,110 @@ class Application:
 
     def _on_save_entry(self) -> None:
         self._sync_conditions()
-        self._logbook.add_current(
+        entry = self._logbook.add_current(
             conditions=self._condition_values,
             note=self._condition_values.get("note", ""),
             trip_id=self._logbook.current_trip_id,
         )
         self._refresh_logbook()
+        # Bildquelle für diesen Eintrag auswerten
+        source = self._entry_img_src.get()
+        if source == "Bild von Festplatte…":
+            path = filedialog.askopenfilename(
+                title="Bild für den Eintrag wählen",
+                filetypes=[("Bilder", "*.jpg *.jpeg *.png *.bmp *.gif *.tif *.tiff *.webp"),
+                           ("Alle Dateien", "*.*")],
+            )
+            if path:
+                self._attach_image_async(entry.id, disk_path=path)
+        elif source == "Plotter-Screenshot":
+            self._attach_image_async(entry.id, plotter=True)
+
+    # --- Plotter-Screenshot (ADB vom Android-Tablet) -----------------------
+
+    def _plotter_jpeg(self) -> Optional[bytes]:
+        """Holt einen Plotter-Screenshot als JPEG (oder None). Läuft im Thread."""
+        from masarasi import android_screencap
+        return android_screencap.capture_jpeg(
+            self._config.plotter_adb_path,
+            self._config.plotter_adb_serial,
+            max_px=int(self._config.photo_max_px or 1600),
+        )
+
+    def _apply_plotter_autolog(self) -> None:
+        """Setzt/entfernt den Screenshot-Provider für Auto-Einträge."""
+        self._logbook.screenshot_provider = (
+            self._plotter_jpeg if self._config.plotter_autolog else None
+        )
+
+    def _attach_image_async(self, entry_id, disk_path: str = "",
+                            plotter: bool = False) -> None:
+        import threading
+
+        def work():
+            if plotter:
+                jpeg = self._plotter_jpeg()
+                kind = "Plotter"
+            else:
+                jpeg = photos.resize_to_jpeg(
+                    disk_path, int(self._config.photo_max_px or 1600))
+                kind = "Datei"
+            self._root.after(0, lambda: self._after_attach(entry_id, jpeg, kind))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _after_attach(self, entry_id, jpeg, kind) -> None:
+        if jpeg:
+            self._store.set_image(entry_id, jpeg, "image/jpeg", created_dz=utc_now_iso())
+            self._refresh_logbook()
+        elif kind == "Plotter":
+            messagebox.showerror(
+                "Plotter-Screenshot",
+                "Kein Screenshot erhalten.\n\n"
+                "• adb-Pfad/Gerät prüfen (Menü Extras → Plotter-Screenshot…)\n"
+                "• Tablet per USB/WLAN gekoppelt und 'immer erlauben' bestätigt?",
+            )
+        else:
+            messagebox.showwarning("Bild", "Datei-Bild konnte nicht angehängt werden.")
+
+    def _on_plotter_entry(self) -> None:
+        """Sofort: Plotter-Screenshot holen und als Logbuch-Eintrag ablegen."""
+        import threading
+        self._sync_conditions()
+        conditions = dict(self._condition_values)
+
+        def work():
+            jpeg = self._plotter_jpeg()
+            self._root.after(0, lambda: self._plotter_entry_done(jpeg, conditions))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _plotter_entry_done(self, jpeg, conditions) -> None:
+        if not jpeg:
+            messagebox.showerror(
+                "Plotter-Screenshot",
+                "Kein Screenshot erhalten.\n\n"
+                "• adb-Pfad/Gerät prüfen (Menü Extras → Plotter-Screenshot…)\n"
+                "• Tablet gekoppelt und 'immer erlauben' bestätigt?",
+            )
+            return
+        entry = self._logbook.record_photo(
+            trip_id=self._logbook.open_trip_id(), conditions=conditions, reason="Plotter"
+        )
+        if entry is not None:
+            self._store.set_image(entry.id, jpeg, "image/jpeg", created_dz=utc_now_iso())
+        self._refresh_logbook()
+
+    def _on_plotter_settings(self) -> None:
+        dialog = _PlotterDialog(self._root, self._config)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        self._config.plotter_adb_path = dialog.result["adb_path"]
+        self._config.plotter_adb_serial = dialog.result["serial"]
+        self._config.plotter_autolog = dialog.result["autolog"]
+        self._config.save()
+        self._apply_plotter_autolog()
 
     # --- AIS-Karte (Leaflet + OpenFreeMap) ---------------------------------
 
@@ -1447,6 +1562,102 @@ class _PhotoDialog:
         self.result = {
             "folder": self._folder.get().strip(),
             "enabled": self._enabled.get(),
+        }
+        self.top.destroy()
+
+
+class _PlotterDialog:
+    """Einstellungen für den Plotter-Screenshot per ADB (Android-Tablet)."""
+
+    def __init__(self, parent, config) -> None:
+        self.result: Optional[Dict] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Plotter-Screenshot (ADB)")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame, wraplength=480, foreground="#555",
+            text="Holt den Bildschirm des Android-Tablets (Orca-/Plotter-Anzeige) per "
+                 "adb ins Logbuch. Voraussetzung: adb installiert und Tablet gekoppelt "
+                 "(Entwickleroptionen → USB-/Drahtlos-Debugging, 'immer erlauben').",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+
+        ttk.Label(frame, text="adb-Pfad:").grid(row=1, column=0, sticky="e", padx=(0, 4), pady=4)
+        self._adb = tk.StringVar(value=config.plotter_adb_path or "adb")
+        ttk.Entry(frame, textvariable=self._adb, width=44).grid(row=1, column=1, sticky="w")
+        ttk.Button(frame, text="Wählen…", command=self._choose).grid(row=1, column=2, padx=4)
+
+        ttk.Label(frame, text="Gerät (Serial):").grid(row=2, column=0, sticky="e", padx=(0, 4), pady=4)
+        self._serial = tk.StringVar(value=config.plotter_adb_serial)
+        ttk.Entry(frame, textvariable=self._serial, width=30).grid(row=2, column=1, sticky="w")
+        ttk.Button(frame, text="Geräte suchen", command=self._find).grid(row=2, column=2, padx=4)
+        ttk.Label(frame, foreground="#777",
+                  text="leer lassen, wenn nur ein Gerät verbunden ist").grid(
+            row=3, column=1, sticky="w")
+
+        self._autolog = tk.BooleanVar(value=config.plotter_autolog)
+        ttk.Checkbutton(
+            frame, text="Bei jedem Auto-Eintrag einen Plotter-Screenshot mitspeichern",
+            variable=self._autolog,
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 2))
+
+        self._status = ttk.Label(frame, text="", foreground="#555", wraplength=480)
+        self._status.grid(row=5, column=0, columnspan=3, sticky="w", pady=(4, 0))
+
+        btns = ttk.Frame(frame)
+        btns.grid(row=6, column=0, columnspan=3, pady=(12, 0))
+        ttk.Button(btns, text="Test", command=self._test).pack(side="left", padx=4)
+        ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _choose(self) -> None:
+        path = filedialog.askopenfilename(
+            title="adb(.exe) wählen",
+            filetypes=[("adb", "adb.exe adb"), ("Alle Dateien", "*.*")],
+        )
+        if path:
+            self._adb.set(path)
+
+    def _find(self) -> None:
+        from masarasi import android_screencap
+        devs = android_screencap.devices(self._adb.get().strip() or "adb")
+        online = [s for s, st in devs if st == "device"]
+        if not devs:
+            self._status.config(
+                text="Keine Geräte / adb nicht gefunden. Pfad prüfen und Tablet koppeln.",
+                foreground="#b25000")
+            return
+        if len(online) == 1:
+            self._serial.set(online[0])
+        self._status.config(
+            text="Gefunden: " + ", ".join(f"{s} [{st}]" for s, st in devs),
+            foreground="#227722")
+
+    def _test(self) -> None:
+        from masarasi import android_screencap
+        self._status.config(text="Teste Screenshot …", foreground="#555")
+        self.top.update_idletasks()
+        png = android_screencap.capture_png(
+            self._adb.get().strip() or "adb", self._serial.get().strip())
+        if png:
+            self._status.config(
+                text=f"OK — Screenshot erhalten ({len(png) // 1024} kB).",
+                foreground="#227722")
+        else:
+            self._status.config(
+                text="Kein Screenshot. adb-Pfad/Gerät prüfen; Tablet gekoppelt und "
+                     "'immer erlauben' bestätigt? (Ein schwarzes Bild = App sperrt "
+                     "Screenshots.)",
+                foreground="#b25000")
+
+    def _on_ok(self) -> None:
+        self.result = {
+            "adb_path": self._adb.get().strip() or "adb",
+            "serial": self._serial.get().strip(),
+            "autolog": self._autolog.get(),
         }
         self.top.destroy()
 

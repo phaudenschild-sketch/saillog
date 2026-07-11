@@ -37,6 +37,9 @@ class LogbookService:
         # Liefert die aktuell in der Maske eingestellten Bedingungen (dict).
         # Wird vom Hauptthread aktuell gehalten; der Auto-Thread liest nur.
         self.conditions_provider: Optional[Callable[[], dict]] = None
+        # Optional: liefert einen Plotter-Screenshot als JPEG-Bytes (oder None).
+        # Ist es gesetzt, hängt der Auto-Thread jedem Auto-Eintrag das Bild an.
+        self.screenshot_provider: Optional[Callable[[], Optional[bytes]]] = None
 
     # --- manuelle Einträge --------------------------------------------------
 
@@ -211,6 +214,17 @@ class LogbookService:
         self._store.add(entry)
         return entry
 
+    def _maybe_attach_screenshot(self, entry: LogEntry) -> None:
+        """Hängt (falls aktiviert) einen Plotter-Screenshot an den Eintrag."""
+        if self.screenshot_provider is None or entry.id is None:
+            return
+        try:
+            jpeg = self.screenshot_provider()
+        except Exception:  # noqa: BLE001
+            jpeg = None
+        if jpeg:
+            self._store.set_image(entry.id, jpeg, "image/jpeg", created_dz=utc_now_iso())
+
     def start_auto(
         self,
         settings: AutoLogSettings,
@@ -249,6 +263,7 @@ class LogbookService:
                     trip_id=self.open_trip_id(), conditions=conditions, reason=reason
                 )
                 if entry is not None:
+                    self._maybe_attach_screenshot(entry)
                     self._engine.note_entry(now, snapshot)
                     if self._on_auto_entry is not None:
                         self._on_auto_entry(entry)

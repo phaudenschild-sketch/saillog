@@ -277,6 +277,19 @@ class LogbookServiceTest(unittest.TestCase):
         entry = self.service.record_auto(trip_id=self.service.current_trip_id)
         self.assertEqual(entry.trip_id, trip.id)
 
+    def test_screenshot_provider_attaches_image_to_auto_entry(self):
+        self.live.update({"lat": 47.0, "lon": 9.0})
+        self.service.screenshot_provider = lambda: b"\xff\xd8\xffFAKEJPEG"
+        entry = self.service.record_auto()
+        self.service._maybe_attach_screenshot(entry)
+        self.assertEqual(self.store.get_image(entry.id), b"\xff\xd8\xffFAKEJPEG")
+
+    def test_no_screenshot_provider_leaves_entry_imageless(self):
+        self.live.update({"lat": 47.0, "lon": 9.0})
+        entry = self.service.record_auto()
+        self.service._maybe_attach_screenshot(entry)
+        self.assertIsNone(self.store.get_image(entry.id))
+
     def test_open_trip_id_returns_open_trip(self):
         self.assertIsNone(self.service.open_trip_id())
         trip = self.service.start_trip(Trip(name="X", start_location="A"))
