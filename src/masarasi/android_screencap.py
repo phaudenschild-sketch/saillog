@@ -90,15 +90,20 @@ def enable_tcpip(adb_path: str = "adb", serial: str = "", port: int = 5555,
 
 def wlan_ip(adb_path: str = "adb", serial: str = "",
             timeout: float = 10.0) -> Optional[str]:
-    """Liest die WLAN-IP des Tablets (`ip addr show wlan0`)."""
+    """Liest die (W)LAN-IP des Tablets. Probiert wlan0, sonst irgendein IPv4."""
     import re
-    cmd = _adb_base(adb_path, serial) + ["shell", "ip", "-o", "-4", "addr", "show", "wlan0"]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    match = re.search(r"inet (\d+\.\d+\.\d+\.\d+)", proc.stdout or "")
-    return match.group(1) if match else None
+    for args in (["shell", "ip", "-o", "-4", "addr", "show", "wlan0"],
+                 ["shell", "ip", "-o", "-4", "addr", "show"]):
+        cmd = _adb_base(adb_path, serial) + args
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        for match in re.finditer(r"inet (\d+\.\d+\.\d+\.\d+)", proc.stdout or ""):
+            ip = match.group(1)
+            if not ip.startswith("127."):
+                return ip
+    return None
 
 
 def _ensure_network(adb_path: str, serial: str) -> None:

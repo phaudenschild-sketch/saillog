@@ -1659,13 +1659,16 @@ class _PlotterDialog:
                 foreground="#b25000")
             return
         ip = scr.wlan_ip(adb)
-        if not ip:
+        # Auto-Erkennung scheitert bei manchen Tablets → auf die im Feld
+        # eingetragene Adresse zurückfallen.
+        address = f"{ip}:5555" if ip else self._serial.get().strip()
+        if ":" not in address:
             self._status.config(
                 text="WLAN-ADB aktiv, aber Tablet-IP nicht gefunden. Bitte "
-                     "<Tablet-IP>:5555 von Hand eintragen und 'Drahtlos verbinden'.",
+                     "<Tablet-IP>:5555 im Feld 'Gerät' eintragen und 'Drahtlos "
+                     "verbinden'.",
                 foreground="#b25000")
             return
-        address = f"{ip}:5555"
         self._serial.set(address)
         cok, cmsg = scr.connect(address, adb)
         self._status.config(
