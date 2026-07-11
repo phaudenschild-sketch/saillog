@@ -55,11 +55,24 @@ def http_get(host: str, port: int, path: str = "/", timeout: float = 3.0,
 API_PORTS = [8080, 9001, 8085]
 API_PATHS = [
     "/", "/version", "/status", "/health", "/info", "/state",
+    # Navigation
     "/nav", "/navigation", "/navdata", "/gps", "/position", "/location",
     "/fix", "/data", "/instruments", "/instrument", "/sensors", "/sensor",
-    "/imu", "/wind", "/depth", "/speed", "/sog", "/cog", "/heading", "/hdg",
-    "/attitude", "/vessel", "/boat", "/telemetry", "/values", "/measurements",
+    "/wind", "/depth", "/speed", "/sog", "/cog", "/hdg",
+    "/vessel", "/boat", "/telemetry", "/values", "/measurements",
+    # IMU / Lage / Heading (Orca-Kern)
+    "/imu", "/attitude", "/heading", "/orientation", "/euler", "/quaternion",
+    "/roll", "/pitch", "/yaw", "/rot", "/motion", "/ahrs", "/compass",
+    "/calibration", "/raw", "/imu/data", "/imu/raw", "/orientation/euler",
+    # NMEA-2000 / CAN
+    "/nmea", "/nmea2000", "/n2k", "/can", "/can0", "/pgn", "/pgns", "/bus",
+    "/devices", "/sources", "/environment", "/engine", "/battery",
+    "/ais", "/targets", "/autopilot", "/pilot", "/ap", "/route", "/waypoints",
+    # Streams / Sammelendpunkte
+    "/stream", "/live", "/realtime", "/all", "/log", "/logs", "/dump",
+    # API-Präfixe
     "/api", "/api/v1", "/api/nav", "/api/data", "/api/status", "/api/gps",
+    "/api/imu", "/api/attitude", "/api/heading", "/api/nmea", "/api/n2k",
     "/signalk", "/signalk/v1/api/vessels/self",
 ]
 
