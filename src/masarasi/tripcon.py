@@ -84,12 +84,15 @@ def connect(path: str) -> sqlite3.Connection:
 
 
 def _table_exists(conn, name: str) -> bool:
-    return (
-        conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
-        ).fetchone()
-        is not None
-    )
+    try:
+        return (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+            ).fetchone()
+            is not None
+        )
+    except sqlite3.Error:      # z.B. beschädigte Datei
+        return False
 
 
 def _columns(conn, table: str) -> List[str]:
@@ -871,42 +874,55 @@ def analyze_tcdb(conn) -> Dict[str, object]:
     Zeitraum. Verändert nichts (nur Lesezugriff)."""
     info: Dict[str, object] = {}
     try:
-        integrity = conn.execute("PRAGMA integrity_check").fetchone()
-        info["integrity"] = integrity[0] if integrity else "?"
+        rows = conn.execute("PRAGMA integrity_check").fetchall()
+        info["integrity"] = "; ".join(str(r[0]) for r in rows) if rows else "?"
     except sqlite3.Error as exc:
         info["integrity"] = f"Fehler: {exc}"
 
-    trips = load_trips(conn)
-    info["trips"] = len(trips)
-    dzs = []
-    for t in trips.values():
-        for key in ("from_dz", "to_dz"):
-            iso = to_iso(t.get(key))
-            if iso:
-                dzs.append(iso)
-    info["date_from"] = min(dzs) if dzs else ""
-    info["date_to"] = max(dzs) if dzs else ""
+    # Bei beschädigten Dateien darf keine Einzelmessung den Rest umwerfen —
+    # jede Kennzahl einzeln absichern, damit wir zeigen, was noch lesbar ist.
+    def safe(fn, default=0):
+        try:
+            return fn()
+        except sqlite3.Error as exc:
+            return f"Fehler: {exc}"
+
+    def trips_info():
+        trips = load_trips(conn)
+        dzs = [to_iso(t.get(k)) for t in trips.values() for k in ("from_dz", "to_dz")]
+        dzs = [d for d in dzs if d]
+        return len(trips), (min(dzs) if dzs else ""), (max(dzs) if dzs else "")
+
+    try:
+        info["trips"], info["date_from"], info["date_to"] = trips_info()
+    except sqlite3.Error as exc:
+        info["trips"] = f"Fehler: {exc}"
+        info["date_from"] = info["date_to"] = ""
 
     info["log_entries"] = _count(conn, "B100_Log")
     info["track_points"] = _count(conn, "B111_TrackInfo")
 
-    images = _bindat_images(conn)
-    info["plotter_images"] = len(images)
-    if images:
+    def images_info():
+        images = _bindat_images(conn)
+        if not images:
+            return 0, 0, 0, "none"
         per_log, per_trip, method = _bindat_per_log_trip(conn, images)
-        info["plotter_with_log"] = sum(len(v) for v in per_log.values())
-        info["plotter_trip_only"] = sum(len(v) for v in per_trip.values())
-        info["image_method"] = method
-    else:
-        info["plotter_with_log"] = 0
-        info["plotter_trip_only"] = 0
-        info["image_method"] = "none"
+        return (len(images), sum(len(v) for v in per_log.values()),
+                sum(len(v) for v in per_trip.values()), method)
 
-    info["weather_images"] = _valid_image_count(conn, "B109_Weather", "Value")
+    try:
+        (info["plotter_images"], info["plotter_with_log"],
+         info["plotter_trip_only"], info["image_method"]) = images_info()
+    except sqlite3.Error as exc:
+        info["plotter_images"] = f"Fehler: {exc}"
+        info["plotter_with_log"] = info["plotter_trip_only"] = 0
+        info["image_method"] = "?"
+
+    info["weather_images"] = safe(lambda: _valid_image_count(conn, "B109_Weather", "Value"))
     info["ships"] = _count(conn, "S003_Ships")
-    info["ship_images"] = _valid_image_count(conn, "S003_Ships", "Picture")
+    info["ship_images"] = safe(lambda: _valid_image_count(conn, "S003_Ships", "Picture"))
     info["persons"] = _count(conn, "S006_Persons")
-    info["person_images"] = _valid_image_count(conn, "S006_Persons", "Picture")
+    info["person_images"] = safe(lambda: _valid_image_count(conn, "S006_Persons", "Picture"))
     return info
 
 
