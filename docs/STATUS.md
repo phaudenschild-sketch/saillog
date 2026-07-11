@@ -10,7 +10,7 @@ Das Repo ist eigenständig: `github.com/phaudenschild-sketch/masarasi`
 cd C:\claude\masarasi
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 203 Tests
+python -m unittest discover -s tests   # 212 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
@@ -122,6 +122,14 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   „voll-zu-voll" berechnet — unabhängig von der schwankenden Tankanzeige.
   **Restfüllstand + Reichweite** (Rest-Motorstunden) aus Tankgröße (Standard
   160 L, einstellbar) und aktuellen Motorstunden (`fuel.py`)
+- **Berichte** (`reports.py`, Knopf „📄 Bericht…" in der Törn-Leiste): druckbares
+  HTML (im Browser → „Als PDF speichern"), nach TripCon-Vorbild:
+  **Törn-Bericht** (ein Törn, jeder Eintrag mit vollem Raster: Position im
+  Grad/Dezimalminuten-Format, FüG/KüG, wahrer Wind, Tiefe, kumulatives Log,
+  Luft/Bewölkung/Sicht, Segel, Notiz), **Etappenbericht mit Bildern** (Bilder
+  als base64-Data-URIs eingebettet, kein Server nötig) und **Fahrtenbuch**
+  (alle Törns: Schiffsdaten, Etappen-Karten, Meilen-Summe gesegelt/Motor/gesamt
+  aus der GPS-Spur).
 - **Crewliste** (Ein-/Ausklarieren): Bootsangaben + Ort/Datum (gespeichert)
   + Crew je Törn; **Personen-Speicher** (einmal erfasste Personen sind über
   ein Auswahlmenü wiederverwendbar); druckbare, zweisprachige HTML-Liste
@@ -197,6 +205,7 @@ src/masarasi/
   ais.py         AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
   webmap.py      lokaler Kartenserver (Leaflet + OpenFreeMap)
   crewlist.py    druckbare Crewliste (HTML, DE/EN)
+  reports.py     Berichte (Törn-/Etappenbericht, Fahrtenbuch) als HTML
   geo.py         Distanzen (Haversine) — Strecke im Törn aus der GPS-Spur
   fuel.py        Verbrauchsberechnung (l/h) aus den Tank-Einträgen
   livedata.py    thread-sicherer Messwert-Speicher

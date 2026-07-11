@@ -1,0 +1,414 @@
+"""Berichte aus den Logdaten — druckbares HTML (im Browser als PDF druckbar).
+
+Nach dem Vorbild von TripCon:
+
+- **Törn-Bericht** (ein Törn, detailliert): Titel, Schiffsdaten, Crew, jeder
+  Logbuch-Eintrag mit vollem Raster, Zusammenfassung — wahlweise **mit Bildern**
+  (entspricht TripCons „Etappenbericht") oder ohne („Törnbericht").
+- **Fahrtenbuch / Übersicht** (mehrere Törns): Schiffe, alle Etappen als
+  Karten (von/nach, Distanzen, Wind, Wetter, Crew), Meilen-Zusammenfassung —
+  entspricht TripCons „Törnübersicht"/„Fahrtenbuch".
+
+Reine Standardbibliothek. Distanzen (gesamt/gesegelt/Motor) werden aus der
+GPS-Spur berechnet (Haversine) und über ``engine_on`` auf Segeln/Motor
+aufgeteilt. Fehlende Werte erscheinen als „---" (wie bei TripCon).
+"""
+
+from __future__ import annotations
+
+import base64
+from typing import Dict, List, Optional
+from xml.sax.saxutils import escape
+
+from masarasi import geo, timeutil
+from masarasi.storage import LogEntry, Ship, Trip
+
+_COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+            "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+
+
+# --- Formatierung ----------------------------------------------------------
+
+def _de(value: Optional[float], dec: int = 1) -> str:
+    """Deutsche Zahl mit Komma; None -> '---'."""
+    if value is None:
+        return "---"
+    return f"{value:.{dec}f}".replace(".", ",")
+
+
+def compass(deg: Optional[float]) -> str:
+    if deg is None:
+        return ""
+    return _COMPASS[int((deg % 360) / 22.5 + 0.5) % 16]
+
+
+def latlon_dm(lat: Optional[float], lon: Optional[float]) -> str:
+    """'54° 48,361' N / 009° 27,096' E' (Grad + Dezimalminuten)."""
+    if lat is None or lon is None:
+        return "---"
+
+    def one(v: float, pos: str, neg: str, deg_width: int) -> str:
+        hemi = pos if v >= 0 else neg
+        v = abs(v)
+        d = int(v)
+        m = (v - d) * 60.0
+        return f"{d:0{deg_width}d}° {m:06.3f}'".replace(".", ",") + f" {hemi}"
+
+    return f"{one(lat, 'N', 'S', 2)} / {one(lon, 'E', 'W', 3)}"
+
+
+def wind_str(tws: Optional[float], twd: Optional[float]) -> str:
+    """Wahrer Wind: '12 kn, ENE' (aus Richtung)."""
+    if tws is None:
+        return "---"
+    d = f", {compass(twd)}" if twd is not None else ""
+    return f"{tws:.0f} kn{d}"
+
+
+def _fmt_dt(iso: str, offset: float, with_date: bool = True) -> str:
+    disp = timeutil.to_display(iso, offset)  # "YYYY-MM-DD HH:MM"
+    if not disp or " " not in disp:
+        return disp
+    d, t = disp.split(" ", 1)
+    y, mo, day = d.split("-")
+    de_date = f"{day}.{mo}.{y}"
+    return f"{de_date}     {t}" if with_date else t
+
+
+def _date_only(iso: str, offset: float) -> str:
+    disp = timeutil.to_display(iso, offset)
+    d = disp.split(" ", 1)[0] if disp else ""
+    if d.count("-") == 2:
+        y, mo, day = d.split("-")
+        return f"{day}.{mo}.{y}"
+    return d
+
+
+# --- Distanz/Statistik pro Törn --------------------------------------------
+
+def leg_stats(entries: List[LogEntry]) -> Dict[str, float]:
+    """Gesamt-/Segel-/Motor-Distanz (NM) aus der GPS-Spur + engine_on."""
+    total = sailed = motor = 0.0
+    prev = None
+    prev_engine = None
+    for e in entries:
+        if e.lat is None or e.lon is None:
+            continue
+        if prev is not None:
+            d = geo.haversine_nm(prev[0], prev[1], e.lat, e.lon)
+            total += d
+            # Segment dem Motor zurechnen, wenn am Anfang oder Ende Motor lief
+            eng = e.engine_on if e.engine_on is not None else prev_engine
+            if eng == 1 or prev_engine == 1:
+                motor += d
+            else:
+                sailed += d
+        prev = (e.lat, e.lon)
+        prev_engine = e.engine_on if e.engine_on is not None else prev_engine
+    return {"total": total, "sailed": sailed, "motor": motor}
+
+
+def _cumulative_nm(entries: List[LogEntry]) -> Dict[int, float]:
+    """{Eintrags-Index: zurückgelegte NM seit Etappenstart} (GPS-basiert)."""
+    out: Dict[int, float] = {}
+    run = 0.0
+    prev = None
+    for i, e in enumerate(entries):
+        if e.lat is not None and e.lon is not None:
+            if prev is not None:
+                run += geo.haversine_nm(prev[0], prev[1], e.lat, e.lon)
+            prev = (e.lat, e.lon)
+        out[i] = run
+    return out
+
+
+# --- HTML-Bausteine --------------------------------------------------------
+
+_SHIP_FIELDS = [
+    ("ship_type", "Schiffstyp"), ("ship_number", "Schiffsnummer"),
+    ("length_m", "Länge"), ("beam_m", "Breite"), ("keel_type", "Kielart"),
+    ("max_draft_m", "Tiefgang"), ("clearance_height_m", "Durchfahrtshöhe"),
+    ("flag", "Flagge"), ("home_port", "Heimathafen"),
+    ("call_sign", "Rufzeichen"), ("mmsi", "MMSI"),
+]
+
+
+def _ship_value(ship: Ship, attr: str) -> str:
+    val = getattr(ship, attr, None)
+    if val in (None, ""):
+        return ""
+    if attr in ("length_m", "beam_m", "max_draft_m", "clearance_height_m"):
+        return f"{val:.2f} m".replace(".", ",")
+    return str(val)
+
+
+def ship_block(ship: Optional[Ship]) -> str:
+    if ship is None:
+        return ""
+    rows = []
+    for attr, label in _SHIP_FIELDS:
+        val = _ship_value(ship, attr)
+        if val:
+            rows.append(f'<div class="sd"><span class="k">{escape(label)}</span>'
+                        f'<span class="v">{escape(val)}</span></div>')
+    extras = []
+    if ship.sails:
+        extras.append(("Antrieb/Segel", ship.sails))
+    if ship.equipment:
+        extras.append(("Ausstattung", ship.equipment))
+    tanks = []
+    if ship.water_tank_l:
+        tanks.append(f"Wassertank ({ship.water_tank_l:.0f} l)")
+    if ship.fuel_tank_l:
+        tanks.append(f"Treibstofftank ({ship.fuel_tank_l:.0f} l)")
+    if tanks:
+        extras.append(("Tankkapazitäten", "\n".join(tanks)))
+    if ship.power_source:
+        extras.append(("Stromversorgung", ship.power_source))
+    extra_html = "".join(
+        f'<div class="sx"><b>{escape(k)}</b><br>{escape(v).replace(chr(10), "<br>")}</div>'
+        for k, v in extras
+    )
+    return (f'<section class="ship"><h2>{escape(ship.name or "Schiff")} — '
+            f'Technische Daten</h2><div class="sdgrid">{"".join(rows)}</div>'
+            f'{extra_html}</section>')
+
+
+def crew_block(crew: List) -> str:
+    if not crew:
+        return ""
+    items = []
+    for c in crew:
+        name = f"{c.last_name}, {c.first_name}".strip(", ")
+        role = getattr(c, "position", "") or ""
+        tag = f' <span class="role">({escape(role)})</span>' if role and role != "Crew" else ""
+        items.append(f"<li>{escape(name)}{tag}</li>")
+    return f'<section class="crew"><h3>Crew</h3><ul>{"".join(items)}</ul></section>'
+
+
+def _grid_cell(label: str, value: str) -> str:
+    return f'<div class="c"><span class="cl">{escape(label)}</span>' \
+           f'<span class="cv">{escape(value)}</span></div>'
+
+
+def _data_uri(image: bytes, mime: str) -> str:
+    b64 = base64.b64encode(image).decode("ascii")
+    return f"data:{mime or 'image/jpeg'};base64,{b64}"
+
+
+def entry_card(entry: LogEntry, offset: float, cum_nm: float,
+               images: Optional[List[dict]] = None) -> str:
+    kind = {"auto": "AutoLog", "manual": "manuell", "tripcon": "TripCon"}.get(
+        entry.entry_type, entry.entry_type)
+    sails = []
+    if entry.mainsail and entry.mainsail not in ("", "—"):
+        sails.append(f"Großsegel: {entry.mainsail}")
+    if entry.genoa_percent is not None:
+        sails.append(f"Fock/Genua: {entry.genoa_percent:.0f}%")
+    if entry.spinnaker:
+        sails.append("Spinnaker")
+    sail_html = (f'<div class="sails">{escape(" · ".join(sails))}</div>'
+                 if sails else "")
+    note_html = f'<div class="note">{escape(entry.note)}</div>' if entry.note else ""
+
+    fug = "---"
+    if entry.sog_kn is not None:
+        cog = f", {entry.cog_deg:.0f}°" if entry.cog_deg is not None else ""
+        fug = f"{_de(entry.sog_kn, 2)} kn{cog}"
+
+    luft = "---"
+    if entry.baro_mbar is not None or entry.air_temp_c is not None:
+        parts = []
+        if entry.baro_mbar is not None:
+            parts.append(f"{entry.baro_mbar:.0f} mBar")
+        if entry.air_temp_c is not None:
+            parts.append(f"{entry.air_temp_c:.0f}°C")
+        luft = ", ".join(parts)
+
+    cells = "".join([
+        _grid_cell("Seegang", _de(entry.wave_height_m) + " m" if entry.wave_height_m is not None else "---"),
+        _grid_cell("Wassertiefe", (_de(entry.depth_m, 1) + " m") if entry.depth_m is not None else "---"),
+        _grid_cell("Niederschlag", entry.precipitation or "---"),
+        _grid_cell("Log", _de(cum_nm, 1) + " NM"),
+        _grid_cell("FüG / KüG", fug),
+        _grid_cell("Wind", wind_str(entry.tws_kn, entry.twd_deg)),
+        _grid_cell("Luft", luft),
+        _grid_cell("Bewölkung", entry.cloud_cover or "---"),
+        _grid_cell("Sicht", entry.visibility or "---"),
+    ])
+
+    img_html = ""
+    if images:
+        imgs = "".join(
+            f'<img src="{_data_uri(im["image"], im.get("mime", "image/jpeg"))}" alt="">'
+            for im in images
+        )
+        img_html = f'<div class="imgs">{imgs}</div>'
+
+    return (
+        f'<article class="entry">'
+        f'<div class="ehead"><span class="etime">{escape(_fmt_dt(entry.timestamp, offset))}</span>'
+        f'<span class="ekind">{escape(kind)}</span></div>'
+        f'<div class="eanlass">{escape(entry.logevent or "Eintrag")}</div>'
+        f'<div class="epos">{escape(latlon_dm(entry.lat, entry.lon))}</div>'
+        f'<div class="egrid">{cells}</div>'
+        f'{sail_html}{note_html}{img_html}'
+        f'</article>'
+    )
+
+
+def leg_card(store, trip: Trip, entries: List[LogEntry], offset: float,
+             crew: Optional[List] = None) -> str:
+    stats = leg_stats(entries)
+    start = _fmt_dt(trip.start_dz, offset) if trip.start_dz else ""
+    end_t = _fmt_dt(trip.end_dz, offset, with_date=False) if trip.end_dz else ""
+    when = f"{start} – {end_t}" if end_t else start
+    winds = [e.tws_kn for e in entries if e.tws_kn is not None]
+    wind_txt = "---"
+    if winds:
+        lo, hi = min(winds), max(winds)
+        wind_txt = f"{lo:.0f} – {hi:.0f} kn" if hi - lo >= 1 else f"{hi:.0f} kn"
+    baros = [e.baro_mbar for e in entries if e.baro_mbar is not None]
+    baro_txt = f"{min(baros):.0f} – {max(baros):.0f} mBar" if baros else "---"
+    crew_names = ""
+    if crew:
+        crew_names = ", ".join(
+            f"{c.last_name}" + (" (Skipper)" if getattr(c, "position", "") == "Skipper" else "")
+            for c in crew)
+    return (
+        f'<section class="leg">'
+        f'<div class="legtop"><b>{escape(trip.start_location or "?")} → '
+        f'{escape(trip.end_location or "…")}</b><span>{escape(when)}</span></div>'
+        f'<div class="leggrid">'
+        f'<div><span class="k">Gesamt</span><span class="v">{_de(stats["total"])} NM</span></div>'
+        f'<div><span class="k">Gesegelt</span><span class="v">{_de(stats["sailed"])} NM</span></div>'
+        f'<div><span class="k">Motor</span><span class="v">{_de(stats["motor"])} NM</span></div>'
+        f'<div><span class="k">Wind</span><span class="v">{escape(wind_txt)}</span></div>'
+        f'<div><span class="k">Luftdruck</span><span class="v">{escape(baro_txt)}</span></div>'
+        f'<div><span class="k">Schiff</span><span class="v">{escape(trip.name or "")}</span></div>'
+        f'</div>'
+        + (f'<div class="legcrew">Crew: {escape(crew_names)}</div>' if crew_names else "")
+        + f'</section>'
+    )
+
+
+_STYLE = """
+* { box-sizing: border-box; }
+body { font-family: -apple-system, Segoe UI, Arial, sans-serif; color:#1a1a1a;
+       margin: 0; padding: 24px; font-size: 13px; line-height: 1.35; }
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { font-size: 17px; border-bottom: 2px solid #244; padding-bottom: 3px; margin: 22px 0 10px; }
+h3 { font-size: 15px; margin: 16px 0 6px; }
+.sub { color:#556; margin-bottom: 20px; }
+.title-page { min-height: 60vh; display:flex; flex-direction:column;
+              justify-content:center; align-items:center; text-align:center; }
+.title-page .big { font-size: 34px; font-weight: 700; }
+.sdgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 24px; max-width: 640px; }
+.sd { display:flex; justify-content:space-between; border-bottom:1px dotted #ccc; padding:2px 0; }
+.sd .k { color:#556; } .sd .v { font-weight:600; }
+.sx { margin-top: 10px; }
+.crew ul { margin: 4px 0; padding-left: 18px; } .role { color:#777; }
+.entry { border:1px solid #dde; border-radius:6px; padding:8px 10px; margin:8px 0;
+         page-break-inside: avoid; }
+.ehead { display:flex; justify-content:space-between; }
+.etime { font-weight:700; } .ekind { color:#888; font-size:11px; }
+.eanlass { font-weight:600; margin:2px 0; }
+.epos { color:#556; font-variant-numeric: tabular-nums; }
+.egrid { display:grid; grid-template-columns: repeat(3, 1fr); gap:2px 14px; margin:6px 0; }
+.c { display:flex; justify-content:space-between; border-bottom:1px dotted #eee; }
+.cl { color:#667; } .cv { font-weight:600; }
+.sails { color:#245; font-size:12px; } .note { margin-top:4px; font-style:italic; }
+.imgs { margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; }
+.imgs img { max-width: 260px; max-height: 200px; border-radius:4px; }
+.leg { border:1px solid #dde; border-radius:6px; padding:8px 10px; margin:8px 0;
+       page-break-inside: avoid; }
+.legtop { display:flex; justify-content:space-between; margin-bottom:4px; }
+.leggrid { display:grid; grid-template-columns: repeat(3, 1fr); gap:2px 16px; }
+.leggrid .k { color:#667; } .leggrid .v { font-weight:600; margin-left:6px; }
+.legcrew { color:#556; margin-top:4px; font-size:12px; }
+.summary { margin-top:16px; padding:10px; background:#f2f5f7; border-radius:6px; font-size:15px; }
+.pb { page-break-before: always; }
+@media print { body { padding: 0; } .noprint { display:none; } }
+"""
+
+
+def _doc(title: str, body: str) -> str:
+    return (f'<!doctype html><html lang="de"><head><meta charset="utf-8">'
+            f'<title>{escape(title)}</title><style>{_STYLE}</style></head>'
+            f'<body>{body}</body></html>')
+
+
+# --- Törn-Bericht (detailliert, ein Törn) ----------------------------------
+
+def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
+                     with_images: bool = False) -> str:
+    entries = store.all(newest_first=False, trip_id=trip.id, limit=50000)
+    ship = None
+    if config.active_ship_id:
+        ship = store.get_ship(config.active_ship_id)
+    if ship is None:
+        ships = store.all_ships()
+        ship = ships[0] if ships else None
+    crew = store.crew_for_trip(trip.id)
+
+    stats = leg_stats(entries)
+    cum = _cumulative_nm(entries)
+    kind = "Etappenbericht" if with_images else "Törnbericht"
+
+    period = _date_only(trip.start_dz, offset)
+    if trip.end_dz:
+        period += " – " + _date_only(trip.end_dz, offset)
+
+    parts = [
+        f'<div class="title-page"><div class="big">{escape(kind)}</div>'
+        f'<div>Logbuch der <b>{escape(ship.name if ship else "")}</b></div>'
+        f'<div class="sub">{escape(period)}<br>{escape(trip.name or "")}<br>'
+        f'{escape(trip.start_location or "")} → {escape(trip.end_location or "")}</div></div>',
+        f'<div class="pb"></div>',
+        ship_block(ship),
+        crew_block(crew),
+        f'<h2 class="pb">Logbuch</h2>',
+    ]
+    for i, e in enumerate(entries):
+        imgs = store.get_entry_images(e.id) if with_images else None
+        parts.append(entry_card(e, offset, cum.get(i, 0.0), imgs))
+    parts.append(
+        f'<div class="summary"><b>Zusammenfassung {escape(trip.name or "")}</b><br>'
+        f'Gesamt: {_de(stats["total"])} NM · Gesegelt: {_de(stats["sailed"])} NM · '
+        f'Motor: {_de(stats["motor"])} NM<br>{len(entries)} Einträge</div>')
+    return _doc(f"{kind} {trip.name}", "".join(parts))
+
+
+# --- Fahrtenbuch / Übersicht (mehrere Törns) -------------------------------
+
+def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
+                    title: str = "Fahrtenbuch") -> str:
+    total = sailed = motor = 0.0
+    ship_ids = set()
+    parts = []
+    for trip in trips:
+        entries = store.all(newest_first=False, trip_id=trip.id, limit=50000)
+        crew = store.crew_for_trip(trip.id)
+        parts.append(leg_card(store, trip, entries, offset, crew))
+        s = leg_stats(entries)
+        total += s["total"]; sailed += s["sailed"]; motor += s["motor"]
+
+    ships = store.all_ships()
+    ship_html = "".join(ship_block(s) for s in ships)
+
+    period = ""
+    dzs = [t.start_dz for t in trips if t.start_dz] + [t.end_dz for t in trips if t.end_dz]
+    if dzs:
+        period = _date_only(min(dzs), offset) + " – " + _date_only(max(dzs), offset)
+
+    head = (
+        f'<div class="title-page"><div class="big">{escape(title)}</div>'
+        f'<div class="sub">{escape(period)}</div></div><div class="pb"></div>'
+    )
+    summary = (
+        f'<div class="summary"><b>Zusammenfassung</b><br>'
+        f'{len(trips)} Etappen · Gesamt: {_de(total)} NM · '
+        f'Gesegelt: {_de(sailed)} NM · Motor: {_de(motor)} NM</div>'
+    )
+    body = head + ship_html + '<h2 class="pb">Fahrtenübersicht</h2>' + "".join(parts) + summary
+    return _doc(title, body)

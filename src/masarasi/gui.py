@@ -10,7 +10,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
-from masarasi import backup, crewlist, fuel, geo, photos, timeutil
+from masarasi import backup, crewlist, fuel, geo, photos, reports, timeutil
 from masarasi.ais import AisDecoder, AisTargets
 from masarasi.autolog import AutoLogSettings
 from masarasi.config import CONFIG_PATH, Config
@@ -142,6 +142,9 @@ class Application:
         self._close_trip_btn.grid(row=0, column=3, padx=4)
         ttk.Button(trip_bar, text="Crewliste…", command=self._on_crewlist).grid(
             row=0, column=4, padx=4
+        )
+        ttk.Button(trip_bar, text="📄 Bericht…", command=self._on_report).grid(
+            row=0, column=5, padx=4
         )
         ttk.Button(trip_bar, text="⛽ Tanken…", command=self._on_fuel).grid(
             row=0, column=5, padx=4
@@ -863,6 +866,44 @@ class Application:
             trip = self._store.get_trip(tid)
         dialog = _CrewListDialog(self._root, self._config, self._store, trip)
         self._root.wait_window(dialog.top)
+
+    # --- Berichte -----------------------------------------------------------
+
+    def _on_report(self) -> None:
+        has_trip = self._logbook.current_trip_id is not None
+        dialog = _ReportDialog(self._root, has_trip)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        offset = self._tz_offset()
+        try:
+            if dialog.result == "voyage":
+                trips = self._store.all_trips(newest_first=False)
+                if not trips:
+                    messagebox.showinfo("Bericht", "Noch keine Törns vorhanden.")
+                    return
+                html = reports.voyage_log_html(
+                    self._store, self._config, trips, offset, "Fahrtenbuch")
+                name = "fahrtenbuch.html"
+            else:
+                trip = self._store.get_trip(self._logbook.current_trip_id)
+                if trip is None:
+                    messagebox.showinfo("Bericht", "Bitte oben einen Törn auswählen.")
+                    return
+                html = reports.trip_report_html(
+                    self._store, self._config, trip, offset,
+                    with_images=(dialog.result == "trip_img"))
+                name = "toern_bericht.html"
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
+            return
+        path = Path(self._config.db_path).parent / name
+        try:
+            path.write_text(html, encoding="utf-8")
+        except OSError as exc:
+            messagebox.showerror("Bericht", f"Konnte den Bericht nicht speichern:\n{exc}")
+            return
+        webbrowser.open(path.as_uri())
 
     # --- Stammdaten ---------------------------------------------------------
 
@@ -2998,6 +3039,49 @@ class _TripCloseDialog:
             "end_log_nm": _parse_float(self._vars["end_log_nm"].get()),
             "note": self._note.get("1.0", "end").strip(),
         }
+        self.top.destroy()
+
+
+class _ReportDialog:
+    """Auswahl des Bericht-Typs (öffnet druckbares HTML im Browser)."""
+
+    def __init__(self, parent: tk.Tk, has_trip: bool) -> None:
+        self.result: Optional[str] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Bericht erzeugen")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=14)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame, wraplength=460, foreground="#555",
+            text="Berichte werden als HTML im Browser geöffnet — dort über "
+                 "Drucken → 'Als PDF speichern' ausgeben.",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 10))
+
+        b1 = ttk.Button(frame, text="Törn-Bericht (aktueller Törn)", width=44,
+                        command=lambda: self._pick("trip"))
+        b1.grid(row=1, column=0, sticky="we", pady=3)
+        b2 = ttk.Button(frame, text="Etappenbericht mit Bildern (aktueller Törn)",
+                        width=44, command=lambda: self._pick("trip_img"))
+        b2.grid(row=2, column=0, sticky="we", pady=3)
+        ttk.Button(frame, text="Fahrtenbuch (alle Törns)", width=44,
+                   command=lambda: self._pick("voyage")).grid(
+            row=3, column=0, sticky="we", pady=3)
+
+        if not has_trip:
+            b1.config(state="disabled")
+            b2.config(state="disabled")
+            ttk.Label(frame, foreground="#b25000",
+                      text="(Kein Törn ausgewählt — nur Fahrtenbuch möglich.)").grid(
+                row=4, column=0, sticky="w", pady=(6, 0))
+
+        ttk.Button(frame, text="Abbrechen", command=self.top.destroy).grid(
+            row=5, column=0, pady=(12, 0))
+
+    def _pick(self, kind: str) -> None:
+        self.result = kind
         self.top.destroy()
 
 
