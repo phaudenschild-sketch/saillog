@@ -256,25 +256,29 @@ def ws_capture(host: str, port: int, path: str, seconds: float = 6.0,
 _OPNAME = {0x0: "cont", 0x1: "text", 0x2: "bin", 0x8: "close", 0x9: "ping", 0xA: "pong"}
 
 
-def ws_deep(host: str, port: int, path: str, seconds: float = 30.0) -> None:
-    """Sendet 'subscribe'-Kandidaten und lauscht; hält per Pong die Verbindung.
+def ws_deep(host: str, port: int, path: str, seconds: float = 30.0,
+            subscribe: bool = True) -> None:
+    """Lauscht am WebSocket; hält per Pong die Verbindung offen.
 
-    Behandelt WebSocket-Opcodes korrekt: antwortet auf Ping mit Pong (sonst
-    kappt der Orca die Verbindung), zeigt Text-Frames als Text und Binärframes
-    als Hex. So bleibt der Stream offen und wir sehen das echte Datenformat."""
+    subscribe=True: schickt vorher 'subscribe'-Kandidaten.
+    subscribe=False: sendet NICHTS (reines Mitlauschen — falls der Orca von
+    selbst streamt und unsere Kommandos ihn nur stören).
+    Behandelt WebSocket-Opcodes korrekt (Ping->Pong), zeigt Text als Text und
+    Binär als Hex."""
     import time as _time
     sock, reader = _ws_connect(host, port, path, 2.0)
     if sock is None:
         print(f"    {reader}")
         return
-    print(f"    verbunden — sende {len(_SUBSCRIBE_TRIES)} subscribe-Versuche und "
-          f"lausche {int(seconds)} s (mit Pong-Keepalive) …")
-    for cmd in _SUBSCRIBE_TRIES:
-        try:
-            _ws_send_text(sock, cmd)
-            print(f"    ▶ {cmd}")
-        except OSError:
-            break
+    mode = f"sende {len(_SUBSCRIBE_TRIES)} subscribe-Versuche und " if subscribe else "lausche NUR (kein subscribe) — "
+    print(f"    verbunden — {mode}{int(seconds)} s (mit Pong-Keepalive) …")
+    if subscribe:
+        for cmd in _SUBSCRIBE_TRIES:
+            try:
+                _ws_send_text(sock, cmd)
+                print(f"    ▶ {cmd}")
+            except OSError:
+                break
 
     sock.settimeout(2.0)
     deadline = _time.monotonic() + seconds
@@ -350,6 +354,13 @@ def main(argv=None) -> int:
         help="gängige REST-API-Pfade auf 8080/9001/8085 durchprobieren",
     )
     parser.add_argument(
+        "--listen", action="store_true",
+        help="WebSocket 9000: NUR lauschen (kein subscribe), lange, mit Keepalive",
+    )
+    parser.add_argument(
+        "--seconds", type=float, default=30.0, help="Lauschdauer (Standard 30 s)",
+    )
+    parser.add_argument(
         "--fetch", metavar="PORT/PATH",
         help="einen einzelnen Pfad holen, z.B. 8080//nav  oder  9001//api/data",
     )
@@ -369,11 +380,13 @@ def main(argv=None) -> int:
         print("\nFertig. Ausgabe kopieren und schicken.")
         return 0
 
-    if args.deep:
+    if args.deep or args.listen:
         port = args.ws_port or 9000
         path = args.ws_path or "/"
-        print(f"== Tiefen-Probe ws://{args.host}:{port}{path} ==")
-        ws_deep(args.host, port, path)
+        kind = "Nur-Lauschen" if args.listen else "Tiefen-Probe"
+        print(f"== {kind} ws://{args.host}:{port}{path} ==")
+        ws_deep(args.host, port, path, seconds=args.seconds,
+                subscribe=not args.listen)
         print("\nFertig. Ausgabe kopieren und schicken.")
         return 0
 
