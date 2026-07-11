@@ -291,17 +291,17 @@ function entryPopup(e) {
   if (e.note) h += '<br><i>' + esc(e.note) + '</i>';
   const imgs = e.images || [];
   if (imgs.length) {
-    h += '<br><a href="/entry_image?id=' + imgs[0] + '" target="_blank">'
+    h += '<a href="/entry_image?id=' + imgs[0] + '" target="_blank">'
        + '<img src="/entry_image?id=' + imgs[0] + '" '
-       + 'style="max-width:240px;max-height:200px;margin-top:6px;border-radius:4px">'
-       + '</a>';
+       + 'style="display:block;width:100%;height:auto;margin-top:8px;'
+       + 'border-radius:4px"></a>';
     if (imgs.length > 1) {
       const links = imgs.map(function (id, i) {
-        return '<a href="/entry_image?id=' + id + '" target="_blank">Bild '
+        return '<a href="/entry_image?id=' + id + '" target="_blank">'
              + (i + 1) + '</a>';
       });
-      h += '<br><span style="color:#888">' + imgs.length + ' Bilder: </span>'
-         + links.join(' · ');
+      h += '<div style="color:#888;margin-top:3px">' + imgs.length
+         + ' Bilder: ' + links.join(' · ') + '</div>';
     }
   }
   return h;
@@ -377,7 +377,7 @@ async function refresh() {
         radius: 5, color: c.stroke, weight: 1.3,
         fillColor: c.fill, fillOpacity: .95
       }).addTo(entriesLayer)
-        .bindPopup(entryPopup(e))
+        .bindPopup(entryPopup(e), { maxWidth: 260, minWidth: 200 })
         .bindTooltip(e.time, { direction: 'top' });
     });
   }
