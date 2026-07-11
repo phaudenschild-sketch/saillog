@@ -20,6 +20,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
 # Signaturen der Datenlieferanten (werden von der GUI gestellt)
 OwnProvider = Callable[[], Optional[Dict]]
@@ -27,6 +28,8 @@ TargetsProvider = Callable[[], List[Dict]]
 TrackProvider = Callable[[], Dict]
 EntriesProvider = Callable[[], List[Dict]]
 InfoProvider = Callable[[], str]
+# liefert (Bytes, MIME) zu einer Bild-id (oder None)
+ImageProvider = Callable[[int], Optional[tuple]]
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -43,8 +46,25 @@ class _Handler(BaseHTTPRequestHandler):
             data = self.server.masarasi_data()  # type: ignore[attr-defined]
             self._send(json.dumps(data).encode("utf-8"), "application/json",
                        cache=False)
+        elif path == "/entry_image":
+            self._send_image()
         else:
             self.send_error(404, "not found")
+
+    def _send_image(self) -> None:
+        provider = getattr(self.server, "masarasi_image", None)
+        query = parse_qs(urlparse(self.path).query)
+        try:
+            image_id = int(query.get("id", [""])[0])
+        except (ValueError, TypeError):
+            self.send_error(400, "bad id")
+            return
+        rec = provider(image_id) if provider else None
+        if not rec:
+            self.send_error(404, "no image")
+            return
+        data, mime = rec
+        self._send(bytes(data), mime or "image/jpeg")
 
     def _send(self, body: bytes, content_type: str, cache: bool = True) -> None:
         try:
@@ -69,6 +89,7 @@ class MapServer:
         track_provider: TrackProvider,
         entries_provider: Optional[EntriesProvider] = None,
         info_provider: Optional[InfoProvider] = None,
+        image_provider: Optional[ImageProvider] = None,
         host: str = "127.0.0.1",
         port: int = 0,
     ) -> None:
@@ -77,6 +98,7 @@ class MapServer:
         self._track_provider = track_provider
         self._entries_provider = entries_provider
         self._info_provider = info_provider
+        self._image_provider = image_provider
         self._host = host
         self._port = port
         self._httpd: Optional[ThreadingHTTPServer] = None
@@ -89,6 +111,7 @@ class MapServer:
         httpd.daemon_threads = True
         # Datenfunktion an den Server hängen, damit der Handler drankommt.
         httpd.masarasi_data = self._data  # type: ignore[attr-defined]
+        httpd.masarasi_image = self._image_provider  # type: ignore[attr-defined]
         self._httpd = httpd
         self._port = httpd.server_address[1]
         self._thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -266,6 +289,21 @@ function entryPopup(e) {
   if (e.motor) h += '<br>Motor: ' + esc(e.motor);
   if (e.sails) h += '<br>Segel: ' + esc(e.sails);
   if (e.note) h += '<br><i>' + esc(e.note) + '</i>';
+  const imgs = e.images || [];
+  if (imgs.length) {
+    h += '<br><a href="/entry_image?id=' + imgs[0] + '" target="_blank">'
+       + '<img src="/entry_image?id=' + imgs[0] + '" '
+       + 'style="max-width:240px;max-height:200px;margin-top:6px;border-radius:4px">'
+       + '</a>';
+    if (imgs.length > 1) {
+      const links = imgs.map(function (id, i) {
+        return '<a href="/entry_image?id=' + id + '" target="_blank">Bild '
+             + (i + 1) + '</a>';
+      });
+      h += '<br><span style="color:#888">' + imgs.length + ' Bilder: </span>'
+         + links.join(' · ');
+    }
+  }
   return h;
 }
 

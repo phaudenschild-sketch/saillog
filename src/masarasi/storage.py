@@ -312,10 +312,15 @@ class LogbookStore:
             conn.execute(f"CREATE TABLE IF NOT EXISTS trips (\n{trip_columns}\n)")
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS entry_images (\n"
-                "  entry_id INTEGER PRIMARY KEY,\n"
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+                "  entry_id INTEGER NOT NULL,\n"
                 "  image BLOB NOT NULL,\n"
                 "  mime TEXT DEFAULT 'image/png',\n"
                 "  created_dz TEXT DEFAULT ''\n)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_entry_images_entry "
+                "ON entry_images(entry_id)"
             )
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS crew_members (\n"
@@ -400,6 +405,29 @@ class LogbookStore:
         for name in ("email", "street", "zip_code", "city"):
             if name not in existing_p:
                 conn.execute(f"ALTER TABLE persons ADD COLUMN {name} TEXT DEFAULT ''")
+
+        # entry_images: von „ein Bild pro Eintrag" (entry_id = PK) auf mehrere
+        # Bilder je Eintrag umstellen (eigene id, entry_id nur noch indiziert).
+        img_cols = {r[1] for r in conn.execute("PRAGMA table_info(entry_images)")}
+        if img_cols and "id" not in img_cols:
+            conn.execute("ALTER TABLE entry_images RENAME TO entry_images_old")
+            conn.execute(
+                "CREATE TABLE entry_images (\n"
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+                "  entry_id INTEGER NOT NULL,\n"
+                "  image BLOB NOT NULL,\n"
+                "  mime TEXT DEFAULT 'image/png',\n"
+                "  created_dz TEXT DEFAULT ''\n)"
+            )
+            conn.execute(
+                "INSERT INTO entry_images (entry_id, image, mime, created_dz) "
+                "SELECT entry_id, image, mime, created_dz FROM entry_images_old"
+            )
+            conn.execute("DROP TABLE entry_images_old")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_entry_images_entry "
+                "ON entry_images(entry_id)"
+            )
 
     # --- Einträge -----------------------------------------------------------
 
@@ -494,27 +522,101 @@ class LogbookStore:
             conn.execute("DELETE FROM entry_images WHERE entry_id = ?", (entry_id,))
             conn.execute("DELETE FROM log_entries WHERE id = ?", (entry_id,))
 
-    # --- Bilder pro Eintrag (z.B. Kartenplotter-Screenshots) ---------------
+    # --- Bilder pro Eintrag (mehrere je Eintrag möglich) -------------------
 
-    def set_image(self, entry_id: int, data: bytes, mime: str = "image/png",
-                  created_dz: str = "") -> None:
+    def add_entry_image(self, entry_id: int, data: bytes,
+                        mime: str = "image/jpeg", created_dz: str = "") -> int:
+        """Hängt EIN weiteres Bild an den Eintrag an. Gibt die Bild-id zurück."""
         with self._connect() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO entry_images (entry_id, image, mime, created_dz) "
+            cursor = conn.execute(
+                "INSERT INTO entry_images (entry_id, image, mime, created_dz) "
                 "VALUES (?, ?, ?, ?)",
                 (entry_id, sqlite3.Binary(data), mime, created_dz),
             )
+            return cursor.lastrowid
+
+    def set_image(self, entry_id: int, data: bytes, mime: str = "image/png",
+                  created_dz: str = "") -> int:
+        """Ersetzt ALLE Bilder des Eintrags durch dieses eine (für Einzel-Import)."""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM entry_images WHERE entry_id = ?", (entry_id,))
+            cursor = conn.execute(
+                "INSERT INTO entry_images (entry_id, image, mime, created_dz) "
+                "VALUES (?, ?, ?, ?)",
+                (entry_id, sqlite3.Binary(data), mime, created_dz),
+            )
+            return cursor.lastrowid
 
     def get_image(self, entry_id: int) -> Optional[bytes]:
+        """Erstes Bild des Eintrags (Rückwärtskompatibilität / Einzelanzeige)."""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT image FROM entry_images WHERE entry_id = ?", (entry_id,)
+                "SELECT image FROM entry_images WHERE entry_id = ? ORDER BY id LIMIT 1",
+                (entry_id,),
             ).fetchone()
         return bytes(row[0]) if row else None
 
+    def get_entry_images(self, entry_id: int) -> List[Dict[str, Any]]:
+        """Alle Bilder eines Eintrags als [{id, image, mime, created_dz}, …]."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, image, mime, created_dz FROM entry_images "
+                "WHERE entry_id = ? ORDER BY id",
+                (entry_id,),
+            ).fetchall()
+        return [
+            {"id": r[0], "image": bytes(r[1]), "mime": r[2], "created_dz": r[3]}
+            for r in rows
+        ]
+
+    def get_image_by_id(self, image_id: int) -> Optional[tuple]:
+        """(Bytes, MIME) eines einzelnen Bildes (für Karte/Bearbeiten)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT image, mime FROM entry_images WHERE id = ?", (image_id,)
+            ).fetchone()
+        return (bytes(row[0]), row[1]) if row else None
+
+    def image_ids(self, entry_id: int) -> List[int]:
+        with self._connect() as conn:
+            return [
+                r[0] for r in conn.execute(
+                    "SELECT id FROM entry_images WHERE entry_id = ? ORDER BY id",
+                    (entry_id,),
+                )
+            ]
+
+    def image_ids_map(self, entry_ids: List[int]) -> Dict[int, List[int]]:
+        """{entry_id: [Bild-ids]} für viele Einträge in EINER Abfrage (Karte)."""
+        result: Dict[int, List[int]] = {}
+        if not entry_ids:
+            return result
+        placeholders = ",".join("?" for _ in entry_ids)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT entry_id, id FROM entry_images "
+                f"WHERE entry_id IN ({placeholders}) ORDER BY id",
+                list(entry_ids),
+            ).fetchall()
+        for entry_id, image_id in rows:
+            result.setdefault(entry_id, []).append(image_id)
+        return result
+
+    def count_entry_images(self, entry_id: int) -> int:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM entry_images WHERE entry_id = ?", (entry_id,)
+            ).fetchone()[0]
+
+    def delete_entry_image(self, image_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM entry_images WHERE id = ?", (image_id,))
+
     def entries_with_images(self) -> set:
         with self._connect() as conn:
-            return {r[0] for r in conn.execute("SELECT entry_id FROM entry_images")}
+            return {
+                r[0] for r in conn.execute("SELECT DISTINCT entry_id FROM entry_images")
+            }
 
     def export_entry_images(self, out_dir: str) -> int:
         """Schreibt alle Eintrags-Bilder als Dateien (nach Zeitstempel benannt)."""
@@ -523,14 +625,14 @@ class LogbookStore:
         count = 0
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT i.entry_id, i.image, i.mime, e.timestamp "
+                "SELECT i.id, i.entry_id, i.image, i.mime, e.timestamp "
                 "FROM entry_images i LEFT JOIN log_entries e ON e.id = i.entry_id"
             ).fetchall()
-        for entry_id, image, mime, timestamp in rows:
+        for img_id, entry_id, image, mime, timestamp in rows:
             ext = "jpg" if mime and "jpeg" in mime else "png"
             stamp = (timestamp or "").replace(":", "").replace("-", "").replace("T", "_")
-            name = f"{stamp}_{entry_id}.{ext}" if stamp else f"eintrag_{entry_id}.{ext}"
-            (out / name).write_bytes(bytes(image))
+            base = f"{stamp}_{entry_id}" if stamp else f"eintrag_{entry_id}"
+            (out / f"{base}_{img_id}.{ext}").write_bytes(bytes(image))
             count += 1
         return count
 

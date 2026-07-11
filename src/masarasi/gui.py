@@ -486,6 +486,7 @@ class Application:
                     track_provider=self._map_track,
                     entries_provider=self._map_entries,
                     info_provider=self._ais_info,
+                    image_provider=self._store.get_image_by_id,
                 )
                 self._map_server.start()
             except OSError as exc:
@@ -527,8 +528,10 @@ class Application:
         """Logbuch-Einträge des ausgewählten Törns als anklickbare Kartenpunkte."""
         trip_id = self._logbook.current_trip_id
         offset = self._tz_offset()
+        rows = self._store.all(newest_first=False, trip_id=trip_id, limit=20000)
+        img_map = self._store.image_ids_map([e.id for e in rows])
         out: List[Dict] = []
-        for e in self._store.all(newest_first=False, trip_id=trip_id, limit=20000):
+        for e in rows:
             if e.lat is None or e.lon is None:
                 continue
             wind = ""
@@ -554,6 +557,7 @@ class Application:
                 "motor": motor,
                 "sails": ", ".join(sail_parts),
                 "note": e.note or "",
+                "images": img_map.get(e.id, []),
             })
         return out
 
@@ -1028,19 +1032,23 @@ class Application:
             return
         offset = self._tz_offset()
         ts_display = timeutil.to_display(entry.timestamp, offset)
-        dialog = _EditEntryDialog(self._root, entry, ts_display)
+        dialog = _EditEntryDialog(
+            self._root, entry, ts_display,
+            store=self._store, capture=self._plotter_jpeg,
+            max_px=int(self._config.photo_max_px or 1600),
+        )
         self._root.wait_window(dialog.top)
-        if dialog.result is None:
-            return
-        result = dict(dialog.result)
-        new_ts = timeutil.from_display(result.pop("timestamp", ""), offset)
-        if new_ts:
-            entry.timestamp = new_ts
-        for key, value in result.items():
-            setattr(entry, key, value)
-        entry.edited = 1
-        entry.edited_dz = utc_now_iso()
-        self._store.update(entry)
+        if dialog.result is not None:
+            result = dict(dialog.result)
+            new_ts = timeutil.from_display(result.pop("timestamp", ""), offset)
+            if new_ts:
+                entry.timestamp = new_ts
+            for key, value in result.items():
+                setattr(entry, key, value)
+            entry.edited = 1
+            entry.edited_dz = utc_now_iso()
+            self._store.update(entry)
+        # Bilder können im Dialog auch bei „Abbrechen" geändert worden sein
         self._refresh_logbook()
 
     # --- Export -------------------------------------------------------------
@@ -1102,8 +1110,16 @@ class _EditEntryDialog:
 
     _ENGINE = {None: "—", 1: "ein", 0: "aus"}
 
-    def __init__(self, parent: tk.Tk, entry, ts_display: str = "") -> None:
+    def __init__(self, parent: tk.Tk, entry, ts_display: str = "",
+                 store=None, capture=None, max_px: int = 1600) -> None:
         self.result: Optional[Dict] = None
+        self._store = store
+        self._entry_id = entry.id
+        self._capture = capture
+        self._max_px = max_px
+        self._img_ids: List[int] = []
+        self._img_index = 0
+        self._thumb = None            # ImageTk-Referenz festhalten (sonst weg-GC)
         self.top = tk.Toplevel(parent)
         self.top.title(f"Eintrag bearbeiten (#{entry.id})")
         self.top.transient(parent)
@@ -1190,10 +1206,136 @@ class _EditEntryDialog:
         self._note.grid(row=r, column=1, columnspan=3, sticky="w", pady=2)
         r += 1
 
+        if self._store is not None:
+            self._build_image_panel(frame, r)
+            r += 1
+
         buttons = ttk.Frame(frame)
         buttons.grid(row=r, column=0, columnspan=4, pady=(10, 0))
         ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
         ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    # --- Bilder (mehrere je Eintrag: ansehen, blättern, +/−) ---------------
+
+    def _build_image_panel(self, frame, row) -> None:
+        imgf = ttk.LabelFrame(frame, text="Bilder")
+        imgf.grid(row=row, column=0, columnspan=4, sticky="we", pady=(8, 0))
+        self._img_label = ttk.Label(imgf, text="(kein Bild)", anchor="center")
+        self._img_label.grid(row=0, column=0, columnspan=6, pady=4)
+        self._img_caption = ttk.Label(imgf, text="", foreground="#555")
+        self._img_caption.grid(row=1, column=0, columnspan=6)
+        self._prev_btn = ttk.Button(imgf, text="◀", width=3, command=self._img_prev)
+        self._prev_btn.grid(row=2, column=0, padx=2, pady=4)
+        self._next_btn = ttk.Button(imgf, text="▶", width=3, command=self._img_next)
+        self._next_btn.grid(row=2, column=1, padx=2)
+        ttk.Button(imgf, text="+ Festplatte", command=self._img_add_disk).grid(
+            row=2, column=2, padx=(10, 2))
+        self._plotter_add_btn = ttk.Button(imgf, text="+ Plotter",
+                                           command=self._img_add_plotter)
+        self._plotter_add_btn.grid(row=2, column=3, padx=2)
+        ttk.Button(imgf, text="Öffnen", command=self._img_open).grid(row=2, column=4, padx=2)
+        self._del_btn = ttk.Button(imgf, text="Löschen", command=self._img_delete)
+        self._del_btn.grid(row=2, column=5, padx=(2, 2))
+        self._reload_images()
+
+    def _reload_images(self, select_last: bool = False) -> None:
+        self._img_ids = self._store.image_ids(self._entry_id)
+        if select_last and self._img_ids:
+            self._img_index = len(self._img_ids) - 1
+        self._img_index = max(0, min(self._img_index, max(0, len(self._img_ids) - 1)))
+        self._render_thumb()
+
+    def _render_thumb(self) -> None:
+        n = len(self._img_ids)
+        has = n > 0
+        for btn in (self._prev_btn, self._next_btn, self._del_btn):
+            btn.config(state="normal" if has else "disabled")
+        if not has:
+            self._img_label.config(image="", text="(kein Bild — über + hinzufügen)")
+            self._img_caption.config(text="")
+            self._thumb = None
+            return
+        rec = self._store.get_image_by_id(self._img_ids[self._img_index])
+        self._img_caption.config(text=f"Bild {self._img_index + 1}/{n}")
+        try:
+            import io
+            from PIL import Image, ImageTk
+            im = Image.open(io.BytesIO(rec[0]))
+            im.thumbnail((380, 380))
+            self._thumb = ImageTk.PhotoImage(im)
+            self._img_label.config(image=self._thumb, text="")
+        except Exception:  # noqa: BLE001  (kein Pillow → Text-Fallback)
+            self._thumb = None
+            self._img_label.config(
+                image="", text="(Vorschau braucht Pillow — 'Öffnen' zum Ansehen)")
+
+    def _img_prev(self) -> None:
+        if self._img_ids:
+            self._img_index = (self._img_index - 1) % len(self._img_ids)
+            self._render_thumb()
+
+    def _img_next(self) -> None:
+        if self._img_ids:
+            self._img_index = (self._img_index + 1) % len(self._img_ids)
+            self._render_thumb()
+
+    def _img_add_disk(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Bild hinzufügen",
+            filetypes=[("Bilder", "*.jpg *.jpeg *.png *.bmp *.gif *.tif *.tiff *.webp"),
+                       ("Alle Dateien", "*.*")],
+        )
+        if not path:
+            return
+        jpeg = photos.resize_to_jpeg(path, self._max_px)
+        if not jpeg:
+            messagebox.showwarning("Bild", "Bild konnte nicht gelesen/verkleinert werden "
+                                          "(Pillow nötig).")
+            return
+        self._store.add_entry_image(self._entry_id, jpeg, "image/jpeg", utc_now_iso())
+        self._reload_images(select_last=True)
+
+    def _img_add_plotter(self) -> None:
+        if self._capture is None:
+            return
+        self._img_caption.config(text="Plotter-Screenshot …")
+        self.top.update_idletasks()
+        jpeg = self._capture()
+        if not jpeg:
+            messagebox.showerror(
+                "Plotter-Screenshot",
+                "Kein Screenshot erhalten (adb-Pfad/Gerät prüfen, Extras → "
+                "Plotter-Screenshot…).")
+            self._render_thumb()
+            return
+        self._store.add_entry_image(self._entry_id, jpeg, "image/jpeg", utc_now_iso())
+        self._reload_images(select_last=True)
+
+    def _img_delete(self) -> None:
+        if not self._img_ids:
+            return
+        if not messagebox.askyesno("Bild löschen", "Dieses Bild wirklich löschen?"):
+            return
+        self._store.delete_entry_image(self._img_ids[self._img_index])
+        self._reload_images()
+
+    def _img_open(self) -> None:
+        if not self._img_ids:
+            return
+        rec = self._store.get_image_by_id(self._img_ids[self._img_index])
+        if not rec:
+            return
+        import os
+        import tempfile
+        ext = ".jpg" if rec[1] and "jpeg" in rec[1] else ".png"
+        try:
+            fd, path = tempfile.mkstemp(suffix=ext, prefix="masarasi_foto_")
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(rec[0])
+        except OSError as exc:  # noqa: BLE001
+            messagebox.showerror("Bild", f"Konnte das Bild nicht öffnen:\n{exc}")
+            return
+        webbrowser.open(Path(path).as_uri())
 
     def _on_save(self) -> None:
         engine_map = {"—": None, "ein": 1, "aus": 0}

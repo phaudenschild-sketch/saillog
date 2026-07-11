@@ -109,7 +109,12 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   Einstellungen als zeitgestempelte ZIP; manuell oder automatisch beim Beenden
   (letzte N behalten)
 - **Törns** mit Start-/Endwerten (Log/Motorstunden aus NMEA vorbelegt)
-- **Einträge bearbeiten & löschen**, ✎-Marker für Bearbeitetes
+- **Einträge bearbeiten & löschen**, ✎-Marker für Bearbeitetes. Im
+  Bearbeiten-Fenster **mehrere Bilder je Eintrag**: Vorschau + Blättern
+  (◀/▶), Bild hinzufügen (Festplatte **oder** Plotter-Screenshot), löschen,
+  extern öffnen. Bilder werden in der **AIS-Karte** im Popup der Markierung
+  angezeigt (erstes Bild inline, weitere als Links; Kartenserver liefert sie
+  über `/entry_image?id=…`).
 - **Zeitzone** (System oder fester UTC-Versatz); intern UTC gespeichert
 - SQLite + Migration; **CSV/GPX-Export** (optional pro Törn)
 - **Tanken & Verbrauch** (Knopf „⛽ Tanken…"): Tankungen mit Zeit, Liter, Ort,

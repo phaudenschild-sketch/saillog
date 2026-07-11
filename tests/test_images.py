@@ -70,6 +70,51 @@ class EntryImageTest(unittest.TestCase):
         self.assertEqual(len(files), 1)
         self.assertTrue(files[0].endswith(".png"))
 
+    def test_multiple_images_per_entry(self):
+        entry = LogEntry(timestamp="2026-07-05T10:00:00Z")
+        self.store.add(entry)
+        id1 = self.store.add_entry_image(entry.id, _png() + b"1", "image/png")
+        id2 = self.store.add_entry_image(entry.id, _png() + b"2", "image/png")
+        id3 = self.store.add_entry_image(entry.id, _png() + b"3", "image/png")
+        self.assertEqual(self.store.image_ids(entry.id), [id1, id2, id3])
+        self.assertEqual(self.store.count_entry_images(entry.id), 3)
+        # erstes Bild = get_image (Rückwärtskompatibilität)
+        self.assertEqual(self.store.get_image(entry.id), _png() + b"1")
+        # einzelnes Bild per id
+        self.assertEqual(self.store.get_image_by_id(id2), (_png() + b"2", "image/png"))
+        # mittleres löschen
+        self.store.delete_entry_image(id2)
+        self.assertEqual(self.store.image_ids(entry.id), [id1, id3])
+
+    def test_image_ids_map_bulk(self):
+        e1 = LogEntry(timestamp="2026-07-05T10:00:00Z"); self.store.add(e1)
+        e2 = LogEntry(timestamp="2026-07-05T11:00:00Z"); self.store.add(e2)
+        a = self.store.add_entry_image(e1.id, _png(), "image/png")
+        b = self.store.add_entry_image(e1.id, _png(), "image/png")
+        c = self.store.add_entry_image(e2.id, _png(), "image/png")
+        m = self.store.image_ids_map([e1.id, e2.id])
+        self.assertEqual(m[e1.id], [a, b])
+        self.assertEqual(m[e2.id], [c])
+
+    def test_migration_single_to_multi(self):
+        import sqlite3
+        path = os.path.join(self.tmp.name, "old.sqlite3")
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE log_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                     "timestamp TEXT, entry_type TEXT)")
+        conn.execute("CREATE TABLE entry_images (entry_id INTEGER PRIMARY KEY, "
+                     "image BLOB NOT NULL, mime TEXT DEFAULT 'image/png', "
+                     "created_dz TEXT DEFAULT '')")
+        conn.execute("INSERT INTO log_entries (timestamp, entry_type) VALUES ('t','manual')")
+        conn.execute("INSERT INTO entry_images (entry_id, image, mime, created_dz) "
+                     "VALUES (1, ?, 'image/png', '')", (_png(),))
+        conn.commit(); conn.close()
+        store = LogbookStore(path)                 # löst die Migration aus
+        self.assertEqual(store.get_image(1), _png())
+        # jetzt lassen sich weitere Bilder anhängen (vorher entry_id = PK)
+        store.add_entry_image(1, _png() + b"x", "image/png")
+        self.assertEqual(store.count_entry_images(1), 2)
+
 
 class CaptureModuleTest(unittest.TestCase):
     def test_available_is_bool(self):
