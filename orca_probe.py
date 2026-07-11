@@ -97,15 +97,46 @@ _SUBSCRIBE_TRIES = [
 
 def _ws_read_frame(reader: _Buffered) -> bytes:
     """Liest einen (unmaskierten Server-)WebSocket-Frame; gibt Nutzdaten zurück."""
+    _op, payload = _ws_frame(reader)
+    return payload
+
+
+def _ws_frame(reader: _Buffered):
+    """Liest einen WebSocket-Frame und gibt (opcode, payload) zurück.
+
+    Opcodes: 0x1=Text, 0x2=Binär, 0x8=Close, 0x9=Ping, 0xA=Pong.
+    Server->Client-Frames sind normalerweise unmaskiert; wir demaskieren
+    sicherheitshalber trotzdem."""
     hdr = reader.read(2)
     if len(hdr) < 2:
-        return b""
+        return None, b""
+    opcode = hdr[0] & 0x0F
+    masked = bool(hdr[1] & 0x80)
     length = hdr[1] & 0x7F
     if length == 126:
         length = int.from_bytes(reader.read(2), "big")
     elif length == 127:
         length = int.from_bytes(reader.read(8), "big")
-    return reader.read(length)
+    mask = reader.read(4) if masked else b""
+    payload = reader.read(length)
+    if masked and mask:
+        payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+    return opcode, payload
+
+
+def _ws_send_op(sock, opcode: int, payload: bytes = b"") -> None:
+    """Sendet einen (maskierten) Client-Frame mit beliebigem Opcode."""
+    mask = os.urandom(4)
+    masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+    n = len(payload)
+    header = bytes([0x80 | opcode])
+    if n < 126:
+        header += bytes([0x80 | n])
+    elif n < 65536:
+        header += bytes([0x80 | 126]) + n.to_bytes(2, "big")
+    else:
+        header += bytes([0x80 | 127]) + n.to_bytes(8, "big")
+    sock.sendall(header + mask + masked)
 
 
 def _ws_connect(host: str, port: int, path: str, timeout: float):
@@ -163,43 +194,87 @@ def ws_capture(host: str, port: int, path: str, seconds: float = 6.0,
         sock.close()
 
 
-def ws_deep(host: str, port: int, path: str, seconds: float = 20.0) -> None:
-    """Sendet 'subscribe'-Kandidaten und lauscht länger; zeigt alle Frames."""
+_OPNAME = {0x0: "cont", 0x1: "text", 0x2: "bin", 0x8: "close", 0x9: "ping", 0xA: "pong"}
+
+
+def ws_deep(host: str, port: int, path: str, seconds: float = 30.0) -> None:
+    """Sendet 'subscribe'-Kandidaten und lauscht; hält per Pong die Verbindung.
+
+    Behandelt WebSocket-Opcodes korrekt: antwortet auf Ping mit Pong (sonst
+    kappt der Orca die Verbindung), zeigt Text-Frames als Text und Binärframes
+    als Hex. So bleibt der Stream offen und wir sehen das echte Datenformat."""
     import time as _time
     sock, reader = _ws_connect(host, port, path, 2.0)
     if sock is None:
         print(f"    {reader}")
         return
     print(f"    verbunden — sende {len(_SUBSCRIBE_TRIES)} subscribe-Versuche und "
-          f"lausche {int(seconds)} s …")
+          f"lausche {int(seconds)} s (mit Pong-Keepalive) …")
     for cmd in _SUBSCRIBE_TRIES:
         try:
             _ws_send_text(sock, cmd)
             print(f"    ▶ {cmd}")
         except OSError:
             break
-    sock.settimeout(seconds)
-    count = 0
-    kinds = {}
+
+    sock.settimeout(2.0)
+    deadline = _time.monotonic() + seconds
+    shown = 0
+    text_kinds = {}
+    bin_sizes = {}
+    n_text = n_bin = n_ping = 0
     try:
-        while True:
-            payload = _ws_read_frame(reader)
-            if not payload:
+        while _time.monotonic() < deadline:
+            try:
+                opcode, payload = _ws_frame(reader)
+            except socket.timeout:
+                continue
+            if opcode is None:
+                print("    (Verbindung vom Server geschlossen)")
                 break
-            count += 1
-            text = payload.decode("utf-8", "replace")
-            # Ereignistyp merken (falls JSON {"event":...})
-            tag = text[:60]
-            kinds[tag] = kinds.get(tag, 0) + 1
-            if count <= 40:
-                print(f"    ◀ {text[:300]}")
-    except (socket.timeout, OSError):
+            if opcode == 0x9:                      # Ping -> Pong (Keepalive!)
+                n_ping += 1
+                try:
+                    _ws_send_op(sock, 0xA, payload)
+                except OSError:
+                    break
+                continue
+            if opcode == 0xA:                      # Pong
+                continue
+            if opcode == 0x8:                      # Close
+                print("    (Server hat die Verbindung geschlossen — Close-Frame)")
+                break
+            if opcode == 0x1:                      # Text
+                n_text += 1
+                text = payload.decode("utf-8", "replace")
+                text_kinds[text[:60]] = text_kinds.get(text[:60], 0) + 1
+                if shown < 60:
+                    print(f"    ◀ TEXT: {text[:300]}")
+                    shown += 1
+            elif opcode == 0x2:                    # Binär
+                n_bin += 1
+                bin_sizes[len(payload)] = bin_sizes.get(len(payload), 0) + 1
+                if shown < 60:
+                    print(f"    ◀ BIN {len(payload):>4} B: {payload[:48].hex(' ')}")
+                    shown += 1
+    except OSError:
         pass
     finally:
+        try:
+            _ws_send_op(sock, 0x8)               # sauber schließen
+        except OSError:
+            pass
         sock.close()
-    print(f"    → {count} Nachricht(en) gesamt. Häufigste:")
-    for tag, n in sorted(kinds.items(), key=lambda x: -x[1])[:10]:
-        print(f"        {n:>4}×  {tag}")
+
+    print(f"\n    → {n_text} Text, {n_bin} Binär, {n_ping} Ping empfangen.")
+    if text_kinds:
+        print("    Text-Ereignisse:")
+        for tag, n in sorted(text_kinds.items(), key=lambda x: -x[1])[:10]:
+            print(f"        {n:>4}×  {tag}")
+    if bin_sizes:
+        print("    Binär-Framegrößen (Bytes → Anzahl):")
+        for size, n in sorted(bin_sizes.items()):
+            print(f"        {size:>4} B  ×{n}")
 
 
 def main(argv=None) -> int:
