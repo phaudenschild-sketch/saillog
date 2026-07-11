@@ -285,7 +285,7 @@ function entryPopup(e) {
   if (e.sog != null) l2.push('SOG ' + e.sog + ' kn');
   if (e.depth != null) l2.push('Tiefe ' + e.depth + ' m');
   if (l2.length) h += '<br>' + l2.join('  ·  ');
-  if (e.wind) h += '<br>Wind ' + esc(e.wind);
+  if (e.wind) h += '<br>Wind wahr ' + esc(e.wind);
   if (e.motor) h += '<br>Motor: ' + esc(e.motor);
   if (e.sails) h += '<br>Segel: ' + esc(e.sails);
   if (e.note) h += '<br><i>' + esc(e.note) + '</i>';

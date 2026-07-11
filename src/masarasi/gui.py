@@ -231,7 +231,7 @@ class Application:
                 "motor", "segel", "img", "note")
         headers = {
             "time": "Zeit", "ed": "✎", "anlass": "Anlass", "type": "Typ",
-            "pos": "Position", "sog": "SOG", "wind": "Wind", "depth": "Tiefe",
+            "pos": "Position", "sog": "SOG", "wind": "Wind wahr", "depth": "Tiefe",
             "motor": "Motor", "segel": "Segel", "img": "📷", "note": "Notiz",
         }
         widths = {
@@ -535,8 +535,11 @@ class Application:
             if e.lat is None or e.lon is None:
                 continue
             wind = ""
-            if e.aws_kn is not None:
-                wind = f"{e.aws_kn:.0f} kn @ {e.awa_deg or 0:.0f}°"
+            if e.tws_kn is not None:               # wahrer Wind
+                if e.twd_deg is not None:
+                    wind = f"{e.tws_kn:.0f} kn @ {e.twd_deg:.0f}°"
+                else:
+                    wind = f"{e.tws_kn:.0f} kn"
             sail_parts = []
             if e.mainsail and e.mainsail != "—":
                 sail_parts.append(e.mainsail)
@@ -962,8 +965,11 @@ class Application:
                 pos = f"{entry.lat:.4f}, {entry.lon:.4f}"
                 positions.append((entry.lat, entry.lon))
             wind = ""
-            if entry.aws_kn is not None:
-                wind = f"{entry.aws_kn:.0f}kn @ {entry.awa_deg or 0:.0f}°"
+            if entry.tws_kn is not None:           # wahrer Wind (für die Analyse)
+                if entry.twd_deg is not None:
+                    wind = f"{entry.tws_kn:.0f}kn @ {entry.twd_deg:.0f}°"
+                else:
+                    wind = f"{entry.tws_kn:.0f}kn"
             motor = "ein" if entry.engine_on == 1 else ("aus" if entry.engine_on == 0 else "")
             sail_parts = []
             if entry.mainsail and entry.mainsail != "—":
