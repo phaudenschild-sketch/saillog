@@ -147,12 +147,12 @@ class Application:
             row=0, column=5, padx=4
         )
         ttk.Button(trip_bar, text="⛽ Tanken…", command=self._on_fuel).grid(
-            row=0, column=5, padx=4
+            row=0, column=6, padx=4
         )
         self._trip_dist_label = ttk.Label(
             trip_bar, text="", foreground="#1a5a8a", font=("TkDefaultFont", 10, "bold")
         )
-        self._trip_dist_label.grid(row=0, column=6, padx=12)
+        self._trip_dist_label.grid(row=0, column=7, padx=12)
 
         # Hauptzeile: Messwerte | Bedingungen nebeneinander
         main_row = ttk.Frame(self._root)
