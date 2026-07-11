@@ -28,7 +28,8 @@ def _printable(data: bytes, limit: int = 600) -> str:
     return text + ("…" if len(data) > limit else "")
 
 
-def http_get(host: str, port: int, path: str = "/", timeout: float = 3.0) -> bytes:
+def http_get(host: str, port: int, path: str = "/", timeout: float = 3.0,
+             limit: int = 65536) -> bytes:
     try:
         with socket.create_connection((host, port), timeout=timeout) as sock:
             sock.settimeout(timeout)
@@ -38,8 +39,8 @@ def http_get(host: str, port: int, path: str = "/", timeout: float = 3.0) -> byt
             )
             data = b""
             try:
-                while len(data) < 4096:
-                    chunk = sock.recv(4096 - len(data))
+                while len(data) < limit:
+                    chunk = sock.recv(4096)
                     if not chunk:
                         break
                     data += chunk
@@ -48,6 +49,51 @@ def http_get(host: str, port: int, path: str = "/", timeout: float = 3.0) -> byt
             return data
     except OSError as exc:
         return f"(Fehler: {exc})".encode()
+
+
+# Gängige Nav-/Daten-Endpunkte, die eine Bord-API anbieten könnte
+API_PORTS = [8080, 9001, 8085]
+API_PATHS = [
+    "/", "/version", "/status", "/health", "/info", "/state",
+    "/nav", "/navigation", "/navdata", "/gps", "/position", "/location",
+    "/fix", "/data", "/instruments", "/instrument", "/sensors", "/sensor",
+    "/imu", "/wind", "/depth", "/speed", "/sog", "/cog", "/heading", "/hdg",
+    "/attitude", "/vessel", "/boat", "/telemetry", "/values", "/measurements",
+    "/api", "/api/v1", "/api/nav", "/api/data", "/api/status", "/api/gps",
+    "/signalk", "/signalk/v1/api/vessels/self",
+]
+
+
+def _http_status_body(raw: bytes):
+    """(Statuscode:int, Body:bytes) aus einer HTTP-Antwort."""
+    head, _, body = raw.partition(b"\r\n\r\n")
+    first = head.split(b"\r\n", 1)[0]
+    parts = first.split(b" ")
+    code = 0
+    if len(parts) >= 2 and parts[1].isdigit():
+        code = int(parts[1])
+    return code, body
+
+
+def scan_api(host: str) -> None:
+    """Probiert gängige API-Pfade auf den HTTP-Ports und zeigt 200er-Antworten."""
+    for port in API_PORTS:
+        print(f"\n== API-Scan {host}:{port} ==")
+        found = 0
+        for path in API_PATHS:
+            raw = http_get(host, port, path)
+            if raw.startswith(b"(Fehler"):
+                print(f"  {path}  → {raw.decode('utf-8','replace')}")
+                break
+            code, body = _http_status_body(raw)
+            if code == 200:
+                found += 1
+                preview = _printable(body.strip(), 400).replace("\n", " ")
+                print(f"  200  {path}\n       {preview}")
+            elif code and code != 404:
+                print(f"  {code}  {path}")
+        if not found:
+            print("  (keine 200-Antworten außer evtl. Fehlern)")
 
 
 class _Buffered:
@@ -286,7 +332,29 @@ def main(argv=None) -> int:
         "--deep", action="store_true",
         help="WebSocket 9000: subscribe-Kommandos senden und länger lauschen",
     )
+    parser.add_argument(
+        "--api", action="store_true",
+        help="gängige REST-API-Pfade auf 8080/9001/8085 durchprobieren",
+    )
+    parser.add_argument(
+        "--fetch", metavar="PORT/PATH",
+        help="einen einzelnen Pfad holen, z.B. 8080//nav  oder  9001//api/data",
+    )
     args = parser.parse_args(argv)
+
+    if args.fetch:
+        port_str, _, path = args.fetch.partition("/")
+        path = "/" + path.lstrip("/")
+        print(f"== GET http://{args.host}:{port_str}{path} ==")
+        raw = http_get(args.host, int(port_str), path)
+        print(_printable(raw, 8000))
+        return 0
+
+    if args.api:
+        print(f"== API-Endpunkt-Scan an {args.host} ==")
+        scan_api(args.host)
+        print("\nFertig. Ausgabe kopieren und schicken.")
+        return 0
 
     if args.deep:
         port = args.ws_port or 9000
