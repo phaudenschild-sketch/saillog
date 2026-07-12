@@ -106,6 +106,17 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
 - **Foto-Import** (`photos.py`, Knopf „📷 Foto-Import…"): Ordner überwachen →
   Bild in „vernünftige" Größe (max. 1600 px, JPEG) verkleinern → Auto-Eintrag
   mit Bild + NMEA-Daten; Originale wandern nach `verarbeitet/` (braucht Pillow)
+- **TripCon-Import im Menü** (**Extras → „TripCon-Backup importieren…"**):
+  Dateiauswahl → read-only Analyse (Integrität/Törns/Einträge/Bilder/Zeitraum,
+  `tripcon.analyze_tcdb`) → Rückfrage → Import im Thread
+  (`tripcon.import_into_masarasi`, ersetzt frühere `tripcon`-Importe). Das CLI
+  (`import_tripcon.py`) bleibt für Export (CSV/GPX/Bilder) bestehen.
+- **Bedienkomfort:** Nach „✎ Eintrag speichern" springt der **Anlass** zurück
+  auf „Routineeintrag" und die **Bemerkung** wird geleert (kein versehentliches
+  Übernehmen ins nächste Log). Quellen-Vorlagen entpersonalisiert (B&G: Port
+  10110 + GoFree-Suche statt fester IP; Maretron: COM3).
+- **Weitergabe/Kommerz:** `LICENSE` (MIT) ergänzt; Analyse & Ideen in
+  `docs/WEITERGABE.md` (Weitergabe-Check + kommerzielle Optionen).
 - **Plotter-Screenshot** (`android_screencap.py`): holt den Bildschirm des
   Android-Tablets (Orca-/Plotter-Anzeige) per **adb** (`exec-out screencap -p`)
   ins Logbuch. Knopf **„📸 Plotter"** (sofort Eintrag mit Bild), Bild-Auswahl

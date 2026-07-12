@@ -211,6 +211,14 @@ Eine TripCon-Sicherung (`.tcdb`) ist eine SQLite-Datenbank. masarasi kann
 sie **lokal** auslesen und wieder zugänglich machen — die Datei muss
 nirgends hochgeladen werden.
 
+**Am einfachsten direkt in der App:** Menü **Extras → „TripCon-Backup
+importieren…"**, `.tcdb` auswählen. masarasi zeigt zuerst eine Übersicht
+(Törns, Einträge, Bilder, Zeitraum) und fragt vor dem Import nach. Die alten
+Einträge bekommen den Typ `tripcon`; ein erneuter Import ersetzt sie (keine
+Dubletten), eigene Einträge bleiben unberührt.
+
+Für Skript-Nutzer geht es auch über die Kommandozeile:
+
 **Struktur ansehen** (Formate, Tabellen, Bilder):
 ```bash
 python inspect_backup.py "C:\Pfad\TripCon_JJJJMMTT.tcdb"
@@ -244,6 +252,12 @@ Dezimal-Bogenminuten gespeichert (Grad = Wert / 60); Törns in
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## Lizenz
+
+MIT — siehe [`LICENSE`](LICENSE). Frei nutz- und anpassbar; Weitergabe an
+andere Segler ausdrücklich erwünscht. **Navigation immer mit den amtlichen
+Mitteln** — masarasi ist ein Logbuch, kein Navigationsgerät.
 
 ## Projektstruktur
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
-from masarasi import backup, crewlist, fuel, geo, photos, reports, timeutil
+from masarasi import backup, crewlist, fuel, geo, photos, reports, timeutil, tripcon
 from masarasi.ais import AisDecoder, AisTargets
 from masarasi.autolog import AutoLogSettings
 from masarasi.config import CONFIG_PATH, Config
@@ -110,6 +110,9 @@ class Application:
                            command=self._on_manage_voyages)
         extras.add_command(label="Plotter-Screenshot (ADB)…",
                            command=self._on_plotter_settings)
+        extras.add_separator()
+        extras.add_command(label="TripCon-Backup importieren…",
+                           command=self._on_import_tripcon)
         menubar.add_cascade(label="Extras", menu=extras)
         self._root.config(menu=menubar)
 
@@ -399,6 +402,9 @@ class Application:
                 self._attach_image_async(entry.id, disk_path=path)
         elif source == "Plotter-Screenshot":
             self._attach_image_async(entry.id, plotter=True)
+        # Nach dem Speichern: Anlass zurück auf Standard, Bemerkung leeren
+        self._cond_vars["logevent"].set("Routineeintrag")
+        self._cond_vars["note"].set("")
 
     # --- Plotter-Screenshot (ADB vom Android-Tablet) -----------------------
 
@@ -994,6 +1000,92 @@ class Application:
         dialog = _VoyageDialog(self._root, self._store)
         self._root.wait_window(dialog.top)
         self._refresh_trips()
+
+    # --- TripCon-Import -----------------------------------------------------
+
+    def _on_import_tripcon(self) -> None:
+        """Liest ein TripCon-Backup (.tcdb) ein — mit Vorschau und Bestätigung."""
+        path = filedialog.askopenfilename(
+            title="TripCon-Sicherung wählen",
+            filetypes=[("TripCon-Backup", "*.tcdb"), ("Alle Dateien", "*.*")],
+        )
+        if not path:
+            return
+        import threading
+        threading.Thread(
+            target=self._tripcon_analyze_thread, args=(path,), daemon=True
+        ).start()
+
+    def _tripcon_analyze_thread(self, path: str) -> None:
+        try:
+            conn = tripcon.connect(path)
+            try:
+                info = tripcon.analyze_tcdb(conn)
+            finally:
+                conn.close()
+        except Exception as exc:  # noqa: BLE001
+            self._root.after(0, lambda: self._tripcon_failed(exc))
+            return
+        self._root.after(0, lambda: self._tripcon_confirm(path, info))
+
+    def _tripcon_confirm(self, path: str, info: Dict) -> None:
+        integ = str(info.get("integrity", "?"))
+        if integ not in ("ok", "?"):
+            if not messagebox.askyesno(
+                "TripCon-Import",
+                f"Achtung: Die Datei meldet Integritätsprobleme:\n{integ}\n\n"
+                "Trotzdem versuchen, so viel wie möglich zu importieren?"):
+                return
+        msg = (
+            f"Datei: {Path(path).name}\n\n"
+            f"Integrität: {integ}\n"
+            f"Törns: {info.get('trips')}\n"
+            f"Log-Einträge: {info.get('log_entries')}\n"
+            f"Plotter-Bilder: {info.get('plotter_images')}\n"
+            f"Schiffe: {info.get('ships')} · Personen: {info.get('persons')}\n"
+            f"Zeitraum: {info.get('date_from', '')} – {info.get('date_to', '')}\n\n"
+            "Jetzt in masarasi importieren?\n"
+            "(Ein früherer TripCon-Import wird dabei ersetzt; eigene Einträge "
+            "bleiben unberührt.)"
+        )
+        if not messagebox.askyesno("TripCon-Import", msg):
+            return
+        import threading
+        threading.Thread(
+            target=self._tripcon_import_thread, args=(path,), daemon=True
+        ).start()
+
+    def _tripcon_import_thread(self, path: str) -> None:
+        try:
+            conn = tripcon.connect(path)
+            try:
+                result = tripcon.import_into_masarasi(
+                    conn, self._config.db_path, replace=True,
+                    max_px=int(self._config.photo_max_px or 1600),
+                )
+            finally:
+                conn.close()
+        except Exception as exc:  # noqa: BLE001
+            self._root.after(0, lambda: self._tripcon_failed(exc))
+            return
+        self._root.after(0, lambda: self._tripcon_done(result))
+
+    def _tripcon_done(self, r: Dict) -> None:
+        self._refresh_trips()
+        self._refresh_logbook()
+        messagebox.showinfo(
+            "TripCon-Import",
+            "Import abgeschlossen.\n\n"
+            f"Einträge: {r['entries']}\n"
+            f"Bilder: {r['images']} (+{r.get('trip_images', 0)} törnweit, "
+            f"Methode: {r['image_method']})\n"
+            f"Schiffe: {r['ships_created']} neu, {r['ships_matched']} erkannt\n"
+            f"Personen: {r['persons_created']} neu, {r['persons_matched']} erkannt",
+        )
+
+    def _tripcon_failed(self, exc: Exception) -> None:
+        messagebox.showerror(
+            "TripCon-Import", f"Import fehlgeschlagen:\n{exc}")
 
     # --- Stammdaten ---------------------------------------------------------
 
@@ -3943,11 +4035,15 @@ class _SourcesDialog:
         messagebox.showinfo("GoFree", msg)
 
     def _tmpl_bg(self) -> None:
-        self._proto.set("tcp"); self._host.set("192.168.9.224"); self._port.set("10110")
+        # NMEA-0183-Standardport 10110 (TCP). Die Plotter-IP ist netzabhängig —
+        # am einfachsten über „🔍 GoFree suchen" automatisch eintragen lassen.
+        self._proto.set("tcp"); self._host.set(""); self._port.set("10110")
         self._update_hint()
 
     def _tmpl_maretron(self) -> None:
-        self._proto.set("serial"); self._host.set("COM11"); self._port.set("115200")
+        # COM-Port ist rechnerabhängig (im Gerätemanager nachsehen); COM3 als
+        # üblicher Vorgabewert.
+        self._proto.set("serial"); self._host.set("COM3"); self._port.set("115200")
         self._update_hint()
 
     def _on_ok(self) -> None:
