@@ -26,6 +26,10 @@ screenshot = [
 serial = [
     "pyserial>=3.5",
 ]
+# Nur zum Erstellen der Windows-EXE (siehe docs/BUILD.md, triplog.spec)
+build = [
+    "pyinstaller>=6.0",
+]
 
 [project.scripts]
 triplog = "triplog.app:main"

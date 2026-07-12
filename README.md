@@ -247,6 +247,13 @@ Dezimal-Bogenminuten gespeichert (Grad = Wert / 60); Törns in
 (je über `LogID`), Track in `B111_TrackInfo`, Bilder als BLOB in
 `B104_BinDat`.
 
+## Als Windows-Programm weitergeben (EXE + Installer)
+
+Damit andere Segler TripLog **ohne Python** nutzen können, lässt sich eine
+eigenständige `TripLog.exe` (mit Symbol) und ein Installer bauen — auf Windows
+einfach **`build_windows.bat`** doppelklicken. Details, Optionen (Pillow/pyserial
+mitpacken) und der Inno-Setup-Installer: siehe **[`docs/BUILD.md`](docs/BUILD.md)**.
+
 ## Tests
 
 ```bash

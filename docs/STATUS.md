@@ -132,6 +132,13 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   `assets/logo.svg`, `APP_NAME`, `COPYRIGHT = "© Peter Haudenschild"`). Das Logo
   erscheint auf der Titelseite der Berichte und im Kopf der Crewliste; der
   Copyright-Hinweis steht im Fuß jeder Ausgabe.
+- **Windows-Build (EXE + Installer):** `triplog.spec` (PyInstaller, onedir,
+  `console=False`, Icon `assets/icon.ico`, `pathex=['src']`), `build_windows.bat`
+  (Ein-Klick: PyInstaller installieren → EXE bauen → optional Inno Setup),
+  `installer/triplog.iss` (Inno Setup: Startmenü/Desktop/Deinstaller, LICENSE),
+  Anleitung `docs/BUILD.md`. Build unter Linux/xvfb verifiziert (Importgraph +
+  Start der gefrorenen App). Muss final auf Windows gebaut werden. pyproject:
+  optionales Extra `build = ["pyinstaller>=6.0"]`.
 - **App-Icon:** `assets/icon.svg` (quadratisches Boot-Badge) → gerendert nach
   `assets/icon.png` (256, transparent) und `assets/icon.ico` (16–256, für
   Windows-Verknüpfung/späteren Installer). Das **Fenster-Icon** der App wird zur

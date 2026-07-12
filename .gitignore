@@ -6,6 +6,9 @@ __pycache__/
 build/
 dist/
 
+# Windows-Build / Installer-Ausgaben
+installer/Output/
+
 # Virtual environments
 .venv/
 venv/
