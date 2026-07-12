@@ -107,17 +107,32 @@ def _columns(conn, table: str) -> List[str]:
 
 # --- Törns & Einträge -------------------------------------------------------
 
-def load_trips(conn) -> Dict[int, Dict[str, str]]:
-    """{Trip-ID: {from, to, from_dz, to_dz}} aus B105_Trips."""
-    trips: Dict[int, Dict[str, str]] = {}
-    for row in conn.execute(
-        "SELECT ID, FromLocation, FromDZ, ToLocation, ToDZ FROM B105_Trips"
-    ):
+# Mögliche Spaltennamen in B105_Trips, die auf S003_Ships.ID zeigen.
+_TRIP_SHIP_COLS = ("Ship", "ShipID", "ShipId", "S003_ShipID", "S003_Ship",
+                   "Boat", "BoatID", "Vessel", "VesselID", "Schiff")
+
+
+def load_trips(conn) -> Dict[int, Dict[str, object]]:
+    """{Trip-ID: {from, to, from_dz, to_dz, ship}} aus B105_Trips.
+
+    ``ship`` ist die TripCon-Schiffs-ID (aus S003_Ships), falls B105_Trips ein
+    entsprechendes Feld hat — sonst None. Damit lässt sich beim Import das auf
+    dem Törn gefahrene Schiff automatisch zuordnen.
+    """
+    cols = _columns(conn, "B105_Trips")
+    ship_col = _pick_col(cols, _TRIP_SHIP_COLS)
+    select_cols = ["ID", "FromLocation", "FromDZ", "ToLocation", "ToDZ"]
+    if ship_col:
+        select_cols.append(ship_col)
+    quoted = ", ".join(f'"{c}"' for c in select_cols)
+    trips: Dict[int, Dict[str, object]] = {}
+    for row in conn.execute(f"SELECT {quoted} FROM B105_Trips"):
         trips[row[0]] = {
             "from": row[1] or "",
             "from_dz": row[2] or "",
             "to": row[3] or "",
             "to_dz": row[4] or "",
+            "ship": (row[5] if ship_col and row[5] is not None else None),
         }
     return trips
 
@@ -320,20 +335,50 @@ def _trip_log_range(conn, old_trip_id: int) -> Tuple[Optional[float], Optional[f
     return (to_float(row[0]), to_float(row[1])) if row else (None, None)
 
 
-def import_trips(conn, store: LogbookStore) -> Dict[int, int]:
+def import_trips(conn, store: LogbookStore,
+                 ship_map: Optional[Dict[int, int]] = None) -> Dict[int, int]:
     """Legt für jeden TripCon-Törn einen saillog-Törn an (idempotent).
+
+    ``ship_map`` bildet TripCon-Schiffs-IDs auf saillog-Schiffs-IDs ab. Damit
+    wird das auf dem Törn gefahrene Schiff automatisch eingetragen. Hat
+    B105_Trips kein Schiff-Feld, aber es wurde genau ein Schiff importiert,
+    wird dieses allen Törns zugeordnet (eine TripCon-Sicherung ist i.d.R. pro
+    Boot). Bereits importierte Törns ohne Schiff werden nachgezogen.
 
     Gibt {TripCon-Trip-ID: saillog-Trip-ID} zurück.
     """
-    existing = {(t.name, t.start_dz): t.id for t in store.all_trips()}
+    ship_map = ship_map or {}
+    trips_info = load_trips(conn)
+    # Fallback: kein Schiff-Feld in B105_Trips, aber genau ein importiertes Schiff
+    single_ship = (next(iter(ship_map.values()))
+                   if len(set(ship_map.values())) == 1 else None)
+
+    def ship_for(info) -> Optional[int]:
+        raw = info.get("ship")
+        if raw is not None:
+            try:
+                mapped = ship_map.get(int(raw))
+            except (TypeError, ValueError):
+                mapped = None
+            if mapped is not None:
+                return mapped
+        return single_ship
+
+    existing = {(t.name, t.start_dz): t for t in store.all_trips()}
     mapping: Dict[int, int] = {}
-    for old_id, info in load_trips(conn).items():
+    for old_id, info in trips_info.items():
         route = f"{info['from']} → {info['to']}".strip(" →")
         name = f"TripCon #{old_id}: {route}" if route else f"TripCon #{old_id}"
         start_dz = to_iso(info["from_dz"])
         key = (name, start_dz)
+        sid = ship_for(info)
         if key in existing:
-            mapping[old_id] = existing[key]
+            trip = existing[key]
+            # Schiff bei bereits importierten Törns nachtragen, wenn noch leer
+            if sid is not None and trip.ship_id is None:
+                trip.ship_id = sid
+                store.update_trip(trip)
+            mapping[old_id] = trip.id
             continue
         eh_start, eh_end = _trip_engine_hours(conn, old_id)
         log_start, log_end = _trip_log_range(conn, old_id)
@@ -348,6 +393,7 @@ def import_trips(conn, store: LogbookStore) -> Dict[int, int]:
             end_engine_hours=eh_end,
             start_log_nm=log_start,
             end_log_nm=log_end,
+            ship_id=sid,
         )
         store.add_trip(trip)
         mapping[old_id] = trip.id
@@ -707,11 +753,13 @@ def _attach_photo(raw: bytes, max_px: int):
 def import_ships(conn, store: LogbookStore, max_px: int = 1600) -> Dict[str, object]:
     """Legt Schiffe aus S003_Ships an (idempotent über den Namen) + Foto.
 
-    Gibt {"created": n, "matched": m, "photos": p, "fields": [Attribute]} zurück.
+    Gibt {"created", "matched", "photos", "fields", "id_map"} zurück; ``id_map``
+    bildet die TripCon-Schiffs-ID auf die saillog-Schiffs-ID ab (für die
+    automatische Zuordnung des Schiffs zum Törn).
     """
     from saillog.storage import Ship
 
-    result = {"created": 0, "matched": 0, "photos": 0, "fields": []}
+    result = {"created": 0, "matched": 0, "photos": 0, "fields": [], "id_map": {}}
     cols = _columns(conn, "S003_Ships")
     if not cols:
         return result
@@ -720,11 +768,15 @@ def import_ships(conn, store: LogbookStore, max_px: int = 1600) -> Dict[str, obj
     if not name_col:
         return result
     pic_col = _pick_col(cols, ("Picture", "Image", "Photo", "Bild"))
+    id_col = _pick_col(cols, ("ID", "Id"))
     result["fields"] = sorted(fmap.keys())
+    id_map: Dict[int, int] = {}
 
     wanted = [c for c, _ in fmap.values()]
     if pic_col and pic_col not in wanted:
         wanted.append(pic_col)
+    if id_col and id_col not in wanted:
+        wanted.append(id_col)
 
     existing = {_norm(s.name): s for s in store.all_ships() if s.name.strip()}
     for rowd in _row_dict(conn, "S003_Ships", wanted):
@@ -743,11 +795,17 @@ def import_ships(conn, store: LogbookStore, max_px: int = 1600) -> Dict[str, obj
             _apply_fields(ship, rowd, fmap, only_empty=True)
             store.update_ship(ship)
             result["matched"] += 1
+        if id_col and rowd.get(id_col) is not None:
+            try:
+                id_map[int(rowd[id_col])] = ship.id
+            except (TypeError, ValueError):
+                pass
         if pic_col and isinstance(rowd.get(pic_col), (bytes, bytearray)):
             attach = _attach_photo(bytes(rowd[pic_col]), max_px)
             if attach:
                 store.set_ship_photo(ship.id, attach[0], attach[1])
                 result["photos"] += 1
+    result["id_map"] = id_map
     return result
 
 
@@ -814,7 +872,9 @@ def import_into_saillog(conn, db_path: str, replace: bool = True,
     store = LogbookStore(db_path)
     if replace:
         store.delete_by_type("tripcon")
-    trip_map = import_trips(conn, store)
+    # Schiffe zuerst, damit die Törns das gefahrene Schiff automatisch bekommen
+    ship_info = import_ships(conn, store, max_px=max_px)
+    trip_map = import_trips(conn, store, ship_map=ship_info.get("id_map"))
 
     pairs = list(_iter_entries(conn, trip_id_map=trip_map))
     store.add_many_returning_ids([entry for _log_id, entry in pairs])
@@ -823,7 +883,6 @@ def import_into_saillog(conn, db_path: str, replace: bool = True,
     }
 
     image_info = import_entry_images(conn, store, logid_map, max_px=max_px)
-    ship_info = import_ships(conn, store, max_px=max_px)
     person_info = import_persons(conn, store, max_px=max_px)
 
     return {

@@ -298,6 +298,66 @@ class TripconTest(unittest.TestCase):
         tripcon.import_into_saillog(self.conn, db_path)
         self.assertEqual(len(store.all_trips()), 1)
 
+    def test_import_assigns_single_ship_to_trips(self):
+        # B105_Trips ohne Schiff-Feld, aber genau ein Schiff -> allen Törns
+        # dieses Schiff zuordnen (eine TripCon-Sicherung ist i.d.R. pro Boot).
+        db_path = os.path.join(self.tmp.name, "saillog.sqlite3")
+        tripcon.import_into_saillog(self.conn, db_path)
+        store = LogbookStore(db_path)
+        trip = store.all_trips()[0]
+        self.assertIsNotNone(trip.ship_id)
+        ship = store.get_ship(trip.ship_id)
+        self.assertEqual(ship.name, "Tymanfaya")
+
+    def test_reimport_backfills_trip_ship(self):
+        # Törn zuerst ohne Schiff importiert (kein Schiff in der DB), dann mit
+        db_path = os.path.join(self.tmp.name, "saillog.sqlite3")
+        store = LogbookStore(db_path)
+        # Törn vorab anlegen wie der Import es täte, aber ohne Schiff
+        from saillog.storage import Trip
+        store.add_trip(Trip(
+            name="TripCon #37: Vulcano → Isola Salina", status="closed",
+            start_location="Vulcano", start_dz="2013-07-14T07:55:00Z",
+            end_location="Isola Salina", end_dz="2013-07-14T10:45:00Z"))
+        tripcon.import_into_saillog(self.conn, db_path)
+        trips = store.all_trips()
+        self.assertEqual(len(trips), 1)          # kein Duplikat
+        self.assertIsNotNone(trips[0].ship_id)   # Schiff nachgetragen
+
+    def test_import_uses_per_trip_ship_column(self):
+        # Eigene DB: zwei Schiffe, B105_Trips mit Ship-Spalte pro Törn
+        path = os.path.join(self.tmp.name, "multi.tcdb")
+        c = sqlite3.connect(path)
+        cur = c.cursor()
+        cur.execute("CREATE TABLE B105_Trips (ID INTEGER, Ship INTEGER, "
+                    "FromLocation TEXT, FromDZ TEXT, ToLocation TEXT, ToDZ TEXT)")
+        cur.execute("INSERT INTO B105_Trips VALUES "
+                    "(1,2,'Kiel','2020-06-01 08:00:00.000Z','Rügen','2020-06-02 18:00:00.000Z')")
+        cur.execute("INSERT INTO B105_Trips VALUES "
+                    "(2,3,'Split','2021-07-01 08:00:00.000Z','Vis','2021-07-01 15:00:00.000Z')")
+        cur.execute("CREATE TABLE B100_Log (ID INTEGER, Trip INTEGER, TripDZ TEXT, "
+                    "CreateDZ TEXT, LogEvent INTEGER, Clouds INTEGER, "
+                    "Precipitation INTEGER, Sight INTEGER)")
+        cur.execute("INSERT INTO B100_Log VALUES (10,1,'2020-06-01 09:00:00.000Z','',NULL,NULL,NULL,NULL)")
+        cur.execute("INSERT INTO B100_Log VALUES (11,2,'2021-07-01 09:00:00.000Z','',NULL,NULL,NULL,NULL)")
+        cur.execute("CREATE TABLE VPosition (LogID INTEGER, Latitude REAL, Longitude REAL, AutoRecord INTEGER)")
+        cur.execute("CREATE TABLE S003_Ships (ID INTEGER, ShipName TEXT)")
+        cur.execute("INSERT INTO S003_Ships VALUES (2,'Nordwind')")
+        cur.execute("INSERT INTO S003_Ships VALUES (3,'Adria')")
+        c.commit(); c.close()
+
+        conn = tripcon.connect(path)
+        try:
+            db_path = os.path.join(self.tmp.name, "multi.sqlite3")
+            tripcon.import_into_saillog(conn, db_path)
+            store = LogbookStore(db_path)
+            by_route = {t.start_location: store.get_ship(t.ship_id).name
+                        for t in store.all_trips()}
+            self.assertEqual(by_route["Kiel"], "Nordwind")
+            self.assertEqual(by_route["Split"], "Adria")
+        finally:
+            conn.close()
+
     def test_gpx_tracks(self):
         out = os.path.join(self.tmp.name, "tracks")
         from pathlib import Path

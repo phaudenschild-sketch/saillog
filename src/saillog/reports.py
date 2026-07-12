@@ -686,12 +686,7 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
                      entry_types: Optional[set] = None,
                      static_map: bool = False, map_renderer=None) -> str:
     entries = store.all(newest_first=False, trip_id=trip.id, limit=50000)
-    ship = None
-    if config.active_ship_id:
-        ship = store.get_ship(config.active_ship_id)
-    if ship is None:
-        ships = store.all_ships()
-        ship = ships[0] if ships else None
+    ship = _resolve_ship(store, config, trip)
     crew = store.crew_for_trip(trip.id)
 
     stats = leg_stats(entries)
@@ -744,6 +739,39 @@ def _active_ship(store, config) -> Optional[Ship]:
     return ship
 
 
+def _resolve_ship(store, config, trip: Trip) -> Optional[Ship]:
+    """Auf dem Törn gefahrenes Schiff (fest eingetragen), sonst das aktive.
+
+    So zeigen die Berichte das tatsächlich gefahrene Schiff und nicht einfach
+    das gerade eingestellte.
+    """
+    sid = getattr(trip, "ship_id", None)
+    if sid:
+        s = store.get_ship(sid)
+        if s is not None:
+            return s
+    return _active_ship(store, config)
+
+
+def _ships_for_trips(store, config, trips: List[Trip]) -> List[Ship]:
+    """Distinkte Schiffe der Törns (Reihenfolge erhalten)."""
+    out: List[Ship] = []
+    seen = set()
+    for t in trips:
+        s = _resolve_ship(store, config, t)
+        if s is None:
+            continue
+        key = s.id if s.id is not None else s.name
+        if key not in seen:
+            seen.add(key)
+            out.append(s)
+    return out
+
+
+def _ship_names(ships: List[Ship]) -> str:
+    return ", ".join(s.name for s in ships if s.name)
+
+
 def _combined_crew(store, trips: List[Trip]) -> List:
     seen = set()
     out = []
@@ -763,7 +791,8 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
                        static_map: bool = False, map_renderer=None) -> str:
     """Törnbericht/Etappenbericht über MEHRERE Etappen (ein Törn)."""
     kind = "Etappenbericht" if with_images else "Törnbericht"
-    ship = _active_ship(store, config)
+    ships = _ships_for_trips(store, config, trips)
+    ship_name = _ship_names(ships) or ""
     crew = _combined_crew(store, trips)
 
     dzs = [t.start_dz for t in trips if t.start_dz] + [t.end_dz for t in trips if t.end_dz]
@@ -774,12 +803,12 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
     parts = [
         f'<div class="title-page"><div class="brandbar">{branding.logo_html(72)}</div>'
         f'<div class="big">{escape(kind)}</div>'
-        f'<div>Logbuch der <b>{escape(ship.name if ship else "")}</b></div>'
+        f'<div>Logbuch der <b>{escape(ship_name)}</b></div>'
         f'<div class="sub">{escape(period)}<br><b>{escape(voyage.name)}</b><br>'
         f'{escape(von)} → {escape(nach)}'
         + (f'<br>Revier: {escape(voyage.revier)}' if voyage.revier else "")
         + '</div></div><div class="pb"></div>',
-        ship_block(ship),
+        "".join(ship_block(s) for s in ships),
         crew_block(crew),
         '<h2 class="pb">Etappenübersicht</h2>',
     ]
@@ -839,7 +868,6 @@ def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
                     map_types: Optional[set] = None,
                     static_map: bool = False, map_renderer=None) -> str:
     total = sailed = motor = 0.0
-    ship_ids = set()
     parts = []
     combined: List[LogEntry] = []
     for trip in trips:
@@ -850,7 +878,9 @@ def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
         s = leg_stats(entries)
         total += s["total"]; sailed += s["sailed"]; motor += s["motor"]
 
-    ships = store.all_ships()
+    # Nur die tatsächlich auf diesen Törns gefahrenen Schiffe zeigen
+    # (nicht pauschal alle angelegten Schiffe).
+    ships = _ships_for_trips(store, config, trips)
     ship_html = "".join(ship_block(s) for s in ships)
 
     period = ""
