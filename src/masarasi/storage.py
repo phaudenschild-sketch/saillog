@@ -528,13 +528,22 @@ class LogbookStore:
         limit: Optional[int] = None,
         newest_first: bool = True,
         trip_id: Optional[int] = None,
+        include_track: bool = False,
     ) -> List[LogEntry]:
+        """Logbuch-Einträge. Reine Track-Punkte (entry_type='track') dienen nur
+        der dichten Kartenspur und werden standardmäßig **ausgeblendet**; mit
+        ``include_track=True`` sind sie enthalten (für Karte/GPX)."""
         order = "DESC" if newest_first else "ASC"
         query = "SELECT * FROM log_entries"
+        clauses: List[str] = []
         params: List[Any] = []
         if trip_id is not None:
-            query += " WHERE trip_id = ?"
+            clauses.append("trip_id = ?")
             params.append(trip_id)
+        if not include_track:
+            clauses.append("entry_type != 'track'")
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
         query += f" ORDER BY timestamp {order}, id {order}"
         if limit is not None:
             query += f" LIMIT {int(limit)}"
@@ -1055,9 +1064,10 @@ class LogbookStore:
     def export_gpx(
         self, path: str, track_name: str = "masarasi Törn", trip_id: Optional[int] = None
     ) -> int:
+        # GPX = dichte Spur: Track-Punkte einschließen.
         entries = [
             e
-            for e in self.all(newest_first=False, trip_id=trip_id)
+            for e in self.all(newest_first=False, trip_id=trip_id, include_track=True)
             if e.lat is not None and e.lon is not None
         ]
         lines = [

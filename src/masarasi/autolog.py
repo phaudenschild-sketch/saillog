@@ -53,6 +53,13 @@ class AutoLogSettings:
     distance_enabled: bool = False
     distance_threshold: float = 0.5   # NM
 
+    # Trackaufzeichnung: dichte, reine Positionspunkte (entry_type='track')
+    # nur für die Kartenspur — unabhängig von den Log-Auslösern oben.
+    track_enabled: bool = True
+    track_interval_seconds: int = 60       # regelmäßiger Punkt (auch geradeaus)
+    track_course_threshold: float = 10.0   # Grad — Punkt bei jeder Kursänderung
+    track_min_move_nm: float = 0.02        # gegen Punkt-Spam im Hafen (~37 m)
+
     def to_dict(self) -> Dict:
         return asdict(self)
 
@@ -102,10 +109,16 @@ class AutoLogEngine:
         self._stw_armed = True
         self._prev_sog: Optional[float] = None
         self._prev_sog_t: Optional[float] = None
+        # Trackaufzeichnung (eigener Zustand, unabhängig von den Log-Auslösern)
+        self._track_next: Optional[float] = None
+        self._track_course_ref: Optional[float] = None
+        self._track_last_pos = None
 
     def start(self, now: float) -> None:
         if self.settings.interval_enabled:
             self._next_interval = self._interval_boundary(now)
+        if self.settings.track_enabled:
+            self._track_next = now                 # erster Trackpunkt sofort
 
     def _interval_boundary(self, now: float) -> float:
         iv = max(1, int(self.settings.interval_seconds))
@@ -192,3 +205,55 @@ class AutoLogEngine:
                     self._stw_armed = True
 
         return "; ".join(reasons) if reasons else None
+
+    # --- Trackaufzeichnung (dichte Positionsspur, map-only) ----------------
+
+    def evaluate_track(self, snapshot: Dict, now: float) -> Optional[str]:
+        """True-artig (Grund), wenn ein reiner Track-Punkt fällig ist.
+
+        Feuert bei **jeder Kursänderung** (ab ``track_course_threshold``, mit
+        Mindestfahrt gegen GPS-Rauschen) und zusätzlich in einem kurzen
+        Intervall, damit auch gerade Strecken dichte Punkte bekommen. Ein
+        Mindestbewegungs-Filter verhindert Punkt-Spam im Hafen.
+        """
+        s = self.settings
+        if not (s.enabled and s.track_enabled):
+            return None
+        lat, lon = snapshot.get("lat"), snapshot.get("lon")
+        if lat is None or lon is None:
+            return None
+        if self._track_next is None:
+            self._track_next = now
+
+        reason = ""
+        heading = _heading(snapshot)
+        sog = snapshot.get("sog_kn")
+        if heading is not None and (sog is None or sog >= 1.0):
+            if self._track_course_ref is None:
+                self._track_course_ref = heading
+            elif _angle_diff(heading, self._track_course_ref) >= s.track_course_threshold:
+                reason = "Kurswechsel"
+        if not reason and now >= self._track_next:
+            reason = "Intervall"
+        if not reason:
+            return None
+
+        # Mindestbewegung nur für Intervall-Punkte erzwingen; eine echte
+        # Kursänderung wird immer festgehalten.
+        if reason == "Intervall" and self._track_last_pos is not None:
+            moved = geo.haversine_nm(
+                self._track_last_pos[0], self._track_last_pos[1], lat, lon)
+            if moved < s.track_min_move_nm:
+                self._track_next = now + max(5, int(s.track_interval_seconds))
+                return None
+        return reason
+
+    def note_track(self, now: float, snapshot: Dict) -> None:
+        """Nach einem geschriebenen Track-Punkt den Track-Bezug aktualisieren."""
+        self._track_next = now + max(5, int(self.settings.track_interval_seconds))
+        heading = _heading(snapshot)
+        if heading is not None:
+            self._track_course_ref = heading
+        lat, lon = snapshot.get("lat"), snapshot.get("lon")
+        if lat is not None and lon is not None:
+            self._track_last_pos = (lat, lon)

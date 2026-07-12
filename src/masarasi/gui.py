@@ -281,6 +281,11 @@ class Application:
         ttk.Button(bottom, text="💾 Backup…", command=self._on_backup).pack(
             side="left", padx=(12, 4)
         )
+        self._show_track = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            bottom, text="Trackpunkte anzeigen", variable=self._show_track,
+            command=self._refresh_logbook,
+        ).pack(side="left", padx=(12, 4))
         ttk.Label(bottom, text="(Doppelklick = bearbeiten)", foreground="#999").pack(
             side="left", padx=8
         )
@@ -556,7 +561,9 @@ class Application:
         """Track des ausgewählten Törns (älteste zuerst) für die Karte."""
         trip_id = self._logbook.current_trip_id
         points: List[List[float]] = []
-        for entry in self._store.all(newest_first=False, trip_id=trip_id, limit=20000):
+        # dichte Spur inkl. reiner Track-Punkte
+        for entry in self._store.all(newest_first=False, trip_id=trip_id, limit=200000,
+                                     include_track=True):
             if entry.lat is not None and entry.lon is not None:
                 points.append([entry.lat, entry.lon])
         name = ""
@@ -1114,8 +1121,10 @@ class Application:
         trip_id = self._logbook.current_trip_id
         offset = self._tz_offset()
         self._tree.heading("time", text=f"Zeit ({timeutil.label(self._config.timezone_mode, self._config.timezone_offset_hours)})")
-        positions = []  # (lat, lon) der Törn-Einträge — für die Strecke
-        rows = self._store.all(limit=20000, newest_first=True, trip_id=trip_id)
+        positions = []  # (lat, lon) der Log-Einträge — für die Strecke
+        show_track = bool(getattr(self, "_show_track", None) and self._show_track.get())
+        rows = self._store.all(limit=20000, newest_first=True, trip_id=trip_id,
+                               include_track=show_track)
         img_counts = {
             eid: len(ids)
             for eid, ids in self._store.image_ids_map([e.id for e in rows]).items()
@@ -1124,7 +1133,10 @@ class Application:
             pos = ""
             if entry.lat is not None and entry.lon is not None:
                 pos = f"{entry.lat:.4f}, {entry.lon:.4f}"
-                positions.append((entry.lat, entry.lon))
+                # Strecke aus den Log-Einträgen (wie gehabt) — Track-Punkte
+                # zählen nicht doppelt hinein.
+                if entry.entry_type != "track":
+                    positions.append((entry.lat, entry.lon))
             wind = ""
             if entry.tws_kn is not None:           # wahrer Wind (für die Analyse)
                 if entry.twd_deg is not None:
@@ -2046,6 +2058,8 @@ class _AutoLogDialog:
     ]
     _AVG = ["30 s", "60 s", "120 s", "300 s"]
     _DECEL = ["2 kn/s", "3 kn/s", "5 kn/s", "8 kn/s"]
+    _TRACK_IV = [("20 s", 20), ("30 s", 30), ("60 s", 60), ("120 s", 120),
+                 ("300 s", 300)]
 
     def __init__(self, parent, settings: AutoLogSettings) -> None:
         self.result: Optional[AutoLogSettings] = None
@@ -2126,13 +2140,33 @@ class _AutoLogDialog:
         ttk.Label(box, text="NM").grid(row=r, column=2, sticky="w")
         r += 1
 
+        # Trackaufzeichnung (dichte Kartenspur, getrennt von den Log-Einträgen)
+        tbox = ttk.LabelFrame(frame, text="Trackaufzeichnung (nur Karte):")
+        tbox.grid(row=2, column=0, columnspan=3, sticky="we", pady=(8, 0))
+        self._track_on = tk.BooleanVar(value=settings.track_enabled)
+        ttk.Checkbutton(tbox, text="dichte Positionsspur aufzeichnen",
+                        variable=self._track_on).grid(
+            row=0, column=0, columnspan=3, sticky="w", padx=6, pady=3)
+        ttk.Label(tbox, text="   bei Kurswechsel ≥").grid(row=1, column=0, sticky="w", padx=6)
+        self._track_course = tk.StringVar(value=f"{settings.track_course_threshold:g}")
+        ttk.Entry(tbox, textvariable=self._track_course, width=8).grid(
+            row=1, column=1, sticky="w")
+        ttk.Label(tbox, text="°").grid(row=1, column=2, sticky="w")
+        ttk.Label(tbox, text="   sonst spätestens alle").grid(row=2, column=0, sticky="w", padx=6)
+        self._track_iv = tk.StringVar(
+            value=self._track_iv_label(settings.track_interval_seconds))
+        ttk.Combobox(tbox, textvariable=self._track_iv, width=8, state="readonly",
+                     values=[label for label, _ in self._TRACK_IV]).grid(
+            row=2, column=1, sticky="w")
+
         ttk.Label(frame, foreground="#777", wraplength=420,
-                  text="Der Auslösegrund wird als Anlass im Eintrag gespeichert. "
-                       "Die GPS-Spur für die Karte ergibt sich aus den Einträgen.").grid(
-            row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+                  text="Der Auslösegrund wird als Anlass im Eintrag gespeichert. Reine "
+                       "Track-Punkte (nur Zeit + Position) bilden die dichte Kartenspur "
+                       "und sind in der Liste ausblendbar.").grid(
+            row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         btns = ttk.Frame(frame)
-        btns.grid(row=3, column=0, columnspan=3, pady=(10, 0))
+        btns.grid(row=4, column=0, columnspan=3, pady=(10, 0))
         ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
         ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
 
@@ -2147,6 +2181,18 @@ class _AutoLogDialog:
             if lab == label:
                 return sec
         return 3600
+
+    def _track_iv_label(self, seconds: int) -> str:
+        for label, sec in self._TRACK_IV:
+            if sec == seconds:
+                return label
+        return "60 s"
+
+    def _track_iv_seconds(self, label: str) -> int:
+        for lab, sec in self._TRACK_IV:
+            if lab == label:
+                return sec
+        return 60
 
     def _on_ok(self) -> None:
         self.result = AutoLogSettings(
@@ -2167,6 +2213,9 @@ class _AutoLogDialog:
             decel_threshold=float(self._decel.get().split()[0]),
             distance_enabled=self._dist_on.get(),
             distance_threshold=_parse_float(self._dist.get()) or 0.5,
+            track_enabled=self._track_on.get(),
+            track_course_threshold=_parse_float(self._track_course.get()) or 10.0,
+            track_interval_seconds=self._track_iv_seconds(self._track_iv.get()),
         )
         self.top.destroy()
 

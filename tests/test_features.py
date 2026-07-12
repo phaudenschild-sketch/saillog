@@ -344,6 +344,40 @@ class LogbookServiceTest(unittest.TestCase):
         entry = self.service.record_auto(conditions={"engine_mode": "automatisch"})
         self.assertEqual(entry.engine_on, 1)
 
+    def test_record_track_minimal(self):
+        # Track-Punkt trägt nur Position (+ SOG/COG), keine Bedingungen
+        snap = {"lat": 47.0, "lon": 9.0, "sog_kn": 6.2, "cog_deg": 120.0,
+                "tws_kn": 14.0, "depth_m": 12.0, "mainsail": "Voll"}
+        entry = self.service.record_track(snapshot=snap)
+        self.assertEqual(entry.entry_type, "track")
+        self.assertEqual(entry.lat, 47.0)
+        self.assertEqual(entry.cog_deg, 120.0)
+        self.assertIsNone(entry.tws_kn)      # kein Wetter im Track-Punkt
+        self.assertIsNone(entry.depth_m)
+        self.assertEqual(entry.mainsail, "")
+
+    def test_record_track_needs_position(self):
+        self.assertIsNone(self.service.record_track(snapshot={"sog_kn": 5.0}))
+
+    def test_track_points_hidden_from_all_by_default(self):
+        trip = self.service.start_trip(Trip(name="T", start_location="A"))
+        self.live.update({"lat": 47.0, "lon": 9.0})
+        self.service.record_auto(trip_id=trip.id)
+        self.service.record_track(trip_id=trip.id, snapshot={"lat": 47.1, "lon": 9.0})
+        visible = self.store.all(trip_id=trip.id)
+        self.assertEqual(len(visible), 1)                       # nur Log-Eintrag
+        self.assertTrue(all(e.entry_type != "track" for e in visible))
+        withtrack = self.store.all(trip_id=trip.id, include_track=True)
+        self.assertEqual(len(withtrack), 2)
+
+    def test_gpx_export_includes_track_points(self):
+        trip = self.service.start_trip(Trip(name="T", start_location="A"))
+        self.service.record_track(trip_id=trip.id, snapshot={"lat": 47.0, "lon": 9.0})
+        self.service.record_track(trip_id=trip.id, snapshot={"lat": 47.1, "lon": 9.1})
+        path = os.path.join(self.tmp.name, "t.gpx")
+        count = self.store.export_gpx(path, trip_id=trip.id)
+        self.assertEqual(count, 2)                              # beide Track-Punkte
+
 
 class SerialSourceTest(unittest.TestCase):
     def test_serial_source_does_not_crash(self):

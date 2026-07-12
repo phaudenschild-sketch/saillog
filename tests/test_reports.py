@@ -165,6 +165,27 @@ class ReportTest(unittest.TestCase):
         html = reports.map_block([e], 0.0, None)
         self.assertIn("Keine Positionsdaten", html)
 
+    def test_map_block_uses_dense_track_for_line(self):
+        entries = self.store.all(newest_first=False, trip_id=self.trip.id)
+        dense = [[42.97, 16.66], [42.95, 16.66], [42.93, 16.65], [42.91, 16.65]]
+        html = reports.map_block(entries, 0.0, {"manual"}, "Karte", track=dense)
+        # Linie kommt aus dem dichten Track (4 Punkte), Marker nur manuell (1)
+        self.assertIn("42.93", html)          # Track-Zwischenpunkt (nicht in entries)
+        self.assertEqual(html.count('"fill"'), 1)
+
+    def test_trip_report_map_includes_track_points(self):
+        # reiner Track-Punkt an die Etappe hängen
+        tp = LogEntry.from_snapshot(
+            timestamp="2024-07-25T06:40:00Z", entry_type="track",
+            measurements={"lat": 42.95, "lon": 16.655}, trip_id=self.trip.id)
+        self.store.add(tp)
+        html = reports.trip_report_html(self.store, self.cfg, self.trip, 0.0,
+                                        with_map=True)
+        self.assertIn("16.655", html)         # Track-Punkt steckt in der Linie
+        # aber NICHT in der Eintragsliste: weiterhin 2 Log-Einträge
+        self.assertIn("2 Einträge", html)
+
+
     def test_voyage_report_multi_leg(self):
         # zweite Etappe + beide einem Törn zuordnen
         t2 = Trip(name="SY MASARASI", status="closed", start_location="Uvala Gradina",

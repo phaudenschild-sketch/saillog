@@ -10,7 +10,7 @@ Das Repo ist eigenständig: `github.com/phaudenschild-sketch/masarasi`
 cd C:\claude\masarasi
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 218 Tests
+python -m unittest discover -s tests   # 229 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
@@ -90,6 +90,19 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   offenen Törn** (`status='open'`), unabhängig davon, welcher Törn gerade zum
   Ansehen ausgewählt ist (`logbook.open_trip_id()`). Werkzeug `fix_trips.py`
   hängt versehentlich falsch zugeordnete Einträge nachträglich um.
+- **Trackaufzeichnung (getrennte, dichte Kartenspur):** Neben den Log-Einträgen
+  zeichnet der Auto-Thread reine **Track-Punkte** auf (`entry_type='track'`, nur
+  Zeit + Position, dazu SOG/COG für Kartenpfeile — keine Bedingungen/Bilder):
+  **bei jeder Kursänderung** (`track_course_threshold`, Standard 10°, mit
+  Mindestfahrt) und sonst in einem kurzen Intervall (`track_interval_seconds`,
+  Standard 60 s), mit Mindestbewegungs-Filter gegen Hafen-Spam
+  (`autolog.evaluate_track`/`note_track`, `logbook.record_track`). Einstellbar
+  im AutoLog-Dialog (Abschnitt „Trackaufzeichnung"). So bleibt die **Liste/
+  Übersicht ruhig** (nur Log-Einträge), während die **Karte eine schöne, dichte
+  Spur** bekommt. Track-Punkte sind in `store.all()` **standardmäßig
+  ausgeblendet** (`include_track=False`); die Logbuch-Liste hat den Schalter
+  **„Trackpunkte anzeigen"**, Karte/GPX ziehen sie über `include_track=True`.
+  Distanz/Meilen und Berichte rechnen weiter nur mit den Log-Einträgen.
 - **Foto-Import** (`photos.py`, Knopf „📷 Foto-Import…"): Ordner überwachen →
   Bild in „vernünftige" Größe (max. 1600 px, JPEG) verkleinern → Auto-Eintrag
   mit Bild + NMEA-Daten; Originale wandern nach `verarbeitet/` (braucht Pillow)

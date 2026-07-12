@@ -108,5 +108,57 @@ class MasterSwitchTest(unittest.TestCase):
         self.assertIsNone(e.evaluate({}, 100.0))
 
 
+class TrackTest(unittest.TestCase):
+    def _tengine(self, **kw):
+        base = dict(track_enabled=True, track_interval_seconds=60,
+                    track_course_threshold=10.0, track_min_move_nm=0.02)
+        base.update(kw)
+        return AutoLogEngine(AutoLogSettings(**base))
+
+    def test_fires_on_course_change(self):
+        e = self._tengine()
+        e.start(1000.0)
+        moving = {"lat": 43.0, "lon": 16.0, "sog_kn": 6.0}
+        # erster Punkt (Intervall sofort ab start), danach note_track
+        self.assertTrue(e.evaluate_track({**moving, "cog_deg": 90.0}, 1000.0))
+        e.note_track(1000.0, {**moving, "cog_deg": 90.0})
+        # kleiner Kurs + kurz danach -> kein Punkt
+        self.assertIsNone(e.evaluate_track({**moving, "cog_deg": 95.0}, 1005.0))
+        # deutliche Kursänderung -> Punkt, auch vor Ablauf des Intervalls
+        self.assertEqual(
+            e.evaluate_track({**moving, "cog_deg": 130.0}, 1010.0), "Kurswechsel")
+
+    def test_interval_when_straight(self):
+        e = self._tengine()
+        e.start(0.0)
+        p = {"lat": 43.0, "lon": 16.0, "sog_kn": 6.0, "cog_deg": 90.0}
+        self.assertTrue(e.evaluate_track(p, 0.0))        # Startpunkt
+        e.note_track(0.0, p)
+        self.assertIsNone(e.evaluate_track(p, 30.0))     # gerade, Intervall nicht um
+        # bewegte Position nach 60 s -> Intervall-Punkt
+        p2 = {"lat": 43.02, "lon": 16.0, "sog_kn": 6.0, "cog_deg": 90.0}
+        self.assertEqual(e.evaluate_track(p2, 60.0), "Intervall")
+
+    def test_min_move_suppresses_interval_in_harbour(self):
+        e = self._tengine()
+        e.start(0.0)
+        p = {"lat": 43.0, "lon": 16.0, "sog_kn": 0.0, "cog_deg": 90.0}
+        self.assertTrue(e.evaluate_track(p, 0.0))
+        e.note_track(0.0, p)
+        # gleiche Position, Intervall um -> unterdrückt (Mindestbewegung)
+        self.assertIsNone(e.evaluate_track(p, 60.0))
+
+    def test_disabled_track(self):
+        e = self._tengine(track_enabled=False)
+        e.start(0.0)
+        self.assertIsNone(
+            e.evaluate_track({"lat": 43.0, "lon": 16.0, "cog_deg": 90.0}, 100.0))
+
+    def test_no_position_no_point(self):
+        e = self._tengine()
+        e.start(0.0)
+        self.assertIsNone(e.evaluate_track({"cog_deg": 90.0}, 100.0))
+
+
 if __name__ == "__main__":
     unittest.main()

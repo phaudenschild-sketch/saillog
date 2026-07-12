@@ -214,6 +214,34 @@ class LogbookService:
         self._store.add(entry)
         return entry
 
+    def record_track(
+        self,
+        trip_id: Optional[int] = None,
+        snapshot: Optional[dict] = None,
+    ) -> Optional[LogEntry]:
+        """Schreibt einen reinen Track-Punkt (nur Zeit + Position, map-only).
+
+        entry_type='track'. Trägt nur Position und — für Kartenpfeile — SOG/COG,
+        keine Bedingungen/Bilder. Gibt None zurück, wenn keine Position vorliegt.
+        """
+        measurements = snapshot if snapshot is not None else self._live.snapshot()
+        lat, lon = measurements.get("lat"), measurements.get("lon")
+        if lat is None or lon is None:
+            return None
+        mini = {"lat": lat, "lon": lon}
+        for key in ("sog_kn", "cog_deg"):
+            if measurements.get(key) is not None:
+                mini[key] = measurements[key]
+        entry = LogEntry.from_snapshot(
+            timestamp=utc_now_iso(),
+            entry_type="track",
+            measurements=mini,
+            trip_id=trip_id,
+            logevent="Track",
+        )
+        self._store.add(entry)
+        return entry
+
     def _maybe_attach_screenshot(self, entry: LogEntry) -> None:
         """Hängt (falls aktiviert) einen Plotter-Screenshot an den Eintrag."""
         if self.screenshot_provider is None or entry.id is None:
@@ -267,5 +295,10 @@ class LogbookService:
                     self._engine.note_entry(now, snapshot)
                     if self._on_auto_entry is not None:
                         self._on_auto_entry(entry)
+            # Dichte Track-Spur (nur Position, map-only) — unabhängig vom Log
+            if self._engine.evaluate_track(snapshot, now):
+                tp = self.record_track(trip_id=self.open_trip_id(), snapshot=snapshot)
+                if tp is not None:
+                    self._engine.note_track(now, snapshot)
             # alle 2 s prüfen (responsiv für Tiefe/Verzögerung/Kurs)
             self._stop.wait(2.0)

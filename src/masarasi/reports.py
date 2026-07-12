@@ -382,13 +382,17 @@ def _entry_count(shown: int, total: int, types: Optional[set]) -> str:
 
 
 def map_block(entries: List[LogEntry], offset: float = 0.0,
-              types: Optional[set] = None, title: str = "Karte") -> str:
+              types: Optional[set] = None, title: str = "Karte",
+              track: Optional[List[List[float]]] = None) -> str:
     """Leaflet-Karte für den Bericht: Route (Linie) + markierte Einträge.
 
     ``types`` = Menge der Eintragstypen, die als Punkt markiert werden
-    (None = alle). Die Route wird aus allen Einträgen mit Position gezogen.
+    (None = alle). Die Route (Linie) wird aus ``track`` gezogen, falls
+    angegeben (dichte Spur inkl. reiner Track-Punkte), sonst aus ``entries``.
     """
-    track = [[e.lat, e.lon] for e in entries if e.lat is not None and e.lon is not None]
+    if track is None:
+        track = [[e.lat, e.lon] for e in entries
+                 if e.lat is not None and e.lon is not None]
     marks = []
     for e in entries:
         if e.lat is None or e.lon is None:
@@ -427,6 +431,17 @@ def map_block(entries: List[LogEntry], offset: float = 0.0,
     return (f'<h2 class="pb">{escape(title)}</h2>{legend}<div id="map"></div>{script}')
 
 
+def _track_points(store, trip_ids: List[int]) -> List[List[float]]:
+    """Dichte Kartenspur (inkl. reiner Track-Punkte) über die gegebenen Etappen."""
+    pts: List[List[float]] = []
+    for tid in trip_ids:
+        for e in store.all(newest_first=False, trip_id=tid, limit=200000,
+                           include_track=True):
+            if e.lat is not None and e.lon is not None:
+                pts.append([e.lat, e.lon])
+    return pts
+
+
 # --- Törn-Bericht (detailliert, ein Törn) ----------------------------------
 
 def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
@@ -460,7 +475,8 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
         crew_block(crew),
     ]
     if with_map:
-        parts.append(map_block(entries, offset, map_types, "Karte"))
+        parts.append(map_block(entries, offset, map_types, "Karte",
+                               track=_track_points(store, [trip.id])))
     parts.append(f'<h2 class="pb">Logbuch</h2>')
     shown = 0
     for i, e in enumerate(entries):
@@ -537,7 +553,8 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
 
     if with_map:
         combined = [e for t in trips for e in leg_entries[t.id]]
-        parts.append(map_block(combined, offset, map_types, "Karte (ganzer Törn)"))
+        parts.append(map_block(combined, offset, map_types, "Karte (ganzer Törn)",
+                               track=_track_points(store, [t.id for t in trips])))
 
     for t in trips:
         ents = leg_entries[t.id]
@@ -605,7 +622,9 @@ def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
         f'{len(trips)} Etappen · Gesamt: {_de(total)} NM · '
         f'Gesegelt: {_de(sailed)} NM · Motor: {_de(motor)} NM</div>'
     )
-    map_html = map_block(combined, offset, map_types, "Karte") if with_map else ""
+    map_html = (map_block(combined, offset, map_types, "Karte",
+                          track=_track_points(store, [t.id for t in trips]))
+                if with_map else "")
     body = (head + ship_html + map_html
             + '<h2 class="pb">Fahrtenübersicht</h2>' + "".join(parts) + summary)
     return _doc(title, body, with_map=with_map)
