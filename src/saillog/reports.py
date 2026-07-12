@@ -88,6 +88,30 @@ def _date_only(iso: str, offset: float) -> str:
 
 # --- Distanz/Statistik pro Törn --------------------------------------------
 
+# Plausibilitäts-Grenzen für ein einzelnes Spur-Segment. Ein einzelner
+# Koordinaten-Tippfehler (z. B. 102.993 statt 10.2993) erzeugt sonst einen
+# Sprung von tausenden Seemeilen und verfälscht den ganzen Meilennachweis.
+# Die Grenzen sind bewusst hoch: eine Segeljacht fährt keine 60 kn und legt
+# zwischen zwei Einträgen keine 200 sm zurück — echte Segmente (auch grobe
+# GPS-Ausreißer bis ~80 kn) bleiben erhalten, nur echte Fehlkoordinaten fallen weg.
+_MAX_SEGMENT_NM = 200.0
+_MAX_SEGMENT_KN = 100.0
+
+
+def _plausible_nm(prev_lat, prev_lon, prev_ts, lat, lon, ts) -> float:
+    """Segment-Distanz (NM) oder 0.0, wenn Distanz/Geschwindigkeit unplausibel."""
+    d = geo.haversine_nm(prev_lat, prev_lon, lat, lon)
+    if d > _MAX_SEGMENT_NM:
+        return 0.0
+    t0 = timeutil.parse_to_utc(prev_ts or "")
+    t1 = timeutil.parse_to_utc(ts or "")
+    if t0 is not None and t1 is not None:
+        hours = (t1 - t0).total_seconds() / 3600.0
+        if hours > 0 and d / hours > _MAX_SEGMENT_KN:
+            return 0.0
+    return d
+
+
 def leg_stats(entries: List[LogEntry]) -> Dict[str, float]:
     """Gesamt-/Segel-/Motor-Distanz (NM) aus der GPS-Spur + engine_on."""
     total = sailed = motor = 0.0
@@ -97,7 +121,7 @@ def leg_stats(entries: List[LogEntry]) -> Dict[str, float]:
         if e.lat is None or e.lon is None:
             continue
         if prev is not None:
-            d = geo.haversine_nm(prev[0], prev[1], e.lat, e.lon)
+            d = _plausible_nm(prev[0], prev[1], prev[2], e.lat, e.lon, e.timestamp)
             total += d
             # Segment dem Motor zurechnen, wenn am Anfang oder Ende Motor lief
             eng = e.engine_on if e.engine_on is not None else prev_engine
@@ -105,7 +129,7 @@ def leg_stats(entries: List[LogEntry]) -> Dict[str, float]:
                 motor += d
             else:
                 sailed += d
-        prev = (e.lat, e.lon)
+        prev = (e.lat, e.lon, e.timestamp)
         prev_engine = e.engine_on if e.engine_on is not None else prev_engine
     return {"total": total, "sailed": sailed, "motor": motor}
 
@@ -118,8 +142,8 @@ def _cumulative_nm(entries: List[LogEntry]) -> Dict[int, float]:
     for i, e in enumerate(entries):
         if e.lat is not None and e.lon is not None:
             if prev is not None:
-                run += geo.haversine_nm(prev[0], prev[1], e.lat, e.lon)
-            prev = (e.lat, e.lon)
+                run += _plausible_nm(prev[0], prev[1], prev[2], e.lat, e.lon, e.timestamp)
+            prev = (e.lat, e.lon, e.timestamp)
         out[i] = run
     return out
 
@@ -929,11 +953,17 @@ def meilennachweis_html(store, config, trips: List[Trip], offset: float = 0.0,
     rows = []
     total = night_total = 0.0
     role_miles: Dict[str, float] = {}
+    manual_used = False
     for i, t in enumerate(trips, start=1):
         entries = store.all(newest_first=False, trip_id=t.id, limit=50000)
-        nm = leg_stats(entries)["total"]
+        # Manuell bestätigte Seemeilen haben Vorrang vor der GPS-Berechnung
+        # (z. B. bei lückenhafter/importierter Spur).
+        manual = t.distance_nm is not None and t.distance_nm > 0
+        nm = t.distance_nm if manual else leg_stats(entries)["total"]
         if nm <= 0:
             continue
+        if manual:
+            manual_used = True
         night = leg_night_nm(entries) if with_night else 0.0
         rt = _trip_role(store, t, applicant, role)
         total += nm
@@ -944,12 +974,13 @@ def meilennachweis_html(store, config, trips: List[Trip], offset: float = 0.0,
         zeit = _date_only(t.start_dz, offset)
         if t.end_dz and _date_only(t.end_dz, offset) != zeit:
             zeit += "–" + _date_only(t.end_dz, offset)
+        nm_cell = _de(nm, 0) + (" *" if manual else "")
         night_cell = (f'<td class="num">{_de(night, 0)}</td>' if with_night else "")
         rows.append(
             f'<tr><td class="num">{i}</td><td>{escape(zeit)}</td>'
             f'<td>{escape(von)} → {escape(nach)}</td>'
             f'<td>{escape(ship_name)}</td><td>{escape(rt)}</td>'
-            f'<td class="num">{_de(nm, 0)}</td>{night_cell}'
+            f'<td class="num">{nm_cell}</td>{night_cell}'
             f'<td class="sign"></td></tr>')
 
     night_head = "<th>davon Nacht (sm)</th>" if with_night else ""
@@ -1029,7 +1060,13 @@ def meilennachweis_html(store, config, trips: List[Trip], offset: float = 0.0,
         'Cruising Club der Schweiz / Seeschifffahrtsamt (CH). Jede Etappe ist '
         'vom verantwortlichen Schiffsführer zu bestätigen (Spalte rechts).</div>')
 
+    footnote = (
+        '<div class="disc" style="margin-top:6px">'
+        '* Manuell bestätigte Seemeilen (Eingabe im Törn), '
+        'nicht aus der GPS-Spur berechnet.</div>'
+        if manual_used else "")
+
     body = (head
-            + '<h2 class="pb">Törnübersicht</h2>' + table + summary
+            + '<h2 class="pb">Törnübersicht</h2>' + table + footnote + summary
             + "".join(req_html) + sign + disclaimer)
     return _doc("Seemeilen-Nachweis", body)

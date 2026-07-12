@@ -20,10 +20,17 @@ def haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * _EARTH_NM * math.asin(min(1.0, math.sqrt(a)))
 
 
+# Ein einzelnes Segment über dieser Grenze ist praktisch immer ein
+# Koordinaten-Tippfehler (z. B. 102.993 statt 10.2993) und wird ignoriert,
+# damit die Gesamtstrecke nicht um tausende Seemeilen verfälscht wird.
+_MAX_SEGMENT_NM = 200.0
+
+
 def track_distance_nm(points: Iterable[Point]) -> float:
     """Summe der Distanzen entlang einer Punktfolge (lat, lon) in Seemeilen.
 
-    Punkte ohne gültige Koordinaten werden übersprungen.
+    Punkte ohne gültige Koordinaten werden übersprungen; unplausible Sprünge
+    (> 200 sm zwischen zwei Punkten, i.d.R. Koordinaten-Tippfehler) auch.
     """
     total = 0.0
     prev: Optional[Tuple[float, float]] = None
@@ -34,6 +41,8 @@ def track_distance_nm(points: Iterable[Point]) -> float:
         if lat is None or lon is None:
             continue
         if prev is not None:
-            total += haversine_nm(prev[0], prev[1], lat, lon)
+            d = haversine_nm(prev[0], prev[1], lat, lon)
+            if d <= _MAX_SEGMENT_NM:
+                total += d
         prev = (lat, lon)
     return total

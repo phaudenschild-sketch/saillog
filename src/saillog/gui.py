@@ -2015,6 +2015,7 @@ class _TripEditDialog:
             ("end_diesel_l", "Diesel Ende (l):", _fmt_opt(trip.end_diesel_l)),
             ("end_engine_hours", "Motorstd. Ende:", _fmt_opt(trip.end_engine_hours)),
             ("end_log_nm", "Log Ende (Nm):", _fmt_opt(trip.end_log_nm)),
+            ("distance_nm", "Seemeilen (manuell):", _fmt_opt(trip.distance_nm)),
         ]
         for i, (key, label, default) in enumerate(rows):
             ttk.Label(frame, text=label).grid(row=i, column=0, sticky="e", padx=4, pady=3)
@@ -2032,7 +2033,12 @@ class _TripEditDialog:
 
         ttk.Label(frame, text="(Zeiten in der eingestellten Zeitzone, "
                               "Format JJJJ-MM-TT HH:MM)", foreground="#888").grid(
-            row=r, column=0, columnspan=2, sticky="w", pady=(2, 6))
+            row=r, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        r += 1
+        ttk.Label(frame, text="Seemeilen (manuell): leer = aus GPS-Spur berechnen; "
+                              "gesetzt = überschreibt den Meilennachweis.",
+                  foreground="#888").grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=(0, 6))
         r += 1
 
         buttons = ttk.Frame(frame)
@@ -2056,6 +2062,7 @@ class _TripEditDialog:
             "end_diesel_l": _parse_float(v["end_diesel_l"].get()),
             "end_engine_hours": _parse_float(v["end_engine_hours"].get()),
             "end_log_nm": _parse_float(v["end_log_nm"].get()),
+            "distance_nm": _parse_float(v["distance_nm"].get()),
             "note": self._note.get("1.0", "end").strip(),
         }
         self.top.destroy()

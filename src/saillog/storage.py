@@ -147,6 +147,9 @@ class Trip:
     end_log_nm: Optional[float] = None
     note: str = ""
     voyage_id: Optional[int] = None     # Zugehöriger Törn (mehrere Etappen)
+    # Manuell bestätigte Seemeilen (überschreibt die GPS-Berechnung, z.B. bei
+    # lückenhafter/importierter Spur — maßgeblich für den Meilennachweis)
+    distance_nm: Optional[float] = None
 
 
 @dataclass
@@ -318,6 +321,7 @@ class LogbookStore:
                 "end_log_nm REAL",
                 "note TEXT DEFAULT ''",
                 "voyage_id INTEGER",
+                "distance_nm REAL",
             ]
         )
         with self._connect() as conn:
@@ -430,6 +434,10 @@ class LogbookStore:
         existing_t = {r[1] for r in conn.execute("PRAGMA table_info(trips)")}
         if "voyage_id" not in existing_t:
             conn.execute("ALTER TABLE trips ADD COLUMN voyage_id INTEGER")
+        # Manuell bestätigte Seemeilen (überschreibt die GPS-Berechnung für den
+        # Meilennachweis, z. B. bei lückenhafter/importierter Spur)
+        if "distance_nm" not in existing_t:
+            conn.execute("ALTER TABLE trips ADD COLUMN distance_nm REAL")
 
         # entry_images: von „ein Bild pro Eintrag" (entry_id = PK) auf mehrere
         # Bilder je Eintrag umstellen (eigene id, entry_id nur noch indiziert).
