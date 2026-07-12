@@ -941,19 +941,32 @@ def meilennachweis_html(store, config, trips: List[Trip], offset: float = 0.0,
                         applicant: str = "", role: str = "Skipper",
                         with_night: bool = True, period_label: str = "") -> str:
     """Seemeilen-Nachweis für Segelscheine (DE/AT/CH) als druckbares HTML."""
-    ship = _active_ship(store, config)
-    ship_name = ship.name if ship else ""
-    ship_detail = ""
-    if ship:
-        bits = [b for b in (ship.ship_type,
-                            (f"{ship.length_m:.1f} m".replace('.', ',')
-                             if ship.length_m else "")) if b]
-        ship_detail = " · ".join(bits)
+    default_ship = _active_ship(store, config)
+    _ship_cache: Dict[Optional[int], Optional[Ship]] = {}
+
+    def _ship_for(t) -> Optional[Ship]:
+        """Auf dem Törn gefahrenes Schiff (fest eingetragen), sonst aktives."""
+        sid = getattr(t, "ship_id", None)
+        if sid:
+            if sid not in _ship_cache:
+                _ship_cache[sid] = store.get_ship(sid)
+            if _ship_cache[sid] is not None:
+                return _ship_cache[sid]
+        return default_ship
+
+    def _ship_detail(s: Optional[Ship]) -> str:
+        if not s:
+            return ""
+        bits = [b for b in (s.ship_type,
+                            (f"{s.length_m:.1f} m".replace('.', ',')
+                             if s.length_m else "")) if b]
+        return " · ".join(bits)
 
     rows = []
     total = night_total = 0.0
     role_miles: Dict[str, float] = {}
     manual_used = False
+    ships_used: Dict[str, Optional[Ship]] = {}   # Name -> Schiff (Reihenfolge)
     for i, t in enumerate(trips, start=1):
         entries = store.all(newest_first=False, trip_id=t.id, limit=50000)
         # Manuell bestätigte Seemeilen haben Vorrang vor der GPS-Berechnung
@@ -964,6 +977,10 @@ def meilennachweis_html(store, config, trips: List[Trip], offset: float = 0.0,
             continue
         if manual:
             manual_used = True
+        tship = _ship_for(t)
+        tship_name = tship.name if tship else ""
+        if tship_name:
+            ships_used.setdefault(tship_name, tship)
         night = leg_night_nm(entries) if with_night else 0.0
         rt = _trip_role(store, t, applicant, role)
         total += nm
@@ -979,9 +996,21 @@ def meilennachweis_html(store, config, trips: List[Trip], offset: float = 0.0,
         rows.append(
             f'<tr><td class="num">{i}</td><td>{escape(zeit)}</td>'
             f'<td>{escape(von)} → {escape(nach)}</td>'
-            f'<td>{escape(ship_name)}</td><td>{escape(rt)}</td>'
+            f'<td>{escape(tship_name)}</td><td>{escape(rt)}</td>'
             f'<td class="num">{nm_cell}</td>{night_cell}'
             f'<td class="sign"></td></tr>')
+
+    # Kopfzeile: ein Schiff -> mit Details; mehrere -> alle Namen auflisten
+    if len(ships_used) == 1:
+        only = next(iter(ships_used.values()))
+        ship_name = only.name if only else ""
+        ship_detail = _ship_detail(only)
+    elif ships_used:
+        ship_name = ", ".join(ships_used.keys())
+        ship_detail = ""
+    else:
+        ship_name = default_ship.name if default_ship else ""
+        ship_detail = _ship_detail(default_ship)
 
     night_head = "<th>davon Nacht (sm)</th>" if with_night else ""
     night_sum = f'<td class="num">{_de(night_total, 0)}</td>' if with_night else ""

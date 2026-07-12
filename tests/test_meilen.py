@@ -168,6 +168,53 @@ class ManualOverrideTest(unittest.TestCase):
         self.assertNotIn("Manuell bestätigte Seemeilen", html)
 
 
+class TripShipTest(unittest.TestCase):
+    """Jeder Törn kann sein eigenes Schiff tragen (Meilennachweis)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        db = os.path.join(self.tmp.name, "l.sqlite3")
+        self.store = LogbookStore(db)
+        self.ship_a = Ship(name="SY MASARASI", length_m=11.6)
+        self.ship_b = Ship(name="SY BAVARIA", length_m=13.0)
+        self.store.add_ship(self.ship_a)
+        self.store.add_ship(self.ship_b)
+
+        class C:
+            active_ship_id = None
+            db_path = db
+        self.cfg = C()
+        self.cfg.active_ship_id = self.ship_a.id
+
+    def _trip(self, ship_id, name, distance):
+        t = Trip(name=name, status="closed", start_location="A", end_location="B",
+                 start_dz="2024-07-01T05:00:00Z", end_dz="2024-07-01T18:00:00Z",
+                 ship_id=ship_id, distance_nm=distance)
+        self.store.add_trip(t)
+        return t
+
+    def test_ship_id_roundtrips(self):
+        t = self._trip(self.ship_b.id, "T", 100.0)
+        again = self.store.get_trip(t.id)
+        self.assertEqual(again.ship_id, self.ship_b.id)
+
+    def test_each_trip_shows_its_own_ship(self):
+        t1 = self._trip(self.ship_a.id, "T1", 120.0)
+        t2 = self._trip(self.ship_b.id, "T2", 90.0)
+        html = reports.meilennachweis_html(
+            self.store, self.cfg, [t1, t2], 0.0, applicant="X", with_night=False)
+        self.assertIn("SY MASARASI", html)
+        self.assertIn("SY BAVARIA", html)
+
+    def test_trip_without_ship_falls_back_to_active(self):
+        t = self._trip(None, "T", 50.0)
+        html = reports.meilennachweis_html(
+            self.store, self.cfg, [t], 0.0, applicant="X", with_night=False)
+        self.assertIn("SY MASARASI", html)   # aktives Schiff
+        self.assertNotIn("SY BAVARIA", html)
+
+
 class MapImageTest(unittest.TestCase):
     def test_map_page_html_is_leaflet(self):
         html = reports.map_page_html([[43.0, 16.0], [43.1, 16.1]], [])

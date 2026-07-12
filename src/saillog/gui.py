@@ -925,7 +925,8 @@ class Application:
             messagebox.showinfo(
                 "Törn bearbeiten", "Bitte oben zuerst einen Törn auswählen.")
             return
-        dialog = _TripEditDialog(self._root, trip, self._tz_offset())
+        dialog = _TripEditDialog(self._root, trip, self._tz_offset(),
+                                 ships=self._store.all_ships())
         self._root.wait_window(dialog.top)
         if dialog.result is None:
             return
@@ -1989,7 +1990,8 @@ class _TripEditDialog:
     Motorstunden, Log-Stand) und die Notiz lassen sich ändern.
     """
 
-    def __init__(self, parent: tk.Tk, trip: Trip, offset: float = 0.0) -> None:
+    def __init__(self, parent: tk.Tk, trip: Trip, offset: float = 0.0,
+                 ships: Optional[List["Ship"]] = None) -> None:
         self.result: Optional[Dict] = None
         self._offset = offset
         self.top = tk.Toplevel(parent)
@@ -2025,6 +2027,21 @@ class _TripEditDialog:
             self._vars[key] = var
 
         r = len(rows)
+        # Schiff des Törns (fest eintragbar — für den Meilennachweis, wenn
+        # Törns auf verschiedenen Schiffen gefahren wurden)
+        ttk.Label(frame, text="Schiff:").grid(row=r, column=0, sticky="e", padx=4, pady=3)
+        self._ship_choices: Dict[str, Optional[int]] = {"— (aktives Schiff)": None}
+        for s in (ships or []):
+            self._ship_choices[f"#{s.id} {s.name or '(ohne Name)'}"] = s.id
+        self._ship_var = tk.StringVar()
+        cur_ship = next((d for d, i in self._ship_choices.items()
+                         if i == trip.ship_id), "— (aktives Schiff)")
+        self._ship_var.set(cur_ship)
+        ttk.Combobox(frame, textvariable=self._ship_var, width=30, state="readonly",
+                     values=list(self._ship_choices.keys())).grid(
+            row=r, column=1, pady=3, sticky="w")
+        r += 1
+
         ttk.Label(frame, text="Notiz:").grid(row=r, column=0, sticky="ne", padx=4, pady=3)
         self._note = tk.Text(frame, width=40, height=4)
         self._note.insert("1.0", trip.note or "")
@@ -2063,6 +2080,7 @@ class _TripEditDialog:
             "end_engine_hours": _parse_float(v["end_engine_hours"].get()),
             "end_log_nm": _parse_float(v["end_log_nm"].get()),
             "distance_nm": _parse_float(v["distance_nm"].get()),
+            "ship_id": self._ship_choices.get(self._ship_var.get()),
             "note": self._note.get("1.0", "end").strip(),
         }
         self.top.destroy()

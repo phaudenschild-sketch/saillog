@@ -150,6 +150,10 @@ class Trip:
     # Manuell bestätigte Seemeilen (überschreibt die GPS-Berechnung, z.B. bei
     # lückenhafter/importierter Spur — maßgeblich für den Meilennachweis)
     distance_nm: Optional[float] = None
+    # Auf diesem Törn gefahrenes Schiff. None = aktives Schiff verwenden
+    # (wichtig für den Meilennachweis, wenn Törns auf verschiedenen Schiffen
+    # gefahren wurden).
+    ship_id: Optional[int] = None
 
 
 @dataclass
@@ -322,6 +326,7 @@ class LogbookStore:
                 "note TEXT DEFAULT ''",
                 "voyage_id INTEGER",
                 "distance_nm REAL",
+                "ship_id INTEGER",
             ]
         )
         with self._connect() as conn:
@@ -438,6 +443,9 @@ class LogbookStore:
         # Meilennachweis, z. B. bei lückenhafter/importierter Spur)
         if "distance_nm" not in existing_t:
             conn.execute("ALTER TABLE trips ADD COLUMN distance_nm REAL")
+        # Törn-Schiff (verschiedene Törns können auf verschiedenen Schiffen sein)
+        if "ship_id" not in existing_t:
+            conn.execute("ALTER TABLE trips ADD COLUMN ship_id INTEGER")
 
         # entry_images: von „ein Bild pro Eintrag" (entry_id = PK) auf mehrere
         # Bilder je Eintrag umstellen (eigene id, entry_id nur noch indiziert).
