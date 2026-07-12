@@ -30,7 +30,7 @@ Empfänger entpacken und `SailLog.exe` starten.
 ## Manuell (falls du es Schritt für Schritt willst)
 
 ```bat
-cd C:\claude\masarasi
+cd C:\claude\saillog
 python -m pip install --upgrade pyinstaller
 python -m PyInstaller --clean --noconfirm saillog.spec
 ```

@@ -1,19 +1,21 @@
 # Projektstatus & Weiterarbeit (Handover)
 
 Stand-Notiz für die nächste Arbeitssitzung an **SailLog** (Segel-Logbuch).
-Das Produkt heißt jetzt **SailLog** (Python-Paket `saillog`), Domain
-**saillog.ch** (reserviert). Vorherige Namen: Masarasi → TripLog → SailLog;
-„Masarasi" ist der **Schiffsname** und bleibt nur als solcher erhalten.
-Das **GitHub-Repo heißt aktuell noch `phaudenschild-sketch/triplog`** (die
-Programm-Umbenennung betrifft nur den Code/Produktnamen). Optional in GitHub →
-Settings → Rename auf `saillog` umbenennen; danach lokal
-`git remote set-url origin https://github.com/phaudenschild-sketch/saillog.git`
-(GitHub leitet alte Namen automatisch weiter). Arbeitskopie-Ordnername egal.
+Das Produkt heißt **SailLog** (Python-Paket `saillog`), Domain **saillog.ch**
+(reserviert). Vorherige Namen: Masarasi → TripLog → SailLog; „Masarasi" ist der
+**Schiffsname** und bleibt nur als solcher erhalten.
+Das **GitHub-Repo heißt jetzt `phaudenschild-sketch/saillog`** (umbenannt;
+GitHub leitet alte Namen automatisch weiter). Auf dem Laptop einmalig den
+Remote umstellen (siehe Schnellstart). Der lokale Ordnername ist egal — z.B.
+`C:\claude\saillog` (Umbenennen des Ordners ist optional).
 
 ## Schnellstart
 
 ```bash
-cd C:\claude\masarasi
+# einmalig nach der Repo-Umbenennung: Remote auf den neuen Namen setzen
+git remote set-url origin https://github.com/phaudenschild-sketch/saillog.git
+
+cd C:\claude\saillog           # (Ordnername egal; alt: C:\claude\masarasi)
 git pull
 python main.py                 # GUI starten
 python -m unittest discover -s tests   # 243 Tests
@@ -166,11 +168,12 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   Windows-Verknüpfung/späteren Installer). Das **Fenster-Icon** der App wird zur
   Laufzeit aus einem eingebetteten 64px-PNG gesetzt (`branding.ICON_PNG_B64` /
   `branding.set_window_icon`, in `gui.py` beim Start) — kein Dateizugriff nötig.
-- **GitHub-Repo:** früher `masarasi` → aktuell **`triplog`** (bereits umbenannt).
-  Der Produkt-Rename auf SailLog betrifft nur den Code; das Repo kann optional
-  in GitHub → Settings → Rename auf `saillog` umgestellt werden (danach lokal
-  `git remote set-url origin https://github.com/phaudenschild-sketch/saillog.git`;
-  GitHub leitet alte Namen automatisch weiter).
+- **GitHub-Repo:** `masarasi` → `triplog` → **`saillog`** (umbenannt). GitHub
+  leitet alte Namen automatisch weiter. Auf dem Laptop einmalig den Remote
+  umstellen: `git remote set-url origin
+  https://github.com/phaudenschild-sketch/saillog.git`. (In dieser Cloud-Session
+  bleibt der Remote technisch auf der alten URL, weil die Git-Zugangsdaten der
+  Session daran gebunden sind — die Weiterleitung greift, Pushes funktionieren.)
 - **Plotter-Screenshot** (`android_screencap.py`): holt den Bildschirm des
   Android-Tablets (Orca-/Plotter-Anzeige) per **adb** (`exec-out screencap -p`)
   ins Logbuch. Knopf **„📸 Plotter"** (sofort Eintrag mit Bild), Bild-Auswahl
