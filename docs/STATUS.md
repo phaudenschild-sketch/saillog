@@ -3,9 +3,11 @@
 Stand-Notiz für die nächste Arbeitssitzung an **TripLog** (Segel-Logbuch).
 Das Produkt heißt seit der Umbenennung **TripLog** (Python-Paket `triplog`);
 „Masarasi" ist der Schiffsname und bleibt nur als solcher erhalten.
-Das GitHub-Repo heißt aktuell noch `phaudenschild-sketch/masarasi`
-(Umbenennen optional unter GitHub → Settings → Rename; alte Links leiten
-automatisch weiter). Laptop-Arbeitskopie: `C:\claude\masarasi`.
+Das GitHub-Repo ist auf **`phaudenschild-sketch/triplog`** umbenannt
+(GitHub leitet den alten Namen automatisch weiter). Auf dem Laptop den Remote
+umstellen: `git remote set-url origin https://github.com/phaudenschild-sketch/triplog.git`
+(die Arbeitskopie darf weiterhin `C:\claude\masarasi` heißen — der Ordnername
+ist egal).
 
 ## Schnellstart
 
@@ -135,11 +137,11 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   Windows-Verknüpfung/späteren Installer). Das **Fenster-Icon** der App wird zur
   Laufzeit aus einem eingebetteten 64px-PNG gesetzt (`branding.ICON_PNG_B64` /
   `branding.set_window_icon`, in `gui.py` beim Start) — kein Dateizugriff nötig.
-- **GitHub-Repo-Umbenennung nicht automatisch möglich:** Die Repo-Rename-API ist
-  in dieser Session gesperrt (GitHub-App muss vom Org-Admin verbunden sein) und
-  es gibt kein Rename-MCP-Tool. Muss manuell erfolgen: GitHub → Repo `masarasi`
-  → Settings → Rename → `triplog`; danach lokal
-  `git remote set-url origin https://github.com/phaudenschild-sketch/triplog.git`.
+- **GitHub-Repo umbenannt:** `masarasi` → **`triplog`** (am 2026-07-12 manuell
+  in den GitHub-Settings erledigt). GitHub leitet den alten Namen automatisch
+  weiter, daher funktionieren bestehende Klone/Pushes weiter; auf dem Laptop
+  bei Gelegenheit den Remote umstellen (`git remote set-url origin
+  https://github.com/phaudenschild-sketch/triplog.git`).
 - **Plotter-Screenshot** (`android_screencap.py`): holt den Bildschirm des
   Android-Tablets (Orca-/Plotter-Anzeige) per **adb** (`exec-out screencap -p`)
   ins Logbuch. Knopf **„📸 Plotter"** (sofort Eintrag mit Bild), Bild-Auswahl
