@@ -4,8 +4,8 @@ import os
 import tempfile
 import unittest
 
-from masarasi import reports
-from masarasi.storage import LogbookStore, LogEntry, Ship, Trip, Voyage
+from triplog import reports
+from triplog.storage import LogbookStore, LogEntry, Ship, Trip, Voyage
 
 
 class _Cfg:

@@ -13,8 +13,8 @@ import threading
 import time
 from typing import Callable, Optional
 
-from masarasi.livedata import LiveData
-from masarasi.nmea import NmeaParser
+from triplog.livedata import LiveData
+from triplog.nmea import NmeaParser
 
 # Status-Konstanten
 STATUS_DISCONNECTED = "disconnected"

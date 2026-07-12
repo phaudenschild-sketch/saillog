@@ -4,8 +4,8 @@ import os
 import tempfile
 import unittest
 
-from masarasi import fuel
-from masarasi.storage import FuelEntry, LogbookStore
+from triplog import fuel
+from triplog.storage import FuelEntry, LogbookStore
 
 
 def _f(ts, liters, full, hours):

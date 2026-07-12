@@ -1,4 +1,4 @@
-# masarasi ⛵
+# TripLog ⛵
 
 Ein Segel-Logbuch für Windows 11 (und Linux/macOS), das die Daten aus
 deinem **NMEA2000-Netzwerk** über ein **WLAN/LAN-Gateway** liest und
@@ -29,7 +29,7 @@ Python.
   Motorenstunden und Log-Stand beginnen und am Ende abschließen
 - ⛽ **Tanken & Verbrauch** (Knopf „⛽ Tanken…"): festhalten, **wann/wieviel/wo**
   getankt wurde, mit Schalter **„voll getankt"** und Motorstunden (aus dem
-  NMEA-Netz vorbelegt). masarasi berechnet den **Verbrauch in l/h** zwischen
+  NMEA-Netz vorbelegt). TripLog berechnet den **Verbrauch in l/h** zwischen
   zwei Voll-Tankungen — verlässlich trotz schwankender Tankanzeige — und zeigt
   aus der **Tankgröße** (Standard 160 L, einstellbar) den geschätzten
   **Restfüllstand** und die **Reichweite** (Rest-Motorstunden)
@@ -86,7 +86,7 @@ Oder als installiertes Paket:
 
 ```bash
 pip install -e .
-masarasi          # startet die GUI
+triplog          # startet die GUI
 ```
 
 ## Gateway einrichten
@@ -99,7 +99,7 @@ Plotter.
 
 Der Orca Core ist selbst ein NMEA2000-Gateway. Im eigenen WLAN-Modus ist
 er meist unter `192.168.4.1` erreichbar und liefert NMEA0183 per **TCP,
-Port 2000** — das sind die Standardwerte in masarasi. Hängt der Orca Core
+Port 2000** — das sind die Standardwerte in TripLog. Hängt der Orca Core
 am Boots-Router, hat er eine per DHCP zugewiesene IP (dann Discovery
 nutzen, siehe unten).
 
@@ -124,7 +124,7 @@ proprietäre Sätze). Er erscheint am PC als **COM-Port**.
 
 1. `pip install pyserial`
 2. COM-Port im Windows-Geräte-Manager ablesen (z.B. `COM5`)
-3. In masarasi: **Protokoll = serial**, **Host = COM-Port** (`COM5`),
+3. In TripLog: **Protokoll = serial**, **Host = COM-Port** (`COM5`),
    **Port = Baudrate** (Standard `115200`) → **Verbinden**
 4. **Rohdaten…** öffnen und prüfen, welche Sätze ankommen
 
@@ -146,12 +146,12 @@ python discover.py --udp
 python discover.py --gofree
 ```
 
-`discover.py` startet — wie `main.py` — direkt aus dem `masarasi`-Ordner,
+`discover.py` startet — wie `main.py` — direkt aus dem `triplog`-Ordner,
 ohne Installation. (Gleichwertig: aus `src/` heraus
-`python -m masarasi.discover …`.)
+`python -m triplog.discover …`.)
 
 Der Scanner meldet, auf welchem Port NMEA-Sätze ankommen, und gibt dir die
-exakte Zeile zum Eintragen in masarasi aus.
+exakte Zeile zum Eintragen in TripLog aus.
 
 Danach oben im Programm Host/Port/Protokoll eintragen und **Verbinden**
 klicken — das Dashboard füllt sich mit Live-Werten.
@@ -169,7 +169,7 @@ alles ausprobieren kannst, bevor du an Bord gehst:
 
 ```bash
 # Terminal 1 – Simulator starten
-python -m masarasi.simulator --port 2000
+python -m triplog.simulator --port 2000
 
 # Terminal 2 – GUI starten und mit host=127.0.0.1, port=2000, tcp verbinden
 python main.py
@@ -177,7 +177,7 @@ python main.py
 
 ## AIS-Karte
 
-Über den Knopf **„🗺 AIS-Karte"** startet masarasi einen kleinen lokalen
+Über den Knopf **„🗺 AIS-Karte"** startet TripLog einen kleinen lokalen
 Webserver (nur `127.0.0.1`) und öffnet im Browser eine **Leaflet-Karte mit
 OpenFreeMap**. Eingehende `!AIVDM`/`!AIVDO`-Sätze (aller angeschlossenen
 Quellen) werden dekodiert und darauf angezeigt:
@@ -196,7 +196,7 @@ werden trotzdem gezeichnet.
 > Lizenz/HDMI nicht zugänglich — diese (nicht funktionierende) Anzeige wurde
 > aus der Oberfläche entfernt. Die GoFree-**Daten**schnittstelle bleibt über
 > `python discover.py --gofree` (Multicast `239.2.1.1:2052`) einsehbar; die
-> Messdaten holt masarasi ohnehin über NMEA0183 (z.B. B&G TCP-Port 10110).
+> Messdaten holt TripLog ohnehin über NMEA0183 (z.B. B&G TCP-Port 10110).
 
 ## Unterstützte NMEA0183-Sätze
 
@@ -207,12 +207,12 @@ MWV, MWD (scheinbarer & wahrer Wind) · DPT, DBT (Tiefe) · MTW
 
 ## Altes TripCon-Logbuch importieren
 
-Eine TripCon-Sicherung (`.tcdb`) ist eine SQLite-Datenbank. masarasi kann
+Eine TripCon-Sicherung (`.tcdb`) ist eine SQLite-Datenbank. TripLog kann
 sie **lokal** auslesen und wieder zugänglich machen — die Datei muss
 nirgends hochgeladen werden.
 
 **Am einfachsten direkt in der App:** Menü **Extras → „TripCon-Backup
-importieren…"**, `.tcdb` auswählen. masarasi zeigt zuerst eine Übersicht
+importieren…"**, `.tcdb` auswählen. TripLog zeigt zuerst eine Übersicht
 (Törns, Einträge, Bilder, Zeitraum) und fragt vor dem Import nach. Die alten
 Einträge bekommen den Typ `tripcon`; ein erneuter Import ersetzt sie (keine
 Dubletten), eigene Einträge bleiben unberührt.
@@ -234,7 +234,7 @@ Erzeugt:
 - `bilder/plotter/`, `bilder/wetter/`, `bilder/schiffe/`, `bilder/crew/`
   — alle eingebetteten Bilder (u.a. die Kartenplotter-Screenshots)
 
-**Zusätzlich in die masarasi-App importieren** (erscheint im Logbuch):
+**Zusätzlich in die TripLog-App importieren** (erscheint im Logbuch):
 ```bash
 python import_tripcon.py "C:\Pfad\TripCon_JJJJMMTT.tcdb" --out "C:\claude\tripcon-export" --into-app
 ```
@@ -257,18 +257,18 @@ python -m unittest discover -s tests -v
 
 MIT — siehe [`LICENSE`](LICENSE). Frei nutz- und anpassbar; Weitergabe an
 andere Segler ausdrücklich erwünscht. **Navigation immer mit den amtlichen
-Mitteln** — masarasi ist ein Logbuch, kein Navigationsgerät.
+Mitteln** — TripLog ist ein Logbuch, kein Navigationsgerät.
 
 ## Projektstruktur
 
 ```
-masarasi/
+triplog/
 ├── main.py                     ← Bequemer Start ohne Installation
 ├── pyproject.toml
-├── src/masarasi/
+├── src/triplog/
 │   ├── app.py                  ← Einstiegspunkt (baut GUI)
 │   ├── gui.py                  ← tkinter-Oberfläche
-│   ├── config.py               ← Einstellungen (~/.masarasi/config.json)
+│   ├── config.py               ← Einstellungen (~/.triplog/config.json)
 │   ├── fields.py               ← Auswahllisten (Segel, Wetter, Sicht)
 │   ├── nmea.py                 ← NMEA0183-Parser (inkl. Motor RPM/XDR)
 │   ├── ais.py                  ← AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
@@ -292,14 +292,14 @@ masarasi/
 
 ## Speicherorte
 
-- Konfiguration: `~/.masarasi/config.json`
-- Datenbank: `~/.masarasi/logbook.sqlite3`
+- Konfiguration: `~/.triplog/config.json`
+- Datenbank: `~/.triplog/logbook.sqlite3`
 
-(unter Windows: `C:\Users\<Name>\.masarasi\`)
+(unter Windows: `C:\Users\<Name>\.triplog\`)
 
 ## Hinweis zu NMEA2000 vs. NMEA0183
 
 Die Daten stammen aus deinem NMEA2000-Bus. Das Gateway übersetzt sie in
-NMEA0183 — das gängige, offene Format, das masarasi liest. Falls dein
+NMEA0183 — das gängige, offene Format, das TripLog liest. Falls dein
 Gateway ausschließlich das rohe NMEA2000-Format (PGN/RAW) senden kann,
 sag Bescheid, dann ergänze ich einen entsprechenden Decoder.

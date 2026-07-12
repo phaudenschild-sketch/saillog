@@ -3,7 +3,7 @@
 import subprocess
 import unittest
 
-from masarasi import android_screencap as scr
+from triplog import android_screencap as scr
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
 

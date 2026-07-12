@@ -21,7 +21,7 @@ from collections import deque
 from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional
 
-from masarasi import geo
+from triplog import geo
 
 
 @dataclass

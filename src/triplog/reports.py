@@ -21,8 +21,8 @@ import json
 from typing import Dict, List, Optional
 from xml.sax.saxutils import escape
 
-from masarasi import geo, timeutil
-from masarasi.storage import LogEntry, Ship, Trip, Voyage
+from triplog import branding, geo, timeutil
+from triplog.storage import LogEntry, Ship, Trip, Voyage
 
 _COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
             "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
@@ -336,9 +336,14 @@ h3 { font-size: 15px; margin: 16px 0 6px; }
        page-break-inside: avoid; }
 .maplegend { color:#556; font-size:12px; margin-bottom: 8px; }
 .maplegend span { font-weight:600; }
+.brandbar { display:flex; justify-content:center; margin: 4px 0 6px; }
+.rfoot { margin-top: 26px; padding-top: 8px; border-top: 1px solid #dde;
+         color:#8592a0; font-size: 11px; display:flex; justify-content:space-between;
+         align-items:center; gap:12px; }
 @media print {
   body { padding: 0; } .noprint { display:none; }
   #map { height: 150mm; }
+  .rfoot { position: fixed; bottom: 0; left: 0; right: 0; }
 }
 """
 
@@ -355,9 +360,14 @@ _TOOLBAR = ('<div class="toolbar noprint">'
 
 def _doc(title: str, body: str, with_map: bool = False) -> str:
     head_extra = _MAP_HEAD if with_map else ""
+    footer = (
+        f'<div class="rfoot"><span>{escape(branding.COPYRIGHT)}</span>'
+        f'<span>{escape(title)}</span>'
+        f'<span>erstellt mit {escape(branding.APP_NAME)} ⛵</span></div>'
+    )
     return (f'<!doctype html><html lang="de"><head><meta charset="utf-8">'
             f'<title>{escape(title)}</title><style>{_STYLE}</style>{head_extra}'
-            f'</head><body>{_TOOLBAR}{body}</body></html>')
+            f'</head><body>{_TOOLBAR}{body}{footer}</body></html>')
 
 
 # --- Karte im Bericht (Leaflet, ohne AIS) ----------------------------------
@@ -466,7 +476,8 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
         period += " – " + _date_only(trip.end_dz, offset)
 
     parts = [
-        f'<div class="title-page"><div class="big">{escape(kind)}</div>'
+        f'<div class="title-page"><div class="brandbar">{branding.logo_html(72)}</div>'
+        f'<div class="big">{escape(kind)}</div>'
         f'<div>Logbuch der <b>{escape(ship.name if ship else "")}</b></div>'
         f'<div class="sub">{escape(period)}<br>{escape(trip.name or "")}<br>'
         f'{escape(trip.start_location or "")} → {escape(trip.end_location or "")}</div></div>',
@@ -531,7 +542,8 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
     nach = trips[-1].end_location if trips else ""
 
     parts = [
-        f'<div class="title-page"><div class="big">{escape(kind)}</div>'
+        f'<div class="title-page"><div class="brandbar">{branding.logo_html(72)}</div>'
+        f'<div class="big">{escape(kind)}</div>'
         f'<div>Logbuch der <b>{escape(ship.name if ship else "")}</b></div>'
         f'<div class="sub">{escape(period)}<br><b>{escape(voyage.name)}</b><br>'
         f'{escape(von)} → {escape(nach)}'
@@ -614,7 +626,8 @@ def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
         period = _date_only(min(dzs), offset) + " – " + _date_only(max(dzs), offset)
 
     head = (
-        f'<div class="title-page"><div class="big">{escape(title)}</div>'
+        f'<div class="title-page"><div class="brandbar">{branding.logo_html(72)}</div>'
+        f'<div class="big">{escape(title)}</div>'
         f'<div class="sub">{escape(period)}</div></div><div class="pb"></div>'
     )
     summary = (

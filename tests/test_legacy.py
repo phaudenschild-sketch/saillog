@@ -8,7 +8,7 @@ import unittest
 import zlib
 import zipfile
 
-from masarasi.legacy import (
+from triplog.legacy import (
     detect_type,
     extract_images,
     image_ext,

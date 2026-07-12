@@ -2,7 +2,7 @@
 
 import unittest
 
-from masarasi.autolog import AutoLogEngine, AutoLogSettings
+from triplog.autolog import AutoLogEngine, AutoLogSettings
 
 
 def _engine(**kw):

@@ -6,8 +6,8 @@ import tempfile
 import unittest
 import zlib
 
-from masarasi import plotter_capture
-from masarasi.storage import LogbookStore, LogEntry
+from triplog import plotter_capture
+from triplog.storage import LogbookStore, LogEntry
 
 
 def _png() -> bytes:

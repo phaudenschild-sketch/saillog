@@ -1,4 +1,4 @@
-"""tkinter-GUI für masarasi — das Segel-Logbuch."""
+"""tkinter-GUI für TripLog — das Segel-Logbuch."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
-from masarasi import backup, crewlist, fuel, geo, photos, reports, timeutil, tripcon
-from masarasi.ais import AisDecoder, AisTargets
-from masarasi.autolog import AutoLogSettings
-from masarasi.config import CONFIG_PATH, Config
-from masarasi.fields import (
+from triplog import backup, crewlist, fuel, geo, photos, reports, timeutil, tripcon
+from triplog.ais import AisDecoder, AisTargets
+from triplog.autolog import AutoLogSettings
+from triplog.config import CONFIG_PATH, Config
+from triplog.fields import (
     CLOUD_COVER_LABELS,
     MAINSAIL_OPTIONS,
     PRECIPITATION,
@@ -22,20 +22,20 @@ from masarasi.fields import (
     cloud_hint,
     visibility_hint,
 )
-from masarasi.livedata import LiveData
-from masarasi.logbook import LogbookService, utc_now_iso
-from masarasi.nmea import FIELD_LABELS
-from masarasi.source import (
+from triplog.livedata import LiveData
+from triplog.logbook import LogbookService, utc_now_iso
+from triplog.nmea import FIELD_LABELS
+from triplog.source import (
     STATUS_CONNECTED,
     STATUS_CONNECTING,
     STATUS_DISCONNECTED,
     STATUS_ERROR,
     NmeaSource,
 )
-from masarasi.storage import (
+from triplog.storage import (
     CrewMember, FuelEntry, LogbookStore, LogEntry, Person, Ship, Trip, Voyage,
 )
-from masarasi.webmap import MapServer
+from triplog.webmap import MapServer
 
 _STATUS_TEXT = {
     STATUS_DISCONNECTED: ("getrennt", "#888888"),
@@ -82,7 +82,7 @@ class Application:
         # Törn-Auswahl: Anzeigetext -> Trip-ID (None = keinem Törn zugeordnet)
         self._trip_choices: Dict[str, Optional[int]] = {}
 
-        root.title("masarasi — Segel-Logbuch")
+        root.title("TripLog — Segel-Logbuch")
         root.geometry("1180x640")
         root.minsize(1000, 560)
 
@@ -410,7 +410,7 @@ class Application:
 
     def _plotter_jpeg(self) -> Optional[bytes]:
         """Holt einen Plotter-Screenshot als JPEG (oder None). Läuft im Thread."""
-        from masarasi import android_screencap
+        from triplog import android_screencap
         return android_screencap.capture_jpeg(
             self._config.plotter_adb_path,
             self._config.plotter_adb_serial,
@@ -1044,7 +1044,7 @@ class Application:
             f"Plotter-Bilder: {info.get('plotter_images')}\n"
             f"Schiffe: {info.get('ships')} · Personen: {info.get('persons')}\n"
             f"Zeitraum: {info.get('date_from', '')} – {info.get('date_to', '')}\n\n"
-            "Jetzt in masarasi importieren?\n"
+            "Jetzt in triplog importieren?\n"
             "(Ein früherer TripCon-Import wird dabei ersetzt; eigene Einträge "
             "bleiben unberührt.)"
         )
@@ -1059,7 +1059,7 @@ class Application:
         try:
             conn = tripcon.connect(path)
             try:
-                result = tripcon.import_into_masarasi(
+                result = tripcon.import_into_triplog(
                     conn, self._config.db_path, replace=True,
                     max_px=int(self._config.photo_max_px or 1600),
                 )
@@ -1290,7 +1290,7 @@ class Application:
             return
         import tempfile
         try:
-            fd, path = tempfile.mkstemp(suffix=".jpg", prefix="masarasi_foto_")
+            fd, path = tempfile.mkstemp(suffix=".jpg", prefix="triplog_foto_")
             with __import__("os").fdopen(fd, "wb") as fh:
                 fh.write(data)
         except OSError as exc:  # noqa: BLE001
@@ -1637,7 +1637,7 @@ class _EditEntryDialog:
         import tempfile
         ext = ".jpg" if rec[1] and "jpeg" in rec[1] else ".png"
         try:
-            fd, path = tempfile.mkstemp(suffix=ext, prefix="masarasi_foto_")
+            fd, path = tempfile.mkstemp(suffix=ext, prefix="triplog_foto_")
             with os.fdopen(fd, "wb") as fh:
                 fh.write(rec[0])
         except OSError as exc:  # noqa: BLE001
@@ -2326,7 +2326,7 @@ class _PhotoDialog:
 
         ttk.Label(
             frame, wraplength=470, foreground="#555",
-            text="Bilder in den gewählten Ordner legen → masarasi erzeugt automatisch "
+            text="Bilder in den gewählten Ordner legen → triplog erzeugt automatisch "
                  "einen Logbuch-Eintrag mit dem (verkleinerten) Bild und den aktuellen "
                  "NMEA-Daten. Verarbeitete Originale wandern in den Unterordner "
                  "„verarbeitet\".",
@@ -2438,7 +2438,7 @@ class _PlotterDialog:
             self._adb.set(path)
 
     def _find(self) -> None:
-        from masarasi import android_screencap
+        from triplog import android_screencap
         devs = android_screencap.devices(self._adb.get().strip() or "adb")
         online = [s for s, st in devs if st == "device"]
         if not devs:
@@ -2454,7 +2454,7 @@ class _PlotterDialog:
 
     def _wlan_prepare(self) -> None:
         """Per USB: tcpip aktivieren, Tablet-IP holen, WLAN-Adresse setzen + verbinden."""
-        from masarasi import android_screencap as scr
+        from triplog import android_screencap as scr
         adb = self._adb.get().strip() or "adb"
         self._status.config(text="Aktiviere WLAN-ADB über USB …", foreground="#555")
         self.top.update_idletasks()
@@ -2483,7 +2483,7 @@ class _PlotterDialog:
             foreground="#227722" if cok else "#b25000")
 
     def _wlan_connect(self) -> None:
-        from masarasi import android_screencap as scr
+        from triplog import android_screencap as scr
         address = self._serial.get().strip()
         if ":" not in address:
             self._status.config(
@@ -2495,7 +2495,7 @@ class _PlotterDialog:
                             foreground="#227722" if ok else "#b25000")
 
     def _test(self) -> None:
-        from masarasi import android_screencap
+        from triplog import android_screencap
         self._status.config(text="Teste Screenshot …", foreground="#555")
         self.top.update_idletasks()
         png = android_screencap.capture_png(
@@ -2776,7 +2776,7 @@ class _PersonEditDialog:
             return
         import os
         import tempfile
-        fd, path = tempfile.mkstemp(suffix=".jpg", prefix="masarasi_person_")
+        fd, path = tempfile.mkstemp(suffix=".jpg", prefix="triplog_person_")
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
         webbrowser.open(Path(path).as_uri())
@@ -3028,7 +3028,7 @@ class _ShipEditDialog:
             return
         import os
         import tempfile
-        fd, path = tempfile.mkstemp(suffix=".jpg", prefix="masarasi_ship_")
+        fd, path = tempfile.mkstemp(suffix=".jpg", prefix="triplog_ship_")
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
         webbrowser.open(Path(path).as_uri())
@@ -3986,7 +3986,7 @@ class _SourcesDialog:
     def _on_gofree_search(self) -> None:
         """Lauscht kurz auf GoFree-Ankündigungen und trägt die NMEA-Quelle ein."""
         import threading
-        from masarasi import discover
+        from triplog import discover
 
         self._gofree_btn.config(state="disabled")
         self._hint.config(text="Suche GoFree-Geräte (bis 6 s) …")
@@ -4001,7 +4001,7 @@ class _SourcesDialog:
         threading.Thread(target=work, daemon=True).start()
 
     def _gofree_done(self, devices) -> None:
-        from masarasi import discover
+        from triplog import discover
 
         self._gofree_btn.config(state="normal")
         self._update_hint()

@@ -2,7 +2,7 @@
 
 import unittest
 
-from masarasi import timeutil
+from triplog import timeutil
 
 
 class TimeutilTest(unittest.TestCase):

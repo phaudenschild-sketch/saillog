@@ -1,7 +1,7 @@
 """Plotter-Screenshot per ADB vom Android-Tablet (Orca-/Plotter-Anzeige).
 
 Nutzt die Android Debug Bridge (``adb``): ``adb exec-out screencap -p`` liefert
-den aktuellen Tablet-Bildschirm als PNG. Damit holt masarasi den Plotter-/
+den aktuellen Tablet-Bildschirm als PNG. Damit holt triplog den Plotter-/
 Orca-Bildschirm aus der Ferne ins Logbuch — ohne am Tablet zu tippen.
 
 Voraussetzungen:
@@ -139,6 +139,6 @@ def capture_jpeg(adb_path: str = "adb", serial: str = "",
     png = capture_png(adb_path, serial, timeout)
     if png is None:
         return None
-    from masarasi import photos
+    from triplog import photos
     jpeg = photos.resize_bytes_to_jpeg(png, max_px=max_px)
     return jpeg if jpeg else png

@@ -2,8 +2,8 @@
 
 import unittest
 
-from masarasi import nmea
-from masarasi.nmea import NmeaParser, valid_checksum
+from triplog import nmea
+from triplog.nmea import NmeaParser, valid_checksum
 
 
 class ChecksumTest(unittest.TestCase):

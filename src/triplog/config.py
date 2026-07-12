@@ -1,6 +1,6 @@
-"""Konfiguration für masarasi.
+"""Konfiguration für TripLog.
 
-Die Einstellungen werden als JSON unter ~/.masarasi/config.json abgelegt,
+Die Einstellungen werden als JSON unter ~/.triplog/config.json abgelegt,
 sodass sie über die GUI dauerhaft geändert werden können. Ebenda liegt
 standardmäßig die Logbuch-Datenbank.
 """
@@ -14,8 +14,20 @@ from typing import Any, Dict, Optional
 
 
 def _app_dir() -> Path:
-    """Verzeichnis für Konfiguration und Datenbank."""
-    path = Path.home() / ".masarasi"
+    """Verzeichnis für Konfiguration und Datenbank.
+
+    Übernimmt einmalig die alten Daten aus ``~/.masarasi`` (früherer Name),
+    damit bestehende Logbücher nach der Umbenennung erhalten bleiben.
+    """
+    path = Path.home() / ".triplog"
+    if not path.exists():
+        legacy = Path.home() / ".masarasi"
+        if legacy.is_dir():
+            try:
+                legacy.rename(path)          # nahtlose Übernahme (gleiches Volume)
+            except OSError:
+                import shutil
+                shutil.copytree(legacy, path)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -102,7 +114,14 @@ class Config:
             return cls()
         known = {f for f in cls().__dict__}
         filtered = {k: v for k, v in data.items() if k in known}
-        return cls(**filtered)
+        cfg = cls(**filtered)
+        # Alten Datenpfad (~/.masarasi) auf den neuen Ort umbiegen, falls das
+        # migrierte config.json noch den früheren Pfad enthält.
+        if cfg.db_path and ".masarasi" in cfg.db_path:
+            moved = cfg.db_path.replace(".masarasi", ".triplog")
+            if Path(moved).exists():
+                cfg.db_path = moved
+        return cfg
 
     def save(self, path: Path = CONFIG_PATH) -> None:
         """Speichert die Konfiguration als JSON."""

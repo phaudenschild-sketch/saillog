@@ -1,4 +1,4 @@
-"""Import alter TripCon-Logbücher (.tcdb) in masarasi.
+"""Import alter TripCon-Logbücher (.tcdb) in triplog.
 
 Eine TripCon-Sicherung ist eine SQLite-Datenbank. Dieses Modul liest die
 Törns, Logbuch-Einträge, Messwerte, Kommentare, GPS-Tracks und Bilder aus
@@ -7,7 +7,7 @@ und macht sie wieder zugänglich:
 - Export als CSV (alle Einträge mit Messwerten)
 - GPX-Track pro Törn (aus B111_TrackInfo)
 - Extraktion aller Bilder (Kartenplotter-Screenshots, Wetter, Schiff, Crew)
-- optionaler Import in die masarasi-Logbuch-Datenbank (zeigt sich in der App)
+- optionaler Import in die triplog-Logbuch-Datenbank (zeigt sich in der App)
 
 Wichtige Schema-Erkenntnisse (TripCon DB-Version 366):
 - Koordinaten sind in DEZIMAL-BOGENMINUTEN gespeichert -> Grad = Wert / 60
@@ -23,10 +23,10 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from masarasi.legacy import image_ext
-from masarasi.storage import LogbookStore, LogEntry, Trip
+from triplog.legacy import image_ext
+from triplog.storage import LogbookStore, LogEntry, Trip
 
-# Messwert-Tabellen mit genau einer Wertspalte: masarasi-Feld -> (Tabelle, Spalte)
+# Messwert-Tabellen mit genau einer Wertspalte: triplog-Feld -> (Tabelle, Spalte)
 _SINGLE_VALUE_TABLES = {
     "sog_kn": ("VSpeedOverGround", "Value"),
     "cog_deg": ("VCourseOverGround", "Value"),
@@ -207,7 +207,7 @@ def _resolve_code(code, pv_labels: Dict[int, int], texts: Dict[int, str]) -> str
 def _iter_entries(conn, trip_id_map: Optional[Dict[int, int]] = None):
     """Erzeugt (TripCon-LogID, LogEntry)-Paare aus B100_Log + Messwerten.
 
-    trip_id_map: {TripCon-Trip-ID: masarasi-Trip-ID} zum Verknüpfen der
+    trip_id_map: {TripCon-Trip-ID: triplog-Trip-ID} zum Verknüpfen der
     Einträge mit den importierten Törns.
     """
     trips = load_trips(conn)
@@ -258,7 +258,7 @@ def _iter_entries(conn, trip_id_map: Optional[Dict[int, int]] = None):
             if tws is not None:
                 measurements["tws_kn"] = tws
 
-        # Zusatzinfos, die masarasi nicht als eigenes Feld hat -> in die Notiz
+        # Zusatzinfos, die triplog nicht als eigenes Feld hat -> in die Notiz
         extras = []
         if log_id in air_temp:
             extras.append(f"Luft {air_temp[log_id]:.0f}°C")
@@ -294,7 +294,7 @@ def _iter_entries(conn, trip_id_map: Optional[Dict[int, int]] = None):
 
 
 def build_entries(conn, trip_id_map: Optional[Dict[int, int]] = None) -> List[LogEntry]:
-    """Baut die masarasi-Logbuch-Einträge (ohne die TripCon-LogID)."""
+    """Baut die triplog-Logbuch-Einträge (ohne die TripCon-LogID)."""
     return [entry for _log_id, entry in _iter_entries(conn, trip_id_map)]
 
 
@@ -321,9 +321,9 @@ def _trip_log_range(conn, old_trip_id: int) -> Tuple[Optional[float], Optional[f
 
 
 def import_trips(conn, store: LogbookStore) -> Dict[int, int]:
-    """Legt für jeden TripCon-Törn einen masarasi-Törn an (idempotent).
+    """Legt für jeden TripCon-Törn einen triplog-Törn an (idempotent).
 
-    Gibt {TripCon-Trip-ID: masarasi-Trip-ID} zurück.
+    Gibt {TripCon-Trip-ID: triplog-Trip-ID} zurück.
     """
     existing = {(t.name, t.start_dz): t.id for t in store.all_trips()}
     mapping: Dict[int, int] = {}
@@ -487,7 +487,7 @@ def _bindat_per_log_trip(conn, images: Dict[int, bytes]):
 
 
 def _trip_first_entry(conn, logid_map: Dict[int, int]) -> Dict[int, int]:
-    """{TripCon-Trip-ID: erster masarasi-Eintrag des Törns} (nach Zeit)."""
+    """{TripCon-Trip-ID: erster triplog-Eintrag des Törns} (nach Zeit)."""
     result: Dict[int, int] = {}
     for log_id, trip in conn.execute(
         "SELECT ID, Trip FROM B100_Log ORDER BY TripDZ, ID"
@@ -508,7 +508,7 @@ def import_entry_images(conn, store: LogbookStore, logid_map: Dict[int, int],
     werden an den ersten Eintrag des jeweiligen Törns gehängt, damit nichts
     verloren geht. Gibt {"images", "trip_images", "method"} zurück.
     """
-    from masarasi import photos
+    from triplog import photos
 
     def attach(entry_id: int, raw: bytes) -> bool:
         jpeg = photos.resize_bytes_to_jpeg(raw, max_px=max_px)
@@ -567,8 +567,8 @@ def _pick_col(cols: List[str], candidates) -> Optional[str]:
     return None
 
 
-# Feld-Zuordnung TripCon-Spalte -> masarasi-Attribut (adaptiv über Kandidaten).
-# Eintrag: (masarasi-Attribut, (Spalten-Kandidaten…), "text"|"float")
+# Feld-Zuordnung TripCon-Spalte -> triplog-Attribut (adaptiv über Kandidaten).
+# Eintrag: (triplog-Attribut, (Spalten-Kandidaten…), "text"|"float")
 _SHIP_FIELD_MAP = [
     ("name", ("ShipName", "Name"), "text"),
     ("ship_type", ("ShipType", "Type", "BoatType", "Typ"), "text"),
@@ -623,7 +623,7 @@ _PERSON_FIELD_MAP = [
 
 
 def _resolve_field_map(cols: List[str], field_map) -> Dict[str, Tuple[str, str]]:
-    """{masarasi-Attribut: (TripCon-Spalte, kind)} für vorhandene Spalten."""
+    """{triplog-Attribut: (TripCon-Spalte, kind)} für vorhandene Spalten."""
     resolved: Dict[str, Tuple[str, str]] = {}
     for attr, candidates, kind in field_map:
         col = _pick_col(cols, candidates)
@@ -693,7 +693,7 @@ def _row_dict(conn, table: str, cols: List[str]):
 
 def _attach_photo(raw: bytes, max_px: int):
     """(bytes, mime) für ein Stammdaten-Foto; None, wenn kein gültiges Bild."""
-    from masarasi import photos
+    from triplog import photos
     ext = image_ext(raw[:16])
     if not ext:
         return None
@@ -709,7 +709,7 @@ def import_ships(conn, store: LogbookStore, max_px: int = 1600) -> Dict[str, obj
 
     Gibt {"created": n, "matched": m, "photos": p, "fields": [Attribute]} zurück.
     """
-    from masarasi.storage import Ship
+    from triplog.storage import Ship
 
     result = {"created": 0, "matched": 0, "photos": 0, "fields": []}
     cols = _columns(conn, "S003_Ships")
@@ -756,7 +756,7 @@ def import_persons(conn, store: LogbookStore, max_px: int = 1600) -> Dict[str, o
 
     Gibt {"created": n, "matched": m, "photos": p, "fields": [Attribute]} zurück.
     """
-    from masarasi.storage import Person
+    from triplog.storage import Person
 
     result = {"created": 0, "matched": 0, "photos": 0, "fields": []}
     cols = _columns(conn, "S006_Persons")
@@ -804,9 +804,9 @@ def import_persons(conn, store: LogbookStore, max_px: int = 1600) -> Dict[str, o
     return result
 
 
-def import_into_masarasi(conn, db_path: str, replace: bool = True,
+def import_into_triplog(conn, db_path: str, replace: bool = True,
                          max_px: int = 1600) -> Dict[str, object]:
-    """Importiert Törns, Einträge, Bilder und Stammdaten in die masarasi-DB.
+    """Importiert Törns, Einträge, Bilder und Stammdaten in die triplog-DB.
 
     Schiffe und Personen aus TripCon werden als Stammdaten angelegt (idempotent
     über den Namen) und ihre Fotos angehängt. Gibt ein Ergebnis-Dict zurück.
@@ -929,7 +929,7 @@ def analyze_tcdb(conn) -> Dict[str, object]:
 # --- CSV --------------------------------------------------------------------
 
 def export_csv(entries: List[LogEntry], path: str) -> int:
-    from masarasi.storage import _COLUMN_NAMES
+    from triplog.storage import _COLUMN_NAMES
 
     with open(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, delimiter=";")
@@ -977,7 +977,7 @@ def export_gpx_tracks(conn, trips: Dict[int, Dict[str, str]], out_dir: Path) -> 
             name = escape(f"{trip.get('from', '')} → {trip.get('to', '')}".strip(" →") or f"Törn {trip_id}")
             handle.write(
                 '<?xml version="1.0" encoding="UTF-8"?>\n'
-                '<gpx version="1.1" creator="masarasi" '
+                '<gpx version="1.1" creator="TripLog" '
                 'xmlns="http://www.topografix.com/GPX/1/1">\n'
                 f"  <trk>\n    <name>{name}</name>\n    <trkseg>\n"
             )

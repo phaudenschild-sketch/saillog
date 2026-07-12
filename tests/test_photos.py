@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from masarasi import photos
+from triplog import photos
 
 
 class ResizeAvailabilityTest(unittest.TestCase):

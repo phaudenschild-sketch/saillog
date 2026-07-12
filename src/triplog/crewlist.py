@@ -13,6 +13,8 @@ from __future__ import annotations
 from html import escape
 from typing import Dict, List, Optional
 
+from triplog import branding
+
 # Mindestanzahl Zeilen in der Tabelle (leere Zeilen zum handschriftlichen
 # Ergänzen an Bord / beim Amt).
 _MIN_ROWS = 8
@@ -77,6 +79,9 @@ def build_html(
         head="".join(head_cells),
         body="\n".join(body_rows),
         place_date=place_date,
+        logo=branding.logo_html(46),
+        copyright=escape(branding.COPYRIGHT),
+        app=escape(branding.APP_NAME),
     )
 
 
@@ -112,6 +117,11 @@ _TEMPLATE = """<!doctype html>
   .place {{ margin-top: 20px; }}
   .toolbar {{ margin-bottom: 16px; }}
   button {{ font-size: 14px; padding: 6px 14px; cursor: pointer; }}
+  .chead {{ display: flex; justify-content: space-between; align-items: center;
+            gap: 16px; margin-bottom: 12px; }}
+  .cfoot {{ margin-top: 22px; padding-top: 6px; border-top: 1px solid #999;
+            color: #777; font-size: 10px; display: flex;
+            justify-content: space-between; }}
   @media print {{ .toolbar {{ display: none; }} body {{ margin: 0; }} }}
   @page {{ size: A4; margin: 14mm; }}
 </style>
@@ -119,9 +129,14 @@ _TEMPLATE = """<!doctype html>
 <body>
 <div class="toolbar"><button onclick="window.print()">Drucken / Print</button></div>
 
-<h1>Crewliste / Crew List</h1>
-<p class="sub">Angaben zum Schiff und zur Besatzung /
-   Details of vessel and crew</p>
+<div class="chead">
+  <div>
+    <h1>Crewliste / Crew List</h1>
+    <p class="sub">Angaben zum Schiff und zur Besatzung /
+       Details of vessel and crew</p>
+  </div>
+  {logo}
+</div>
 
 <div class="boat">
 {boat_rows}
@@ -141,6 +156,8 @@ _TEMPLATE = """<!doctype html>
   <div>Unterschrift Skipper / Signature of skipper</div>
   <div>Stempel / Stamp</div>
 </div>
+<div class="cfoot"><span>{copyright}</span>
+  <span>erstellt mit {app}</span></div>
 </body>
 </html>
 """

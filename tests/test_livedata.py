@@ -2,7 +2,7 @@
 
 import unittest
 
-from masarasi.livedata import LiveData
+from triplog.livedata import LiveData
 
 
 class LiveDataTest(unittest.TestCase):

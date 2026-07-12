@@ -5,8 +5,8 @@ import threading
 import time
 import unittest
 
-from masarasi.discover import probe_tcp, probe_udp
-from masarasi.simulator import build_burst
+from triplog.discover import probe_tcp, probe_udp
+from triplog.simulator import build_burst
 
 
 def _free_port() -> int:
@@ -17,7 +17,7 @@ def _free_port() -> int:
 
 class SentenceTypeTest(unittest.TestCase):
     def test_counts_types(self):
-        from masarasi.discover import _sentence_types
+        from triplog.discover import _sentence_types
 
         data = build_burst(0).encode("ascii")
         types = _sentence_types(data)
@@ -59,7 +59,7 @@ class ProbeTcpTest(unittest.TestCase):
 
 class GoFreeAnnouncementTest(unittest.TestCase):
     def test_parses_services(self):
-        from masarasi.discover import parse_gofree_announcement
+        from triplog.discover import parse_gofree_announcement
         import json
 
         payload = json.dumps({
@@ -81,11 +81,11 @@ class GoFreeAnnouncementTest(unittest.TestCase):
         self.assertIn(443, ports)
 
     def test_rejects_non_json(self):
-        from masarasi.discover import parse_gofree_announcement
+        from triplog.discover import parse_gofree_announcement
         self.assertIsNone(parse_gofree_announcement(b"$GPRMC,not json"))
 
     def test_source_hints_for_nmea_service(self):
-        from masarasi.discover import parse_gofree_announcement, gofree_source_hints
+        from triplog.discover import parse_gofree_announcement, gofree_source_hints
         import json
         payload = json.dumps({
             "Model": "Zeus3", "IP": "192.168.9.224",

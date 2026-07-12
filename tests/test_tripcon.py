@@ -7,8 +7,8 @@ import tempfile
 import unittest
 import zlib
 
-from masarasi.storage import LogbookStore
-from masarasi import tripcon
+from triplog.storage import LogbookStore
+from triplog import tripcon
 
 
 def _jpg() -> bytes:
@@ -148,20 +148,20 @@ class TripconTest(unittest.TestCase):
         self.assertEqual(e.logevent, "Manöver")           # LogEvent 137 -> Label 500
         self.assertEqual(e.visibility, "sehr gut (20 NM)")  # Sicht 138 -> Label 501
 
-    def test_import_into_masarasi(self):
-        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
-        result = tripcon.import_into_masarasi(self.conn, db_path)
+    def test_import_into_triplog(self):
+        db_path = os.path.join(self.tmp.name, "triplog.sqlite3")
+        result = tripcon.import_into_triplog(self.conn, db_path)
         self.assertEqual(result["entries"], 2)
         store = LogbookStore(db_path)
         self.assertEqual(store.count(), 2)
         # Erneuter Import ersetzt, verdoppelt nicht
-        result2 = tripcon.import_into_masarasi(self.conn, db_path)
+        result2 = tripcon.import_into_triplog(self.conn, db_path)
         self.assertEqual(result2["entries"], 2)
         self.assertEqual(store.count(), 2)
 
     def test_import_links_entry_images_multiple(self):
-        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
-        result = tripcon.import_into_masarasi(self.conn, db_path)
+        db_path = os.path.join(self.tmp.name, "triplog.sqlite3")
+        result = tripcon.import_into_triplog(self.conn, db_path)
         self.assertEqual(result["image_method"], "bindat_logid")
         # 216 und 217 hängen über LogID 1362 am selben Eintrag → 2 Bilder
         self.assertEqual(result["images"], 2)
@@ -187,8 +187,8 @@ class TripconTest(unittest.TestCase):
 
     def test_import_creates_stammdaten_with_photos(self):
         # Schiff und Person werden automatisch angelegt und mit Foto versehen
-        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
-        result = tripcon.import_into_masarasi(self.conn, db_path)
+        db_path = os.path.join(self.tmp.name, "triplog.sqlite3")
+        result = tripcon.import_into_triplog(self.conn, db_path)
         self.assertEqual(result["ships_created"], 1)
         self.assertEqual(result["ship_photos"], 1)
         self.assertEqual(result["persons_created"], 1)
@@ -203,8 +203,8 @@ class TripconTest(unittest.TestCase):
 
     def test_import_maps_ship_fields(self):
         # Alle relevanten Schiffs-Kennwerte werden aus TripCon übernommen
-        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
-        tripcon.import_into_masarasi(self.conn, db_path)
+        db_path = os.path.join(self.tmp.name, "triplog.sqlite3")
+        tripcon.import_into_triplog(self.conn, db_path)
         ship = LogbookStore(db_path).all_ships()[0]
         self.assertEqual(ship.ship_number, "CH-1234")
         self.assertEqual(ship.ship_type, "Sailing Yacht")
@@ -223,8 +223,8 @@ class TripconTest(unittest.TestCase):
         self.assertEqual(ship.sails, "Sail")
 
     def test_import_maps_person_fields(self):
-        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
-        tripcon.import_into_masarasi(self.conn, db_path)
+        db_path = os.path.join(self.tmp.name, "triplog.sqlite3")
+        tripcon.import_into_triplog(self.conn, db_path)
         person = LogbookStore(db_path).all_persons()[0]
         self.assertEqual(person.first_name, "Peter")
         self.assertEqual(person.email, "peter@haudenschild.ch")
@@ -239,13 +239,13 @@ class TripconTest(unittest.TestCase):
     def test_reimport_backfills_empty_fields(self):
         # Bereits angelegte Stammdaten (nur Name) werden beim Re-Import nachgefüllt,
         # bestehende Eingaben aber nicht überschrieben.
-        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        db_path = os.path.join(self.tmp.name, "triplog.sqlite3")
         store = LogbookStore(db_path)
-        from masarasi.storage import Person, Ship
+        from triplog.storage import Person, Ship
         store.add_ship(Ship(name="Tymanfaya", home_port="Eigenhafen"))
         store.add_person(Person(last_name="Haudenschild", first_name="Peter",
                                 nationality="Schweiz"))
-        result = tripcon.import_into_masarasi(self.conn, db_path)
+        result = tripcon.import_into_triplog(self.conn, db_path)
         self.assertEqual(result["ships_matched"], 1)
         self.assertEqual(result["persons_matched"], 1)
         ship = store.all_ships()[0]
@@ -258,9 +258,9 @@ class TripconTest(unittest.TestCase):
 
     def test_import_stammdaten_idempotent(self):
         # Erneuter Import legt keine Dubletten an
-        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
-        tripcon.import_into_masarasi(self.conn, db_path)
-        result2 = tripcon.import_into_masarasi(self.conn, db_path)
+        db_path = os.path.join(self.tmp.name, "triplog.sqlite3")
+        tripcon.import_into_triplog(self.conn, db_path)
+        result2 = tripcon.import_into_triplog(self.conn, db_path)
         self.assertEqual(result2["ships_created"], 0)
         self.assertEqual(result2["ships_matched"], 1)
         self.assertEqual(result2["persons_created"], 0)
@@ -271,11 +271,11 @@ class TripconTest(unittest.TestCase):
 
     def test_import_matches_existing_ship_without_duplicate(self):
         # Ein vorab angelegtes Schiff wird per Name erkannt, nicht dupliziert
-        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
+        db_path = os.path.join(self.tmp.name, "triplog.sqlite3")
         store = LogbookStore(db_path)
-        from masarasi.storage import Ship
+        from triplog.storage import Ship
         store.add_ship(Ship(name="Tymanfaya", home_port="Lavagna"))
-        result = tripcon.import_into_masarasi(self.conn, db_path)
+        result = tripcon.import_into_triplog(self.conn, db_path)
         self.assertEqual(result["ships_created"], 0)
         self.assertEqual(result["ships_matched"], 1)
         self.assertEqual(result["ship_photos"], 1)
@@ -284,8 +284,8 @@ class TripconTest(unittest.TestCase):
         self.assertEqual(ships[0].home_port, "Lavagna")  # bestehende Daten bleiben
 
     def test_import_creates_and_links_trips(self):
-        db_path = os.path.join(self.tmp.name, "masarasi.sqlite3")
-        tripcon.import_into_masarasi(self.conn, db_path)
+        db_path = os.path.join(self.tmp.name, "triplog.sqlite3")
+        tripcon.import_into_triplog(self.conn, db_path)
         store = LogbookStore(db_path)
         trips = store.all_trips()
         self.assertEqual(len(trips), 1)
@@ -295,7 +295,7 @@ class TripconTest(unittest.TestCase):
         # Einträge sind dem Törn zugeordnet
         self.assertEqual(store.count(trip_id=trips[0].id), 2)
         # Erneuter Import verdoppelt die Törns nicht
-        tripcon.import_into_masarasi(self.conn, db_path)
+        tripcon.import_into_triplog(self.conn, db_path)
         self.assertEqual(len(store.all_trips()), 1)
 
     def test_gpx_tracks(self):

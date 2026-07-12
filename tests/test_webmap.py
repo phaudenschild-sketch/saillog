@@ -4,7 +4,7 @@ import json
 import unittest
 import urllib.request
 
-from masarasi.webmap import MapServer
+from triplog.webmap import MapServer
 
 
 def _make(own=None, targets=None, track=None, entries=None):
@@ -67,7 +67,7 @@ class HttpTest(unittest.TestCase):
     def test_index_page_served(self):
         status, body = self._get("/")
         self.assertEqual(status, 200)
-        self.assertIn("masarasi", body)
+        self.assertIn("TripLog", body)
         self.assertIn("openfreemap.org", body)  # OpenFreeMap eingebunden
         self.assertIn("leaflet", body.lower())
 

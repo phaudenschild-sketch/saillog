@@ -1,4 +1,4 @@
-"""NMEA0183-Parser für masarasi.
+"""NMEA0183-Parser für TripLog.
 
 Ein WLAN/LAN-Gateway (z.B. Yacht Devices YDWG-02, Actisense W2K-1,
 Digital Yacht iKonvert) wandelt die NMEA2000-Daten vom Bus in

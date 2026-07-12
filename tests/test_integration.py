@@ -7,11 +7,11 @@ import threading
 import time
 import unittest
 
-from masarasi.livedata import LiveData
-from masarasi.logbook import LogbookService
-from masarasi.simulator import build_burst
-from masarasi.source import NmeaSource
-from masarasi.storage import LogbookStore
+from triplog.livedata import LiveData
+from triplog.logbook import LogbookService
+from triplog.simulator import build_burst
+from triplog.source import NmeaSource
+from triplog.storage import LogbookStore
 
 
 def _free_port() -> int:

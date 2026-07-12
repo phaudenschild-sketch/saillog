@@ -3,7 +3,7 @@
 Greift unter Windows den Bereich ab, in dem der per GoFree remote gespiegelte
 Kartenplotter angezeigt wird, und liefert das Bild als PNG-Bytes. Nutzt
 Pillow (`pip install pillow`); ist Pillow nicht installiert, bleibt die
-Auto-Aufnahme deaktiviert und masarasi läuft normal weiter.
+Auto-Aufnahme deaktiviert und triplog läuft normal weiter.
 """
 
 from __future__ import annotations

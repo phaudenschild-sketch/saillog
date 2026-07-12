@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 
-from masarasi.storage import LogbookStore, LogEntry
+from triplog.storage import LogbookStore, LogEntry
 
 
 class StorageTest(unittest.TestCase):

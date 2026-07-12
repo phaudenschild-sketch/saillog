@@ -1,8 +1,11 @@
 # Projektstatus & Weiterarbeit (Handover)
 
-Stand-Notiz für die nächste Arbeitssitzung an **masarasi** (Segel-Logbuch).
-Das Repo ist eigenständig: `github.com/phaudenschild-sketch/masarasi`
-(Laptop-Arbeitskopie: `C:\claude\masarasi`).
+Stand-Notiz für die nächste Arbeitssitzung an **TripLog** (Segel-Logbuch).
+Das Produkt heißt seit der Umbenennung **TripLog** (Python-Paket `triplog`);
+„Masarasi" ist der Schiffsname und bleibt nur als solcher erhalten.
+Das GitHub-Repo heißt aktuell noch `phaudenschild-sketch/masarasi`
+(Umbenennen optional unter GitHub → Settings → Rename; alte Links leiten
+automatisch weiter). Laptop-Arbeitskopie: `C:\claude\masarasi`.
 
 ## Schnellstart
 
@@ -10,18 +13,18 @@ Das Repo ist eigenständig: `github.com/phaudenschild-sketch/masarasi`
 cd C:\claude\masarasi
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 229 Tests
+python -m unittest discover -s tests   # 234 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
 `pip install pyserial` (serieller Anschluss / Maretron).
 
-Konfiguration & Datenbank liegen unter `~/.masarasi/`
+Konfiguration & Datenbank liegen unter `~/.triplog/`
 (`config.json`, `logbook.sqlite3`) — **nicht** im Repo.
 
 ## Bord-Hardware (dieses Boot)
 
-| Gerät | Anbindung in masarasi | Liefert |
+| Gerät | Anbindung in triplog | Liefert |
 |---|---|---|
 | **B&G Zeus** (Plotter) | TCP `192.168.9.224:10110` | Position, SOG/COG, Wind (MWV/MWD), Tiefe, Wassertemp, Kurs (HDG/VHW), **Log** (VLW, Grunddistanz-Fallback), Lufttemp/**Luftdruck**/Krängung/Trimm/Ruder (XDR), AIS. **Keine Motordaten.** |
 | **Maretron USB100** | seriell `COM11 @ 115200` | NMEA2000→0183: **Drehzahl** (`IIRPM`), **Kühlwassertemperatur**, **Lichtmaschinenspannung**, **Motorstunden** (aus `$PMAREPD`), **Log** (`IIVLW`). Öldruck-Feld leer (kein Sensor). |
@@ -47,7 +50,7 @@ an die Oberfläche gebunden.
 Dienste per Multicast **239.2.1.1:2052** an (bestätigt über TripCons
 Statuszeile „listen … to multicast '239.2.1.1:2052'"). `discover.py --gofree`
 tritt dieser Gruppe bei, liest die Ankündigung (JSON) und schlägt die passende
-masarasi-Quelle vor (`TCP <ip>:<port>` des `nmea-0183`-Dienstes).
+triplog-Quelle vor (`TCP <ip>:<port>` des `nmea-0183`-Dienstes).
 - `--iface 192.168.0.123` bindet an eine bestimmte lokale IP (wie TripCon) —
   nötig auf Rechnern mit mehreren Netzen (VM/WLAN+LAN), sonst wird evtl. auf
   dem falschen Netz gelauscht.
@@ -59,7 +62,7 @@ masarasi-Quelle vor (`TCP <ip>:<port>` des `nmea-0183`-Dienstes).
 
 | Port | Dienst | Nutzen |
 |---|---|---|
-| **10110** | NMEA0183 / nmea-0183 | Klartext-NMEA-0183 (TCP) — **das nutzt masarasi bereits** |
+| **10110** | NMEA0183 / nmea-0183 | Klartext-NMEA-0183 (TCP) — **das nutzt triplog bereits** |
 | 80 | http | Web-/GoFree-HTTP-API |
 | 21 | ftp | Dateizugriff |
 | 554 | rtsp | **Plotter-Bildschirm als Video** (mit VLC testbar) |
@@ -109,7 +112,7 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
 - **TripCon-Import im Menü** (**Extras → „TripCon-Backup importieren…"**):
   Dateiauswahl → read-only Analyse (Integrität/Törns/Einträge/Bilder/Zeitraum,
   `tripcon.analyze_tcdb`) → Rückfrage → Import im Thread
-  (`tripcon.import_into_masarasi`, ersetzt frühere `tripcon`-Importe). Das CLI
+  (`tripcon.import_into_triplog`, ersetzt frühere `tripcon`-Importe). Das CLI
   (`import_tripcon.py`) bleibt für Export (CSV/GPX/Bilder) bestehen.
 - **Bedienkomfort:** Nach „✎ Eintrag speichern" springt der **Anlass** zurück
   auf „Routineeintrag" und die **Bemerkung** wird geleert (kein versehentliches
@@ -117,6 +120,16 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   10110 + GoFree-Suche statt fester IP; Maretron: COM3).
 - **Weitergabe/Kommerz:** `LICENSE` (MIT) ergänzt; Analyse & Ideen in
   `docs/WEITERGABE.md` (Weitergabe-Check + kommerzielle Optionen).
+- **Umbenennung Masarasi → TripLog:** Python-Paket `masarasi` → `triplog`
+  (alle Importe/Skripte/Tests), Produktname „TripLog" in allen Ausgaben
+  (Fenstertitel, Karte, Berichte, Crewliste, GPX-Metadaten). „SY MASARASI"
+  bleibt als **Schiffsname** erhalten. Datenverzeichnis `~/.masarasi` →
+  `~/.triplog` mit **automatischer einmaliger Übernahme** bestehender Daten
+  (`config._app_dir`, plus db_path-Umbiegung in `Config.load`).
+- **Logo & Copyright:** Marken-Modul `triplog/branding.py` (Inline-SVG-Logo
+  `assets/logo.svg`, `APP_NAME`, `COPYRIGHT = "© Peter Haudenschild"`). Das Logo
+  erscheint auf der Titelseite der Berichte und im Kopf der Crewliste; der
+  Copyright-Hinweis steht im Fuß jeder Ausgabe.
 - **Plotter-Screenshot** (`android_screencap.py`): holt den Bildschirm des
   Android-Tablets (Orca-/Plotter-Anzeige) per **adb** (`exec-out screencap -p`)
   ins Logbuch. Knopf **„📸 Plotter"** (sofort Eintrag mit Bild), Bild-Auswahl
@@ -146,7 +159,7 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   „voll-zu-voll" berechnet — unabhängig von der schwankenden Tankanzeige.
   **Restfüllstand + Reichweite** (Rest-Motorstunden) aus Tankgröße (Standard
   160 L, einstellbar) und aktuellen Motorstunden (`fuel.py`)
-- **Törn-Ebene (Voyage) über den Etappen:** In masarasi ist ein „Trip" eine
+- **Törn-Ebene (Voyage) über den Etappen:** In triplog ist ein „Trip" eine
   Etappe (Tagesschlag). Mehrere Etappen lassen sich zu einem **Törn** (voyages-
   Tabelle, `trip.voyage_id`) zusammenfassen — Menü **Extras → „Törns/Etappen
   gruppieren…"** (Törn anlegen/umbenennen/löschen, Etappen zuordnen). Löschen
@@ -214,7 +227,7 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   - Mehrteiler-Zusammensetzung je Funkkanal (Wetherdock vergibt Sequenz-ID neu)
   - **Automatische COG-Korrektur:** erkennt Feeds, die COG fälschlich in ganzen
     Grad statt Zehntelgrad liefern (B&G-Multiplexer an Bord), und rechnet um
-  - `python -m masarasi.ais "<!AIVDM-Zeile>"` — Sätze am Boot einzeln prüfen
+  - `python -m triplog.ais "<!AIVDM-Zeile>"` — Sätze am Boot einzeln prüfen
 - Werkzeuge (Repo-Root/Module): `find_sources.py`/`discover.py`
   (`--gofree --iface --raw`), `gofree_probe.py` (GoFree nav-ws/RTSP),
   `orca_probe.py` (Orca Core, siehe `docs/ORCA_CORE.md`), `import_tripcon.py`
@@ -250,7 +263,7 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
    nach Tablet-Neustart einmal `adb tcpip 5555` per USB. Dialog: Extras →
    Plotter-Screenshot (ADB)…
 4. **TripCon-Anlass verifizieren** (falls nötig): Mapping in
-   `src/masarasi/tripcon.py` (`_resolve_code`) anpassen.
+   `src/triplog/tripcon.py` (`_resolve_code`) anpassen.
 5. **Optional:** CSV-Export wahlweise in Lokalzeit; weitere Zeitzonen;
    Rate-of-Turn (`ROT`)-Anzeige.
 
@@ -262,7 +275,7 @@ Motor-an/aus nutzt jetzt vorrangig die Drehzahl.
 ## Architektur (Kurz)
 
 ```
-src/masarasi/
+src/triplog/
   app.py         Einstieg (GUI)
   gui.py         tkinter-Oberfläche (Quellen, Dashboard, Bedingungen,
                  Törns, Tabelle, Bearbeiten/Löschen, AIS-Karte, Zeitzone)
@@ -283,7 +296,7 @@ src/masarasi/
   storage.py     SQLite: LogEntry/Trip, Migration, CSV/GPX, Bilder
   fields.py      Auswahllisten (Segel/Wetter/Sicht)
   timeutil.py    Zeitzonen-Umrechnung (UTC ↔ Anzeige)
-  config.py      Einstellungen (~/.masarasi/config.json)
+  config.py      Einstellungen (~/.triplog/config.json)
   discover.py    Quellen-/Port-/GoFree-Scanner
   plotter_capture.py  Bild laden/als-PNG (Pillow optional, ungenutzt)
   legacy.py / tripcon.py  Analyse & Import alter TripCon-Sicherungen

@@ -7,10 +7,10 @@ import time
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
-from masarasi.autolog import AutoLogEngine, AutoLogSettings
-from masarasi.livedata import LiveData
-from masarasi.nmea import engine_running
-from masarasi.storage import LogbookStore, LogEntry, Trip
+from triplog.autolog import AutoLogEngine, AutoLogSettings
+from triplog.livedata import LiveData
+from triplog.nmea import engine_running
+from triplog.storage import LogbookStore, LogEntry, Trip
 
 
 def utc_now_iso() -> str:
