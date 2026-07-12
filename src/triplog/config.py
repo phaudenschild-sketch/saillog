@@ -54,6 +54,10 @@ class Config:
     # AutoLog-Auslöser (siehe autolog.AutoLogSettings); None = Standardwerte
     autolog: Optional[dict] = None
 
+    # PDF-Export der Berichte: optionaler Pfad zu einem Chromium-Browser
+    # (Edge/Chrome); leer = automatisch suchen (siehe pdf.find_browser)
+    pdf_browser_path: str = ""
+
     # Foto-Import: Ordner überwachen, Bilder verkleinern, Auto-Eintrag anlegen
     photo_folder: str = ""
     photo_import_enabled: bool = False

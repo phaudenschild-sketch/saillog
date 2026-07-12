@@ -15,7 +15,7 @@ ist egal).
 cd C:\claude\masarasi
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 235 Tests
+python -m unittest discover -s tests   # 240 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
@@ -122,6 +122,15 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   10110 + GoFree-Suche statt fester IP; Maretron: COM3).
 - **Weitergabe/Kommerz:** `LICENSE` (MIT) ergänzt; Analyse & Ideen in
   `docs/WEITERGABE.md` (Weitergabe-Check + kommerzielle Optionen).
+- **Echter PDF-Export der Berichte** (`triplog/pdf.py`): findet einen
+  installierten Chromium-Browser (Edge/Chrome/Chromium/Brave — PATH + bekannte
+  Orte je OS, Override `config.pdf_browser_path` bzw. `TRIPLOG_BROWSER`) und
+  ruft ihn headless mit `--print-to-pdf` auf → **keine zusätzlichen
+  Python-Pakete**. Der Bericht-Dialog hat jetzt die Ausgabewahl **„Als PDF
+  speichern" / „Im Browser öffnen (HTML)"** (PDF ist Vorgabe). PDF-Erzeugung
+  läuft im Thread; ohne Browser oder bei Fehler sauberer Fallback auf den
+  HTML-/Browser-Weg. Karte im PDF: höheres `virtual-time-budget` (Route/Marker
+  rendern immer; Kacheln je nach Netz).
 - **Umbenennung Masarasi → TripLog:** Python-Paket `masarasi` → `triplog`
   (alle Importe/Skripte/Tests), Produktname „TripLog" in allen Ausgaben
   (Fenstertitel, Karte, Berichte, Crewliste, GPX-Metadaten). „SY MASARASI"

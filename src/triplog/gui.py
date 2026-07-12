@@ -991,6 +991,12 @@ class Application:
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
             return
+        if res.get("as_pdf"):
+            self._save_report_pdf(html, name, with_map)
+        else:
+            self._open_report_html(html, name)
+
+    def _open_report_html(self, html: str, name: str) -> None:
         path = Path(self._config.db_path).parent / name
         try:
             path.write_text(html, encoding="utf-8")
@@ -998,6 +1004,50 @@ class Application:
             messagebox.showerror("Bericht", f"Konnte den Bericht nicht speichern:\n{exc}")
             return
         webbrowser.open(path.as_uri())
+
+    def _save_report_pdf(self, html: str, name: str, with_map: bool) -> None:
+        """Erzeugt ein echtes PDF über den installierten Chromium-Browser."""
+        from triplog import pdf
+        if pdf.find_browser(self._config.pdf_browser_path) is None:
+            if messagebox.askyesno(
+                "PDF-Export",
+                "Kein Chromium-Browser (Edge/Chrome) gefunden, um direkt ein PDF "
+                "zu erzeugen.\n\nStattdessen den Bericht im Browser öffnen? Dort "
+                "über 'Drucken → Als PDF speichern' ausgeben."):
+                self._open_report_html(html, name)
+            return
+        out = filedialog.asksaveasfilename(
+            title="Bericht als PDF speichern", defaultextension=".pdf",
+            filetypes=[("PDF", "*.pdf")],
+            initialfile=Path(name).with_suffix(".pdf").name,
+        )
+        if not out:
+            return
+        # Konvertierung kann ein paar Sekunden dauern -> im Hintergrund.
+        wait_ms = 6000 if with_map else 2500
+        browser = self._config.pdf_browser_path
+        import threading
+
+        def work():
+            try:
+                ok = pdf.html_to_pdf(html, out, browser=browser, wait_ms=wait_ms)
+            except Exception:  # noqa: BLE001
+                ok = False
+            self._root.after(0, lambda: self._after_pdf(ok, out, html, name))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _after_pdf(self, ok: bool, out: str, html: str, name: str) -> None:
+        if ok:
+            if messagebox.askyesno("PDF-Export",
+                                   f"PDF gespeichert:\n{out}\n\nJetzt öffnen?"):
+                webbrowser.open(Path(out).as_uri())
+        else:
+            if messagebox.askyesno(
+                "PDF-Export",
+                "Das PDF konnte nicht erzeugt werden.\n\nStattdessen den Bericht "
+                "im Browser öffnen (dort 'Als PDF speichern')?"):
+                self._open_report_html(html, name)
 
     def _on_manage_voyages(self) -> None:
         dialog = _VoyageDialog(self._root, self._store)
@@ -3805,9 +3855,19 @@ class _ReportDialog:
 
         ttk.Label(
             frame, wraplength=480, foreground="#555",
-            text="Berichte werden als HTML im Browser geöffnet — dort über den "
-                 "Knopf 'Drucken / Als PDF speichern' (oder Strg+P) ausgeben.",
-        ).pack(anchor="w", pady=(0, 10))
+            text="Ausgabe wählen: direkt als PDF speichern (nutzt den "
+                 "installierten Edge/Chrome) oder als HTML im Browser öffnen "
+                 "und dort drucken.",
+        ).pack(anchor="w", pady=(0, 8))
+
+        # Ausgabeformat
+        og = ttk.LabelFrame(frame, text="Ausgabe", padding=8)
+        og.pack(fill="x", pady=(0, 8))
+        self._output = tk.StringVar(value="pdf")
+        ttk.Radiobutton(og, text="Als PDF speichern", variable=self._output,
+                        value="pdf").pack(side="left", padx=(2, 12))
+        ttk.Radiobutton(og, text="Im Browser öffnen (HTML)", variable=self._output,
+                        value="html").pack(side="left")
 
         # Eintragsarten-Filter + Karte (gelten für jeden Bericht)
         mg = ttk.LabelFrame(frame, text="Eintragsarten & Karte", padding=8)
@@ -3891,6 +3951,7 @@ class _ReportDialog:
             "kind": kind, "with_images": with_images, "voyage_id": voyage_id,
             "with_map": self._with_map.get(),
             "entry_types": types,
+            "as_pdf": self._output.get() == "pdf",
         }
         self.top.destroy()
 

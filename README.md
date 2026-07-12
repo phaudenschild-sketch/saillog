@@ -33,6 +33,10 @@ Python.
   zwei Voll-Tankungen — verlässlich trotz schwankender Tankanzeige — und zeigt
   aus der **Tankgröße** (Standard 160 L, einstellbar) den geschätzten
   **Restfüllstand** und die **Reichweite** (Rest-Motorstunden)
+- 📄 **Berichte** (Knopf „📄 Bericht…"): Etappen-/Törn-Bericht und Fahrtenbuch
+  mit Schiffsdaten, Crew, Einträgen, Meilen-Zusammenfassung, optionaler **Karte**
+  und **Logo/Copyright** — wahlweise **direkt als echtes PDF gespeichert**
+  (nutzt den installierten Edge/Chrome) oder im Browser geöffnet
 - 🧾 **Crewliste** (Knopf „Crewliste…"): Bootsangaben (einmal gespeichert) und
   Crew je Törn erfassen und eine **zweisprachige, druckbare Crewliste (DE/EN)**
   fürs Ein-/Ausklarieren erzeugen — öffnet im Browser, dort drucken oder als
