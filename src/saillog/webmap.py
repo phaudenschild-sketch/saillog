@@ -1,4 +1,4 @@
-"""Lokaler Kartenserver für TripLog — AIS-Ziele + Törn auf einer Karte.
+"""Lokaler Kartenserver für SailLog — AIS-Ziele + Törn auf einer Karte.
 
 Startet einen kleinen HTTP-Server (nur an 127.0.0.1 gebunden), der eine
 Leaflet-Karte mit OpenFreeMap-Vektorkacheln ausliefert. Die Seite fragt
@@ -43,7 +43,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             self._send(_PAGE.encode("utf-8"), "text/html; charset=utf-8")
         elif path == "/data.json":
-            data = self.server.triplog_data()  # type: ignore[attr-defined]
+            data = self.server.saillog_data()  # type: ignore[attr-defined]
             self._send(json.dumps(data).encode("utf-8"), "application/json",
                        cache=False)
         elif path == "/entry_image":
@@ -52,7 +52,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_error(404, "not found")
 
     def _send_image(self) -> None:
-        provider = getattr(self.server, "triplog_image", None)
+        provider = getattr(self.server, "saillog_image", None)
         query = parse_qs(urlparse(self.path).query)
         try:
             image_id = int(query.get("id", [""])[0])
@@ -110,8 +110,8 @@ class MapServer:
         httpd = ThreadingHTTPServer((self._host, self._port), _Handler)
         httpd.daemon_threads = True
         # Datenfunktion an den Server hängen, damit der Handler drankommt.
-        httpd.triplog_data = self._data  # type: ignore[attr-defined]
-        httpd.triplog_image = self._image_provider  # type: ignore[attr-defined]
+        httpd.saillog_data = self._data  # type: ignore[attr-defined]
+        httpd.saillog_image = self._image_provider  # type: ignore[attr-defined]
         self._httpd = httpd
         self._port = httpd.server_address[1]
         self._thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -163,7 +163,7 @@ _PAGE = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TripLog — AIS-Karte</title>
+<title>SailLog — AIS-Karte</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <style>

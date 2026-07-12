@@ -4,8 +4,8 @@ import os
 import tempfile
 import unittest
 
-from triplog import crewlist
-from triplog.storage import CrewMember, LogbookStore, Person, Trip
+from saillog import crewlist
+from saillog.storage import CrewMember, LogbookStore, Person, Trip
 
 
 class CrewStoreTest(unittest.TestCase):

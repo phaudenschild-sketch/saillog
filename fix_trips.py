@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""triplog — falsch zugeordnete Logbuch-Einträge einem anderen Törn zuordnen.
+"""saillog — falsch zugeordnete Logbuch-Einträge einem anderen Törn zuordnen.
 
 Hintergrund: Vor dem Fix konnten automatische Einträge (AutoLog/Foto) in den
 gerade *angesehenen* Törn statt in den *offenen* Törn geraten. Dieses Werkzeug
@@ -33,7 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from triplog.config import Config  # noqa: E402
+from saillog.config import Config  # noqa: E402
 
 
 def _connect(db_path: str) -> sqlite3.Connection:

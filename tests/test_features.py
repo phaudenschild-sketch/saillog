@@ -6,11 +6,11 @@ import tempfile
 import time
 import unittest
 
-from triplog import nmea
-from triplog.livedata import LiveData
-from triplog.logbook import LogbookService
-from triplog.nmea import NmeaParser, engine_running
-from triplog.storage import LogbookStore, LogEntry, Trip
+from saillog import nmea
+from saillog.livedata import LiveData
+from saillog.logbook import LogbookService
+from saillog.nmea import NmeaParser, engine_running
+from saillog.storage import LogbookStore, LogEntry, Trip
 
 
 class EngineNmeaTest(unittest.TestCase):
@@ -120,14 +120,14 @@ class EngineNmeaTest(unittest.TestCase):
 class EditEntryTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        from triplog.storage import LogbookStore
+        from saillog.storage import LogbookStore
         self.store = LogbookStore(os.path.join(self.tmp.name, "log.sqlite3"))
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def test_update_and_get(self):
-        from triplog.storage import LogEntry
+        from saillog.storage import LogEntry
         e = LogEntry.from_snapshot("2026-07-05T10:00:00Z", "manual",
                                    {"lat": 47.5, "lon": 9.4}, note="alt")
         self.store.add(e)
@@ -383,8 +383,8 @@ class SerialSourceTest(unittest.TestCase):
     def test_serial_source_does_not_crash(self):
         # Ohne echten COM-Port/pyserial darf die Quelle nicht abstürzen,
         # sondern nur einen Fehlerstatus melden.
-        from triplog.livedata import LiveData
-        from triplog.source import NmeaSource
+        from saillog.livedata import LiveData
+        from saillog.source import NmeaSource
 
         statuses = []
         src = NmeaSource(

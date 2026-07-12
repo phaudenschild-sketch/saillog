@@ -1,12 +1,12 @@
 """NMEA0183-Simulator.
 
 Startet einen kleinen TCP-Server, der realistische NMEA0183-Sätze eines
-segelnden Bootes sendet — zum Testen von triplog ohne echtes Gateway.
+segelnden Bootes sendet — zum Testen von saillog ohne echtes Gateway.
 
-    python -m triplog.simulator            # Port 2000
-    python -m triplog.simulator --port 2000
+    python -m saillog.simulator            # Port 2000
+    python -m saillog.simulator --port 2000
 
-Dann in TripLog als Gateway  host=127.0.0.1  port=2000  (TCP) einstellen.
+Dann in SailLog als Gateway  host=127.0.0.1  port=2000  (TCP) einstellen.
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ def _serve_client(conn: socket.socket, addr, period: float) -> None:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="NMEA0183-Testsimulator für TripLog")
+    parser = argparse.ArgumentParser(description="NMEA0183-Testsimulator für SailLog")
     parser.add_argument("--host", default="0.0.0.0", help="Bind-Adresse (Standard: alle)")
     parser.add_argument("--port", type=int, default=2000, help="TCP-Port (Standard: 2000)")
     parser.add_argument(

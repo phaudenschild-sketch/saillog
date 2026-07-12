@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""triplog — Analyse einer alten Logbuch-Sicherung (lokal, ohne Upload).
+"""saillog — Analyse einer alten Logbuch-Sicherung (lokal, ohne Upload).
 
     python inspect_backup.py "C:\\Pfad\\zur\\sicherung.db"
     python inspect_backup.py "C:\\Pfad\\zum\\backup-ordner"
@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from triplog.legacy import extract_images, inspect_path  # noqa: E402
+from saillog.legacy import extract_images, inspect_path  # noqa: E402
 
 
 def main(argv=None) -> int:

@@ -1,6 +1,6 @@
 # Orca Core — Untersuchungsstand (zum späteren Weitermachen)
 
-Ziel: **Daten aus dem Orca Core** (`192.168.9.100`) in triplog holen.
+Ziel: **Daten aus dem Orca Core** (`192.168.9.100`) in saillog holen.
 B&G bleibt die Hauptquelle; der Orca wird *nicht* ersetzt. Stand: geparkt,
 aber gut vorbereitet — die Diagnosewerkzeuge sind fertig, wir wissen genau,
 wo die Daten liegen und was der nächste Schritt wäre.

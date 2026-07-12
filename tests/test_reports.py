@@ -4,8 +4,8 @@ import os
 import tempfile
 import unittest
 
-from triplog import reports
-from triplog.storage import LogbookStore, LogEntry, Ship, Trip, Voyage
+from saillog import reports
+from saillog.storage import LogbookStore, LogEntry, Ship, Trip, Voyage
 
 
 class _Cfg:

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="TripLog">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="SailLog">
   <rect x="6" y="6" width="116" height="116" rx="26" fill="#0d2a4a"/>
   <!-- gestrichelte Kurslinie (Track) -->
   <path d="M20 100 C 40 74, 54 74, 72 54 S 100 30, 110 22" fill="none"

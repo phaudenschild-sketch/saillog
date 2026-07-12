@@ -54,7 +54,7 @@ RTSP_PATHS = ["/", "/stream", "/live", "/0", "/1", "/ch0", "/video",
 
 def _rtsp_request(host, port, method, url, cseq, extra=""):
     req = (f"{method} {url} RTSP/1.0\r\nCSeq: {cseq}\r\n"
-           f"User-Agent: triplog\r\n{extra}\r\n")
+           f"User-Agent: saillog\r\n{extra}\r\n")
     try:
         with socket.create_connection((host, port), timeout=4.0) as s:
             s.settimeout(4.0)

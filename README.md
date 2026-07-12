@@ -1,4 +1,4 @@
-# TripLog ⛵
+# SailLog ⛵
 
 Ein Segel-Logbuch für Windows 11 (und Linux/macOS), das die Daten aus
 deinem **NMEA2000-Netzwerk** über ein **WLAN/LAN-Gateway** liest und
@@ -29,7 +29,7 @@ Python.
   Motorenstunden und Log-Stand beginnen und am Ende abschließen
 - ⛽ **Tanken & Verbrauch** (Knopf „⛽ Tanken…"): festhalten, **wann/wieviel/wo**
   getankt wurde, mit Schalter **„voll getankt"** und Motorstunden (aus dem
-  NMEA-Netz vorbelegt). TripLog berechnet den **Verbrauch in l/h** zwischen
+  NMEA-Netz vorbelegt). SailLog berechnet den **Verbrauch in l/h** zwischen
   zwei Voll-Tankungen — verlässlich trotz schwankender Tankanzeige — und zeigt
   aus der **Tankgröße** (Standard 160 L, einstellbar) den geschätzten
   **Restfüllstand** und die **Reichweite** (Rest-Motorstunden)
@@ -90,7 +90,7 @@ Oder als installiertes Paket:
 
 ```bash
 pip install -e .
-triplog          # startet die GUI
+saillog          # startet die GUI
 ```
 
 ## Gateway einrichten
@@ -103,7 +103,7 @@ Plotter.
 
 Der Orca Core ist selbst ein NMEA2000-Gateway. Im eigenen WLAN-Modus ist
 er meist unter `192.168.4.1` erreichbar und liefert NMEA0183 per **TCP,
-Port 2000** — das sind die Standardwerte in TripLog. Hängt der Orca Core
+Port 2000** — das sind die Standardwerte in SailLog. Hängt der Orca Core
 am Boots-Router, hat er eine per DHCP zugewiesene IP (dann Discovery
 nutzen, siehe unten).
 
@@ -128,7 +128,7 @@ proprietäre Sätze). Er erscheint am PC als **COM-Port**.
 
 1. `pip install pyserial`
 2. COM-Port im Windows-Geräte-Manager ablesen (z.B. `COM5`)
-3. In TripLog: **Protokoll = serial**, **Host = COM-Port** (`COM5`),
+3. In SailLog: **Protokoll = serial**, **Host = COM-Port** (`COM5`),
    **Port = Baudrate** (Standard `115200`) → **Verbinden**
 4. **Rohdaten…** öffnen und prüfen, welche Sätze ankommen
 
@@ -150,12 +150,12 @@ python discover.py --udp
 python discover.py --gofree
 ```
 
-`discover.py` startet — wie `main.py` — direkt aus dem `triplog`-Ordner,
+`discover.py` startet — wie `main.py` — direkt aus dem `saillog`-Ordner,
 ohne Installation. (Gleichwertig: aus `src/` heraus
-`python -m triplog.discover …`.)
+`python -m saillog.discover …`.)
 
 Der Scanner meldet, auf welchem Port NMEA-Sätze ankommen, und gibt dir die
-exakte Zeile zum Eintragen in TripLog aus.
+exakte Zeile zum Eintragen in SailLog aus.
 
 Danach oben im Programm Host/Port/Protokoll eintragen und **Verbinden**
 klicken — das Dashboard füllt sich mit Live-Werten.
@@ -173,7 +173,7 @@ alles ausprobieren kannst, bevor du an Bord gehst:
 
 ```bash
 # Terminal 1 – Simulator starten
-python -m triplog.simulator --port 2000
+python -m saillog.simulator --port 2000
 
 # Terminal 2 – GUI starten und mit host=127.0.0.1, port=2000, tcp verbinden
 python main.py
@@ -181,7 +181,7 @@ python main.py
 
 ## AIS-Karte
 
-Über den Knopf **„🗺 AIS-Karte"** startet TripLog einen kleinen lokalen
+Über den Knopf **„🗺 AIS-Karte"** startet SailLog einen kleinen lokalen
 Webserver (nur `127.0.0.1`) und öffnet im Browser eine **Leaflet-Karte mit
 OpenFreeMap**. Eingehende `!AIVDM`/`!AIVDO`-Sätze (aller angeschlossenen
 Quellen) werden dekodiert und darauf angezeigt:
@@ -200,7 +200,7 @@ werden trotzdem gezeichnet.
 > Lizenz/HDMI nicht zugänglich — diese (nicht funktionierende) Anzeige wurde
 > aus der Oberfläche entfernt. Die GoFree-**Daten**schnittstelle bleibt über
 > `python discover.py --gofree` (Multicast `239.2.1.1:2052`) einsehbar; die
-> Messdaten holt TripLog ohnehin über NMEA0183 (z.B. B&G TCP-Port 10110).
+> Messdaten holt SailLog ohnehin über NMEA0183 (z.B. B&G TCP-Port 10110).
 
 ## Unterstützte NMEA0183-Sätze
 
@@ -211,12 +211,12 @@ MWV, MWD (scheinbarer & wahrer Wind) · DPT, DBT (Tiefe) · MTW
 
 ## Altes TripCon-Logbuch importieren
 
-Eine TripCon-Sicherung (`.tcdb`) ist eine SQLite-Datenbank. TripLog kann
+Eine TripCon-Sicherung (`.tcdb`) ist eine SQLite-Datenbank. SailLog kann
 sie **lokal** auslesen und wieder zugänglich machen — die Datei muss
 nirgends hochgeladen werden.
 
 **Am einfachsten direkt in der App:** Menü **Extras → „TripCon-Backup
-importieren…"**, `.tcdb` auswählen. TripLog zeigt zuerst eine Übersicht
+importieren…"**, `.tcdb` auswählen. SailLog zeigt zuerst eine Übersicht
 (Törns, Einträge, Bilder, Zeitraum) und fragt vor dem Import nach. Die alten
 Einträge bekommen den Typ `tripcon`; ein erneuter Import ersetzt sie (keine
 Dubletten), eigene Einträge bleiben unberührt.
@@ -238,7 +238,7 @@ Erzeugt:
 - `bilder/plotter/`, `bilder/wetter/`, `bilder/schiffe/`, `bilder/crew/`
   — alle eingebetteten Bilder (u.a. die Kartenplotter-Screenshots)
 
-**Zusätzlich in die TripLog-App importieren** (erscheint im Logbuch):
+**Zusätzlich in die SailLog-App importieren** (erscheint im Logbuch):
 ```bash
 python import_tripcon.py "C:\Pfad\TripCon_JJJJMMTT.tcdb" --out "C:\claude\tripcon-export" --into-app
 ```
@@ -253,8 +253,8 @@ Dezimal-Bogenminuten gespeichert (Grad = Wert / 60); Törns in
 
 ## Als Windows-Programm weitergeben (EXE + Installer)
 
-Damit andere Segler TripLog **ohne Python** nutzen können, lässt sich eine
-eigenständige `TripLog.exe` (mit Symbol) und ein Installer bauen — auf Windows
+Damit andere Segler SailLog **ohne Python** nutzen können, lässt sich eine
+eigenständige `SailLog.exe` (mit Symbol) und ein Installer bauen — auf Windows
 einfach **`build_windows.bat`** doppelklicken. Details, Optionen (Pillow/pyserial
 mitpacken) und der Inno-Setup-Installer: siehe **[`docs/BUILD.md`](docs/BUILD.md)**.
 
@@ -268,18 +268,18 @@ python -m unittest discover -s tests -v
 
 MIT — siehe [`LICENSE`](LICENSE). Frei nutz- und anpassbar; Weitergabe an
 andere Segler ausdrücklich erwünscht. **Navigation immer mit den amtlichen
-Mitteln** — TripLog ist ein Logbuch, kein Navigationsgerät.
+Mitteln** — SailLog ist ein Logbuch, kein Navigationsgerät.
 
 ## Projektstruktur
 
 ```
-triplog/
+saillog/
 ├── main.py                     ← Bequemer Start ohne Installation
 ├── pyproject.toml
-├── src/triplog/
+├── src/saillog/
 │   ├── app.py                  ← Einstiegspunkt (baut GUI)
 │   ├── gui.py                  ← tkinter-Oberfläche
-│   ├── config.py               ← Einstellungen (~/.triplog/config.json)
+│   ├── config.py               ← Einstellungen (~/.saillog/config.json)
 │   ├── fields.py               ← Auswahllisten (Segel, Wetter, Sicht)
 │   ├── nmea.py                 ← NMEA0183-Parser (inkl. Motor RPM/XDR)
 │   ├── ais.py                  ← AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
@@ -303,14 +303,14 @@ triplog/
 
 ## Speicherorte
 
-- Konfiguration: `~/.triplog/config.json`
-- Datenbank: `~/.triplog/logbook.sqlite3`
+- Konfiguration: `~/.saillog/config.json`
+- Datenbank: `~/.saillog/logbook.sqlite3`
 
-(unter Windows: `C:\Users\<Name>\.triplog\`)
+(unter Windows: `C:\Users\<Name>\.saillog\`)
 
 ## Hinweis zu NMEA2000 vs. NMEA0183
 
 Die Daten stammen aus deinem NMEA2000-Bus. Das Gateway übersetzt sie in
-NMEA0183 — das gängige, offene Format, das TripLog liest. Falls dein
+NMEA0183 — das gängige, offene Format, das SailLog liest. Falls dein
 Gateway ausschließlich das rohe NMEA2000-Format (PGN/RAW) senden kann,
 sag Bescheid, dann ergänze ich einen entsprechenden Decoder.

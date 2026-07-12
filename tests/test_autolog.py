@@ -2,7 +2,7 @@
 
 import unittest
 
-from triplog.autolog import AutoLogEngine, AutoLogSettings
+from saillog.autolog import AutoLogEngine, AutoLogSettings
 
 
 def _engine(**kw):

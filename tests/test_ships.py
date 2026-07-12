@@ -4,9 +4,9 @@ import os
 import tempfile
 import unittest
 
-from triplog.livedata import LiveData
-from triplog.source import NmeaSource
-from triplog.storage import LogbookStore, Ship
+from saillog.livedata import LiveData
+from saillog.source import NmeaSource
+from saillog.storage import LogbookStore, Ship
 
 
 class ShipStoreTest(unittest.TestCase):

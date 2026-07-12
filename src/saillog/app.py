@@ -1,4 +1,4 @@
-"""Einstiegspunkt: startet die triplog-GUI."""
+"""Einstiegspunkt: startet die saillog-GUI."""
 
 from __future__ import annotations
 
@@ -13,11 +13,11 @@ def main() -> int:
     root.withdraw()  # verstecken bis die GUI aufgebaut ist
 
     try:
-        from triplog.gui import Application
+        from saillog.gui import Application
     except Exception as exc:  # noqa: BLE001 - beim Start alles abfangen
         messagebox.showerror(
             "Startfehler",
-            f"triplog konnte nicht gestartet werden:\n{exc}",
+            f"saillog konnte nicht gestartet werden:\n{exc}",
         )
         return 1
 

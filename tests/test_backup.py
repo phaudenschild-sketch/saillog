@@ -6,8 +6,8 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from triplog import backup
-from triplog.storage import LogEntry, LogbookStore
+from saillog import backup
+from saillog.storage import LogEntry, LogbookStore
 
 
 class BackupTest(unittest.TestCase):
@@ -28,7 +28,7 @@ class BackupTest(unittest.TestCase):
     def test_creates_zip_with_db_and_config(self):
         out = backup.create_backup(self._db, self._cfg, self._dest, "20260710-120000")
         self.assertTrue(out.exists())
-        self.assertEqual(out.name, "triplog-backup-20260710-120000.zip")
+        self.assertEqual(out.name, "saillog-backup-20260710-120000.zip")
         with zipfile.ZipFile(out) as zf:
             names = zf.namelist()
         self.assertIn("logbook.sqlite3", names)
@@ -57,8 +57,8 @@ class BackupTest(unittest.TestCase):
         self.assertEqual(removed, 2)
         remaining = [p.name for p in backup.list_backups(self._dest)]
         self.assertEqual(remaining, [
-            "triplog-backup-20260710-120000.zip",
-            "triplog-backup-20260710-130000.zip",
+            "saillog-backup-20260710-120000.zip",
+            "saillog-backup-20260710-130000.zip",
         ])
 
     def test_prune_noop_when_few(self):

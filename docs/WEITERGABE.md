@@ -1,4 +1,4 @@
-# TripLog weitergeben & kommerziell denken
+# SailLog weitergeben & kommerziell denken
 
 Zwei Themen: (1) Ist der Stand so, dass du ihn an andere (ehemalige
 TripCon-)Nutzer weitergeben kannst? (2) Was könnte eine kommerzielle
@@ -16,7 +16,7 @@ Version sinnvoll machen?
   **optional**; fehlen sie, degradiert die App sauber statt abzustürzen.
 - **Keine persönlichen Daten im Code.** Alle Stammdaten-Felder (Name, MMSI,
   E-Mail, Häfen …) sind leer vorbelegt; Datenbank und Konfiguration liegen
-  unter `~/.triplog/` — **nicht** im Programmordner/Repo.
+  unter `~/.saillog/` — **nicht** im Programmordner/Repo.
 - **`.gitignore` sauber**: keine `*.pyc`, keine `logbook.sqlite3`, keine
   `config.json`, keine `.env`, keine `.tcdb` im Repo.
 - **Alle 234 Tests grün**; Kernpfade (Import, Karte, Berichte, Track) unter
@@ -31,7 +31,7 @@ Version sinnvoll machen?
   Rückfrage vor dem Import) — das ist für die Zielgruppe der stärkste
   Startpunkt.
 - **Zum Ausprobieren ohne Boot** gibt es den Simulator
-  (`python -m triplog.simulator` bzw. `triplog-sim`), der einen
+  (`python -m saillog.simulator` bzw. `saillog-sim`), der einen
   NMEA-Stream liefert — ideal, damit Interessierte die App am Küchentisch
   testen können.
 
@@ -49,7 +49,7 @@ Version sinnvoll machen?
    aber nicht in ein öffentliches Release. Vorschlag: STATUS.md aus dem
    Weitergabe-Paket herausnehmen (oder die IP-Tabelle durch generische
    Beispiele ersetzen).
-2. **Kurz-Anleitung „Von TripCon zu TripLog“**: eine Seite, die genau den Weg
+2. **Kurz-Anleitung „Von TripCon zu SailLog“**: eine Seite, die genau den Weg
    Backup (`.tcdb`) → Extras-Import → erste Schritte zeigt. Das senkt die
    Einstiegshürde für genau deine Zielgruppe am meisten. (Kann ich erstellen.)
 3. **Fertiges Windows-Paket**: viele Segler haben kein Python. Eine
@@ -57,7 +57,7 @@ Version sinnvoll machen?
    Aktuell ist „Python installieren + `python main.py`“ die Hürde. (Siehe
    kommerzielle Ideen — das ist auch für Gratis-Weitergabe Gold wert.)
 4. **Haftungshinweis**: kurzer Satz „Navigation immer mit amtlichen Mitteln;
-   TripLog ist ein Logbuch, kein Navigationsgerät.“ — schützt dich und ist bei
+   SailLog ist ein Logbuch, kein Navigationsgerät.“ — schützt dich und ist bei
    der Zielgruppe selbstverständlich.
 5. **Support-Kanal** festlegen (E-Mail / GitHub Issues), damit Rückmeldungen
    nicht privat verpuffen.

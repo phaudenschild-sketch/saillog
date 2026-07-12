@@ -1,14 +1,14 @@
-"""Markenzeichen für TripLog — Logo (Inline-SVG), Name und Copyright.
+"""Markenzeichen für SailLog — Logo (Inline-SVG), Name und Copyright.
 
 Eine Quelle für alle Ausgaben (Berichte, Crewliste, Karte). Das Logo ist als
 skalierbares Inline-SVG hinterlegt und braucht keine externe Datei.
 """
 
-APP_NAME = "TripLog"
+APP_NAME = "SailLog"
 APP_TAGLINE = "Segel-Logbuch"
 COPYRIGHT = "\u00a9 Peter Haudenschild"
 
-LOGO_SVG = r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 72" role="img" aria-label="TripLog">
+LOGO_SVG = r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 72" role="img" aria-label="SailLog">
   <!-- Badge -->
   <rect x="4" y="4" width="64" height="64" rx="15" fill="#0d2a4a"/>
   <!-- gestrichelte Kurslinie (Nicken auf die Track-Aufzeichnung) -->
@@ -28,7 +28,7 @@ LOGO_SVG = r"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 72" role
   <!-- Wortmarke -->
   <text x="82" y="47" font-family="Segoe UI, Helvetica, Arial, sans-serif"
         font-size="34" font-weight="700" letter-spacing="0.5">
-    <tspan fill="#0d2a4a">Trip</tspan><tspan fill="#e8820c">Log</tspan>
+    <tspan fill="#0d2a4a">Sail</tspan><tspan fill="#e8820c">Log</tspan>
   </text>
   <text x="83" y="62" font-family="Segoe UI, Helvetica, Arial, sans-serif"
         font-size="10.5" letter-spacing="3.4" fill="#5a6b7d">SEGEL-LOGBUCH</text>
@@ -55,7 +55,7 @@ def set_window_icon(root) -> bool:
         import tkinter as tk
         img = tk.PhotoImage(data=ICON_PNG_B64)
         root.iconphoto(True, img)
-        root._triplog_icon = img          # Referenz halten (sonst weg-GC)
+        root._saillog_icon = img          # Referenz halten (sonst weg-GC)
         return True
     except Exception:                     # noqa: BLE001  (Icon ist optional)
         return False

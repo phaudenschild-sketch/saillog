@@ -22,8 +22,8 @@ import math
 from typing import Dict, List, Optional
 from xml.sax.saxutils import escape
 
-from triplog import branding, geo, timeutil
-from triplog.storage import LogEntry, Ship, Trip, Voyage
+from saillog import branding, geo, timeutil
+from saillog.storage import LogEntry, Ship, Trip, Voyage
 
 _COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
             "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]

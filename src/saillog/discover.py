@@ -2,9 +2,9 @@
 
 Am Boot ausführen, um IP/Port von Orca Core, B&G-Plotter & Co. zu finden:
 
-    python -m triplog.discover 192.168.4.1        # TCP-Ports an einem Host scannen
-    python -m triplog.discover 192.168.4.1 --full # mehr Ports probieren
-    python -m triplog.discover --udp              # auf UDP-Broadcasts lauschen
+    python -m saillog.discover 192.168.4.1        # TCP-Ports an einem Host scannen
+    python -m saillog.discover 192.168.4.1 --full # mehr Ports probieren
+    python -m saillog.discover --udp              # auf UDP-Broadcasts lauschen
 
 Der Scanner verbindet sich testweise, liest ein paar Sekunden mit und meldet,
 auf welchem Port NMEA0183-Sätze ankommen und welche Satztypen dabei sind.
@@ -19,7 +19,7 @@ import socket
 import time
 from typing import Dict, List, Optional
 
-from triplog.nmea import NmeaParser
+from saillog.nmea import NmeaParser
 
 # GoFree-Dienstankündigung: MFDs (B&G/Simrad/Lowrance) senden hierhin JSON
 GOFREE_MULTICAST = "239.2.1.1"
@@ -119,7 +119,7 @@ def scan_tcp(host: str, ports: List[int]) -> None:
         print(f"  ✓ Port {port} offen{hint}")
         print(f"      {_format_types(result)}")
         if result:
-            print(f"      → In TripLog: Host={host}  Port={port}  Protokoll=tcp")
+            print(f"      → In SailLog: Host={host}  Port={port}  Protokoll=tcp")
     if not found:
         print("  Kein offener Datenport gefunden. Stimmt die IP? Ist der PC im")
         print("  richtigen WLAN (Orca-/B&G-Netz)? Ggf. --full für mehr Ports.")
@@ -137,7 +137,7 @@ def scan_udp(ports: List[int]) -> None:
         print(f"  ✓ UDP-Port {port} empfängt Daten{hint}")
         print(f"      {_format_types(result)}")
         if result:
-            print(f"      → In TripLog: Port={port}  Protokoll=udp")
+            print(f"      → In SailLog: Port={port}  Protokoll=udp")
     if not found:
         print("  Keine UDP-Broadcasts empfangen.")
 
@@ -224,7 +224,7 @@ def scan_sweep(host: str, up_to: int = 10240) -> None:
         result = probe_tcp(host, port, listen_seconds=2.5)
         if result:
             print(f"  ✓ Port {port}: {_format_types(result)}")
-            print(f"      → In TripLog: Host={host}  Port={port}  Protokoll=tcp")
+            print(f"      → In SailLog: Host={host}  Port={port}  Protokoll=tcp")
             continue
         if result == {}:
             # Sendet von selbst Daten, aber kein NMEA0183 -> Rohvorschau zeigen
@@ -344,7 +344,7 @@ def listen_gofree(seconds: float = 8.0, iface: Optional[str] = None,
 
 
 def gofree_source_hints(device: Dict) -> List[str]:
-    """Liefert triplog-Quellzeilen (TCP host:port) für die NMEA-Dienste."""
+    """Liefert saillog-Quellzeilen (TCP host:port) für die NMEA-Dienste."""
     ip = device.get("ip")
     hints: List[str] = []
     for s in device.get("services", []):
@@ -407,7 +407,7 @@ def scan_gofree(seconds: float = 8.0, iface: Optional[str] = None,
             print(f"      · {s['name']}  Port {s['port']}"
                   + (f"  v{s['version']}" if s['version'] is not None else ""))
         for hint in gofree_source_hints(d):
-            print(f"      → in TripLog als Quelle eintragen:  {hint}")
+            print(f"      → in SailLog als Quelle eintragen:  {hint}")
     print("\n  Hinweis: Der Live-Plotterbildschirm läuft über einen lizenzierten")
     print("  Navico-Videokanal (Tier 3) und ist in dieser Liste NICHT als offener")
     print("  Dienst enthalten. Datendienste (NMEA/WebSocket) sind nutzbar.")
@@ -454,7 +454,7 @@ def main(argv=None) -> int:
 
     if args.host and args.sweep:
         scan_sweep(args.host)
-        print("\nFertig. Die passende Zeile oben in TripLog eintragen und 'Verbinden'.")
+        print("\nFertig. Die passende Zeile oben in SailLog eintragen und 'Verbinden'.")
         return 0
 
     tcp_ports = COMMON_TCP_PORTS if args.full else COMMON_TCP_PORTS[:5]
@@ -465,7 +465,7 @@ def main(argv=None) -> int:
     if args.udp:
         scan_udp(udp_ports)
 
-    print("\nFertig. Die passende Zeile oben in TripLog eintragen und 'Verbinden'.")
+    print("\nFertig. Die passende Zeile oben in SailLog eintragen und 'Verbinden'.")
     return 0
 
 

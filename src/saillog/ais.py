@@ -1,4 +1,4 @@
-"""AIS-Decoder für TripLog.
+"""AIS-Decoder für SailLog.
 
 Dekodiert NMEA-`!AIVDM`/`!AIVDO`-Sätze (Einzel- und Mehrteiler) und pflegt
 eine Liste der AIS-Ziele (Position, COG, SOG, Heading, Name). Reine
@@ -226,8 +226,8 @@ class AisDecoder:
 def _main(argv=None) -> int:
     """Kommandozeilen-Decoder: prüft AIS-Sätze direkt am Boot.
 
-        python -m triplog.ais "!AIVDM,1,1,,B,..."   # eine/mehrere Zeilen
-        type rohdaten.txt | python -m triplog.ais  # oder aus stdin
+        python -m saillog.ais "!AIVDM,1,1,,B,..."   # eine/mehrere Zeilen
+        type rohdaten.txt | python -m saillog.ais  # oder aus stdin
 
     Zeigt je Ziel Typ, MMSI, Name, SOG, COG und Heading — zum Abgleich mit
     der COG-Spalte des AIS-Empfängers.

@@ -8,7 +8,7 @@ import unittest
 import zlib
 import zipfile
 
-from triplog.legacy import (
+from saillog.legacy import (
     detect_type,
     extract_images,
     image_ext,

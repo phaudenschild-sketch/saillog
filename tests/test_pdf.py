@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from triplog import pdf
+from saillog import pdf
 
 
 class FindBrowserTest(unittest.TestCase):

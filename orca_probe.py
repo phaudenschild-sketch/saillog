@@ -35,7 +35,7 @@ def http_get(host: str, port: int, path: str = "/", timeout: float = 3.0,
             sock.settimeout(timeout)
             sock.sendall(
                 f"GET {path} HTTP/1.1\r\nHost: {host}\r\n"
-                "User-Agent: triplog-probe\r\nConnection: close\r\n\r\n".encode()
+                "User-Agent: saillog-probe\r\nConnection: close\r\n\r\n".encode()
             )
             data = b""
             try:
@@ -404,7 +404,7 @@ def main(argv=None) -> int:
             print(f"\n-- ws://{args.host}:{port}{path} --")
             ws_capture(args.host, port, path)
 
-    print("\nFertig. Ausgabe kopieren und an triplog/Claude schicken.")
+    print("\nFertig. Ausgabe kopieren und an saillog/Claude schicken.")
     print("Tipp: 'python orca_probe.py 192.168.9.100 --deep' probiert subscribe-Kommandos.")
     return 0
 

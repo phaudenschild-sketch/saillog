@@ -1,6 +1,6 @@
 """Foto-Import: verkleinert Bilder und überwacht einen Ordner.
 
-Wie bei TripCon: Bilder in einen Ordner legen → triplog erzeugt einen
+Wie bei TripCon: Bilder in einen Ordner legen → saillog erzeugt einen
 Auto-Eintrag mit dem Bild und den aktuellen NMEA-Daten. Die Bilder werden auf
 eine vernünftige Größe verkleinert (max. Kantenlänge, JPEG), damit keine
 riesige Datensammlung entsteht. Verarbeitete Originale wandern in den

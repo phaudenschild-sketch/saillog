@@ -1,4 +1,4 @@
-"""tkinter-GUI für TripLog — das Segel-Logbuch."""
+"""tkinter-GUI für SailLog — das Segel-Logbuch."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
-from triplog import (
+from saillog import (
     backup, branding, crewlist, fuel, geo, photos, reports, timeutil, tripcon,
 )
-from triplog.ais import AisDecoder, AisTargets
-from triplog.autolog import AutoLogSettings
-from triplog.config import CONFIG_PATH, Config
-from triplog.fields import (
+from saillog.ais import AisDecoder, AisTargets
+from saillog.autolog import AutoLogSettings
+from saillog.config import CONFIG_PATH, Config
+from saillog.fields import (
     CLOUD_COVER_LABELS,
     MAINSAIL_OPTIONS,
     PRECIPITATION,
@@ -24,20 +24,20 @@ from triplog.fields import (
     cloud_hint,
     visibility_hint,
 )
-from triplog.livedata import LiveData
-from triplog.logbook import LogbookService, utc_now_iso
-from triplog.nmea import FIELD_LABELS
-from triplog.source import (
+from saillog.livedata import LiveData
+from saillog.logbook import LogbookService, utc_now_iso
+from saillog.nmea import FIELD_LABELS
+from saillog.source import (
     STATUS_CONNECTED,
     STATUS_CONNECTING,
     STATUS_DISCONNECTED,
     STATUS_ERROR,
     NmeaSource,
 )
-from triplog.storage import (
+from saillog.storage import (
     CrewMember, FuelEntry, LogbookStore, LogEntry, Person, Ship, Trip, Voyage,
 )
-from triplog.webmap import MapServer
+from saillog.webmap import MapServer
 
 _STATUS_TEXT = {
     STATUS_DISCONNECTED: ("getrennt", "#888888"),
@@ -84,7 +84,7 @@ class Application:
         # Törn-Auswahl: Anzeigetext -> Trip-ID (None = keinem Törn zugeordnet)
         self._trip_choices: Dict[str, Optional[int]] = {}
 
-        root.title("TripLog — Segel-Logbuch")
+        root.title("SailLog — Segel-Logbuch")
         branding.set_window_icon(root)
         root.geometry("1180x640")
         root.minsize(1000, 560)
@@ -413,7 +413,7 @@ class Application:
 
     def _plotter_jpeg(self) -> Optional[bytes]:
         """Holt einen Plotter-Screenshot als JPEG (oder None). Läuft im Thread."""
-        from triplog import android_screencap
+        from saillog import android_screencap
         return android_screencap.capture_jpeg(
             self._config.plotter_adb_path,
             self._config.plotter_adb_serial,
@@ -1010,7 +1010,7 @@ class Application:
 
     def _save_report_pdf(self, html: str, name: str, with_map: bool) -> None:
         """Erzeugt ein echtes PDF über den installierten Chromium-Browser."""
-        from triplog import pdf
+        from saillog import pdf
         if pdf.find_browser(self._config.pdf_browser_path) is None:
             if messagebox.askyesno(
                 "PDF-Export",
@@ -1101,7 +1101,7 @@ class Application:
             f"Plotter-Bilder: {info.get('plotter_images')}\n"
             f"Schiffe: {info.get('ships')} · Personen: {info.get('persons')}\n"
             f"Zeitraum: {info.get('date_from', '')} – {info.get('date_to', '')}\n\n"
-            "Jetzt in triplog importieren?\n"
+            "Jetzt in saillog importieren?\n"
             "(Ein früherer TripCon-Import wird dabei ersetzt; eigene Einträge "
             "bleiben unberührt.)"
         )
@@ -1116,7 +1116,7 @@ class Application:
         try:
             conn = tripcon.connect(path)
             try:
-                result = tripcon.import_into_triplog(
+                result = tripcon.import_into_saillog(
                     conn, self._config.db_path, replace=True,
                     max_px=int(self._config.photo_max_px or 1600),
                 )
@@ -1347,7 +1347,7 @@ class Application:
             return
         import tempfile
         try:
-            fd, path = tempfile.mkstemp(suffix=".jpg", prefix="triplog_foto_")
+            fd, path = tempfile.mkstemp(suffix=".jpg", prefix="saillog_foto_")
             with __import__("os").fdopen(fd, "wb") as fh:
                 fh.write(data)
         except OSError as exc:  # noqa: BLE001
@@ -1694,7 +1694,7 @@ class _EditEntryDialog:
         import tempfile
         ext = ".jpg" if rec[1] and "jpeg" in rec[1] else ".png"
         try:
-            fd, path = tempfile.mkstemp(suffix=ext, prefix="triplog_foto_")
+            fd, path = tempfile.mkstemp(suffix=ext, prefix="saillog_foto_")
             with os.fdopen(fd, "wb") as fh:
                 fh.write(rec[0])
         except OSError as exc:  # noqa: BLE001
@@ -2383,7 +2383,7 @@ class _PhotoDialog:
 
         ttk.Label(
             frame, wraplength=470, foreground="#555",
-            text="Bilder in den gewählten Ordner legen → triplog erzeugt automatisch "
+            text="Bilder in den gewählten Ordner legen → saillog erzeugt automatisch "
                  "einen Logbuch-Eintrag mit dem (verkleinerten) Bild und den aktuellen "
                  "NMEA-Daten. Verarbeitete Originale wandern in den Unterordner "
                  "„verarbeitet\".",
@@ -2495,7 +2495,7 @@ class _PlotterDialog:
             self._adb.set(path)
 
     def _find(self) -> None:
-        from triplog import android_screencap
+        from saillog import android_screencap
         devs = android_screencap.devices(self._adb.get().strip() or "adb")
         online = [s for s, st in devs if st == "device"]
         if not devs:
@@ -2511,7 +2511,7 @@ class _PlotterDialog:
 
     def _wlan_prepare(self) -> None:
         """Per USB: tcpip aktivieren, Tablet-IP holen, WLAN-Adresse setzen + verbinden."""
-        from triplog import android_screencap as scr
+        from saillog import android_screencap as scr
         adb = self._adb.get().strip() or "adb"
         self._status.config(text="Aktiviere WLAN-ADB über USB …", foreground="#555")
         self.top.update_idletasks()
@@ -2540,7 +2540,7 @@ class _PlotterDialog:
             foreground="#227722" if cok else "#b25000")
 
     def _wlan_connect(self) -> None:
-        from triplog import android_screencap as scr
+        from saillog import android_screencap as scr
         address = self._serial.get().strip()
         if ":" not in address:
             self._status.config(
@@ -2552,7 +2552,7 @@ class _PlotterDialog:
                             foreground="#227722" if ok else "#b25000")
 
     def _test(self) -> None:
-        from triplog import android_screencap
+        from saillog import android_screencap
         self._status.config(text="Teste Screenshot …", foreground="#555")
         self.top.update_idletasks()
         png = android_screencap.capture_png(
@@ -2833,7 +2833,7 @@ class _PersonEditDialog:
             return
         import os
         import tempfile
-        fd, path = tempfile.mkstemp(suffix=".jpg", prefix="triplog_person_")
+        fd, path = tempfile.mkstemp(suffix=".jpg", prefix="saillog_person_")
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
         webbrowser.open(Path(path).as_uri())
@@ -3085,7 +3085,7 @@ class _ShipEditDialog:
             return
         import os
         import tempfile
-        fd, path = tempfile.mkstemp(suffix=".jpg", prefix="triplog_ship_")
+        fd, path = tempfile.mkstemp(suffix=".jpg", prefix="saillog_ship_")
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
         webbrowser.open(Path(path).as_uri())
@@ -4052,7 +4052,7 @@ class _SourcesDialog:
     def _on_gofree_search(self) -> None:
         """Lauscht kurz auf GoFree-Ankündigungen und trägt die NMEA-Quelle ein."""
         import threading
-        from triplog import discover
+        from saillog import discover
 
         self._gofree_btn.config(state="disabled")
         self._hint.config(text="Suche GoFree-Geräte (bis 6 s) …")
@@ -4067,7 +4067,7 @@ class _SourcesDialog:
         threading.Thread(target=work, daemon=True).start()
 
     def _gofree_done(self, devices) -> None:
-        from triplog import discover
+        from saillog import discover
 
         self._gofree_btn.config(state="normal")
         self._update_hint()

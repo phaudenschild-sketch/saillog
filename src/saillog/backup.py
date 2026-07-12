@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 from typing import List, Optional
 
-_PREFIX = "triplog-backup-"
+_PREFIX = "saillog-backup-"
 
 
 def create_backup(
@@ -22,7 +22,7 @@ def create_backup(
     dest_folder: str,
     timestamp: str,
 ) -> Path:
-    """Erzeugt `<dest>/triplog-backup-<timestamp>.zip`. Gibt den Pfad zurück.
+    """Erzeugt `<dest>/saillog-backup-<timestamp>.zip`. Gibt den Pfad zurück.
 
     `timestamp` z.B. "20260710-143000" (wird vom Aufrufer gestellt, damit die
     Funktion gut testbar bleibt).

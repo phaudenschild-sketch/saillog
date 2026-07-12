@@ -1,13 +1,13 @@
 @echo off
 REM ============================================================
-REM  TripLog — Windows-Build (EXE + optional Installer)
+REM  SailLog — Windows-Build (EXE + optional Installer)
 REM  Doppelklick oder in der Eingabeaufforderung ausfuehren.
 REM ============================================================
 setlocal
 cd /d "%~dp0"
 
 echo.
-echo === TripLog Windows-Build ===
+echo === SailLog Windows-Build ===
 echo.
 
 REM 1) Python vorhanden?
@@ -32,8 +32,8 @@ REM (optional) Pillow + pyserial mitpacken, wenn gewuenscht:
 REM   python -m pip install pillow pyserial
 
 REM 3) Build
-echo [2/3] Baue TripLog.exe ...
-python -m PyInstaller --clean --noconfirm triplog.spec
+echo [2/3] Baue SailLog.exe ...
+python -m PyInstaller --clean --noconfirm saillog.spec
 if errorlevel 1 (
   echo [Fehler] Der Build ist fehlgeschlagen.
   pause
@@ -41,21 +41,21 @@ if errorlevel 1 (
 )
 
 echo.
-echo [OK] Fertig: dist\TripLog\TripLog.exe
+echo [OK] Fertig: dist\SailLog\SailLog.exe
 echo.
 
 REM 4) Optional: Installer bauen, falls Inno Setup vorhanden
 set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
 if exist "%ISCC%" (
   echo [3/3] Baue Installer mit Inno Setup ...
-  "%ISCC%" installer\triplog.iss
+  "%ISCC%" installer\saillog.iss
   echo.
-  echo [OK] Installer: installer\Output\TripLog-Setup-0.1.0.exe
+  echo [OK] Installer: installer\Output\SailLog-Setup-0.1.0.exe
 ) else (
   echo [Hinweis] Inno Setup nicht gefunden ^(optional^).
   echo           Fuer einen richtigen Installer: https://jrsoftware.org/isdl.php
   echo           installieren und dieses Skript erneut ausfuehren.
-  echo           Zum Weitergeben genuegt sonst der Ordner dist\TripLog\ als ZIP.
+  echo           Zum Weitergeben genuegt sonst der Ordner dist\SailLog\ als ZIP.
 )
 
 echo.

@@ -13,7 +13,7 @@ from __future__ import annotations
 from html import escape
 from typing import Dict, List, Optional
 
-from triplog import branding
+from saillog import branding
 
 # Mindestanzahl Zeilen in der Tabelle (leere Zeilen zum handschriftlichen
 # Ergänzen an Bord / beim Amt).

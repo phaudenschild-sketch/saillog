@@ -2,8 +2,8 @@
 
 import unittest
 
-from triplog import nmea
-from triplog.nmea import NmeaParser, valid_checksum
+from saillog import nmea
+from saillog.nmea import NmeaParser, valid_checksum
 
 
 class ChecksumTest(unittest.TestCase):

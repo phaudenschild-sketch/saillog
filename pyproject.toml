@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "triplog"
+name = "saillog"
 version = "0.1.0"
 description = "Segel-Logbuch mit NMEA2000/NMEA0183-Anbindung über WLAN/LAN-Gateway."
 readme = "README.md"
@@ -26,15 +26,15 @@ screenshot = [
 serial = [
     "pyserial>=3.5",
 ]
-# Nur zum Erstellen der Windows-EXE (siehe docs/BUILD.md, triplog.spec)
+# Nur zum Erstellen der Windows-EXE (siehe docs/BUILD.md, saillog.spec)
 build = [
     "pyinstaller>=6.0",
 ]
 
 [project.scripts]
-triplog = "triplog.app:main"
-triplog-sim = "triplog.simulator:main"
-triplog-discover = "triplog.discover:main"
+saillog = "saillog.app:main"
+saillog-sim = "saillog.simulator:main"
+saillog-discover = "saillog.discover:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

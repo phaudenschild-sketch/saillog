@@ -6,8 +6,8 @@ import tempfile
 import unittest
 import zlib
 
-from triplog import plotter_capture
-from triplog.storage import LogbookStore, LogEntry
+from saillog import plotter_capture
+from saillog.storage import LogbookStore, LogEntry
 
 
 def _png() -> bytes:

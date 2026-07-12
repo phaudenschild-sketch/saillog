@@ -1,6 +1,6 @@
 """HTML → PDF über einen installierten Chromium-Browser (Edge/Chrome/…).
 
-TripLog erzeugt Berichte als HTML. Für ein *echtes* PDF (statt „im Browser
+SailLog erzeugt Berichte als HTML. Für ein *echtes* PDF (statt „im Browser
 drucken") wird ein bereits vorhandener Chromium-basierter Browser im
 Headless-Modus mit ``--print-to-pdf`` aufgerufen — das braucht **keine**
 zusätzlichen Python-Pakete. Auf Windows 11 ist Microsoft Edge immer vorhanden.
@@ -98,7 +98,7 @@ def html_to_pdf(html: str, out_path: str, browser: str = "",
     if not exe:
         return False
 
-    tmpdir = tempfile.mkdtemp(prefix="triplog_pdf_")
+    tmpdir = tempfile.mkdtemp(prefix="saillog_pdf_")
     html_file = Path(tmpdir) / "report.html"
     profile = Path(tmpdir) / "profile"          # eigenes Profil: stört kein laufendes Edge/Chrome
     try:
@@ -133,10 +133,10 @@ def html_to_pdf(html: str, out_path: str, browser: str = "",
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-# Kleiner Selbsttest von der Kommandozeile: python -m triplog.pdf <in.html> <out.pdf>
+# Kleiner Selbsttest von der Kommandozeile: python -m saillog.pdf <in.html> <out.pdf>
 if __name__ == "__main__":  # pragma: no cover
     if len(sys.argv) != 3:
-        print("Aufruf: python -m triplog.pdf <eingabe.html> <ausgabe.pdf>")
+        print("Aufruf: python -m saillog.pdf <eingabe.html> <ausgabe.pdf>")
         raise SystemExit(2)
     ok = html_to_pdf(Path(sys.argv[1]).read_text(encoding="utf-8"), sys.argv[2])
     print("PDF erstellt." if ok else "Kein Chromium-Browser gefunden / Fehler.")

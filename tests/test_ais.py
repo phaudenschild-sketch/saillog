@@ -6,7 +6,7 @@ Die Vergleichswerte stammen aus der bekannten AIVDM/AIVDO-Referenz
 
 import unittest
 
-from triplog.ais import AisDecoder, AisTargets, decode_payload
+from saillog.ais import AisDecoder, AisTargets, decode_payload
 
 
 class DecodePayloadTest(unittest.TestCase):

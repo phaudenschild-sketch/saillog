@@ -1,4 +1,4 @@
-"""Tests für die Marke (Logo/Copyright) und die Konfig-Migration ~/.masarasi -> ~/.triplog."""
+"""Tests für die Marke (Logo/Copyright) und die Konfig-Migration ~/.masarasi -> ~/.saillog."""
 
 import json
 import os
@@ -7,13 +7,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from triplog import branding, config, crewlist, reports
-from triplog.storage import LogbookStore, LogEntry, Ship, Trip
+from saillog import branding, config, crewlist, reports
+from saillog.storage import LogbookStore, LogEntry, Ship, Trip
 
 
 class BrandingTest(unittest.TestCase):
     def test_logo_and_copyright(self):
-        self.assertEqual(branding.APP_NAME, "TripLog")
+        self.assertEqual(branding.APP_NAME, "SailLog")
         self.assertIn("Peter Haudenschild", branding.COPYRIGHT)
         html = branding.logo_html(48)
         self.assertIn("<svg", html)
@@ -43,14 +43,14 @@ class BrandingTest(unittest.TestCase):
             db_path = db
         html = reports.trip_report_html(store, C(), trip, 0.0)
         self.assertIn("<svg", html)                 # Logo eingebettet
-        self.assertIn("TripLog", html)              # Marke
+        self.assertIn("SailLog", html)              # Marke
         self.assertIn("Peter Haudenschild", html)   # Copyright im Fuß
         self.assertIn("SY MASARASI", html)          # Schiffsname bleibt erhalten
 
     def test_crewlist_carries_logo_and_copyright(self):
         html = crewlist.build_html({"ship_name": "SY MASARASI"}, [])
         self.assertIn("<svg", html)
-        self.assertIn("TripLog", html)
+        self.assertIn("SailLog", html)
         self.assertIn("Peter Haudenschild", html)
         self.assertIn("SY MASARASI", html)
 
@@ -64,13 +64,13 @@ class ConfigMigrationTest(unittest.TestCase):
             (legacy / "config.json").write_text("{}")
             with mock.patch.object(config.Path, "home", return_value=Path(home)):
                 new = config._app_dir()
-            self.assertEqual(new, Path(home) / ".triplog")
+            self.assertEqual(new, Path(home) / ".saillog")
             self.assertTrue((new / "logbook.sqlite3").exists())
             self.assertFalse(legacy.exists())        # umgezogen, nicht dupliziert
 
     def test_load_rewrites_legacy_db_path(self):
         with tempfile.TemporaryDirectory() as home:
-            newdir = Path(home) / ".triplog"
+            newdir = Path(home) / ".saillog"
             newdir.mkdir()
             db = newdir / "logbook.sqlite3"
             db.write_text("db")

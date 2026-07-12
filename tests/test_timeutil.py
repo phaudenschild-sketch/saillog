@@ -2,7 +2,7 @@
 
 import unittest
 
-from triplog import timeutil
+from saillog import timeutil
 
 
 class TimeutilTest(unittest.TestCase):

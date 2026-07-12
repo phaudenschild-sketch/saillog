@@ -1,11 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller-Spezifikation für TripLog (Windows-Build).
+"""PyInstaller-Spezifikation für SailLog (Windows-Build).
 
-Baut einen eigenständigen Ordner `dist/TripLog/` mit `TripLog.exe` — Python
+Baut einen eigenständigen Ordner `dist/SailLog/` mit `SailLog.exe` — Python
 und tkinter sind mitgepackt, der Endnutzer braucht kein Python zu installieren.
 
-Bauen:  pyinstaller --clean --noconfirm triplog.spec
-Ergebnis: dist/TripLog/TripLog.exe   (danach optional der Inno-Setup-Installer)
+Bauen:  pyinstaller --clean --noconfirm saillog.spec
+Ergebnis: dist/SailLog/SailLog.exe   (danach optional der Inno-Setup-Installer)
 
 Die App selbst ist abhängigkeitsfrei (nur Standardbibliothek). Pillow und
 pyserial sind optional — sind sie in der Build-Umgebung installiert, werden sie
@@ -19,7 +19,7 @@ ICON = "assets/icon.ico" if os.path.exists("assets/icon.ico") else None
 
 a = Analysis(
     ["main.py"],
-    pathex=["src"],                 # damit `import triplog...` gefunden wird
+    pathex=["src"],                 # damit `import saillog...` gefunden wird
     binaries=[],
     datas=[],                        # Logo/Icon sind im Code eingebettet (base64)
     hiddenimports=[],
@@ -37,7 +37,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="TripLog",
+    name="SailLog",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -54,5 +54,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="TripLog",
+    name="SailLog",
 )

@@ -1062,7 +1062,7 @@ class LogbookStore:
         return len(entries)
 
     def export_gpx(
-        self, path: str, track_name: str = "TripLog Törn", trip_id: Optional[int] = None
+        self, path: str, track_name: str = "SailLog Törn", trip_id: Optional[int] = None
     ) -> int:
         # GPX = dichte Spur: Track-Punkte einschließen.
         entries = [
@@ -1072,7 +1072,7 @@ class LogbookStore:
         ]
         lines = [
             '<?xml version="1.0" encoding="UTF-8"?>',
-            '<gpx version="1.1" creator="TripLog" '
+            '<gpx version="1.1" creator="SailLog" '
             'xmlns="http://www.topografix.com/GPX/1/1">',
             "  <trk>",
             f"    <name>{escape(track_name)}</name>",

@@ -2,7 +2,7 @@
 
 import unittest
 
-from triplog import geo
+from saillog import geo
 
 
 class HaversineTest(unittest.TestCase):

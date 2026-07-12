@@ -7,10 +7,10 @@ import time
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
-from triplog.autolog import AutoLogEngine, AutoLogSettings
-from triplog.livedata import LiveData
-from triplog.nmea import engine_running
-from triplog.storage import LogbookStore, LogEntry, Trip
+from saillog.autolog import AutoLogEngine, AutoLogSettings
+from saillog.livedata import LiveData
+from saillog.nmea import engine_running
+from saillog.storage import LogbookStore, LogEntry, Trip
 
 
 def utc_now_iso() -> str:

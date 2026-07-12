@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""triplog — altes TripCon-Logbuch (.tcdb) einlesen und zugänglich machen.
+"""saillog — altes TripCon-Logbuch (.tcdb) einlesen und zugänglich machen.
 
 Standard: exportiert Törns als CSV, GPX-Tracks und extrahiert alle Bilder
-in einen Ausgabeordner. Optional zusätzlich Import in die triplog-App.
+in einen Ausgabeordner. Optional zusätzlich Import in die saillog-App.
 
     # Export (CSV + GPX + Bilder) in einen Ordner
     python import_tripcon.py "C:\\...\\TripCon_20250417.tcdb" --out "C:\\claude\\tripcon-export"
 
-    # zusätzlich in die triplog-Logbuch-DB importieren (erscheint in der App)
+    # zusätzlich in die saillog-Logbuch-DB importieren (erscheint in der App)
     python import_tripcon.py "C:\\...\\TripCon_20250417.tcdb" --out "C:\\claude\\tripcon-export" --into-app
 
     # nur Bilder extrahieren
@@ -20,8 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from triplog import tripcon  # noqa: E402
-from triplog.config import Config  # noqa: E402
+from saillog import tripcon  # noqa: E402
+from saillog.config import Config  # noqa: E402
 
 
 def main(argv=None) -> int:
@@ -30,7 +30,7 @@ def main(argv=None) -> int:
     parser.add_argument("--out", default=None, help="Ausgabeordner für Export/Bilder")
     parser.add_argument(
         "--into-app", action="store_true",
-        help="Einträge zusätzlich in die triplog-Logbuch-DB importieren",
+        help="Einträge zusätzlich in die saillog-Logbuch-DB importieren",
     )
     parser.add_argument(
         "--only-images", action="store_true", help="nur Bilder extrahieren"
@@ -45,7 +45,7 @@ def main(argv=None) -> int:
     )
     parser.add_argument(
         "--db", default=None,
-        help="Ziel-DB für --into-app (Standard: triplog-Konfiguration)",
+        help="Ziel-DB für --into-app (Standard: saillog-Konfiguration)",
     )
     args = parser.parse_args(argv)
 
@@ -124,8 +124,8 @@ def main(argv=None) -> int:
 
         if args.into_app:
             db_path = args.db or Config.load().db_path
-            print(f"Importiere in triplog-DB: {db_path}")
-            result = tripcon.import_into_triplog(conn, db_path)
+            print(f"Importiere in saillog-DB: {db_path}")
+            result = tripcon.import_into_saillog(conn, db_path)
             print(f"  {result['entries']} Eintrag/Einträge importiert (Typ 'tripcon').")
             method = result["image_method"]
             trip_imgs = result.get("trip_images", 0)
@@ -145,7 +145,7 @@ def main(argv=None) -> int:
                   f"{result['person_photos']} mit Foto.")
             if result["person_fields"]:
                 print(f"    übernommene Felder: {', '.join(result['person_fields'])}")
-            print("  → In triplog sichtbar (ältere Törns ggf. über Export/Scrollen).")
+            print("  → In saillog sichtbar (ältere Törns ggf. über Export/Scrollen).")
     finally:
         conn.close()
 

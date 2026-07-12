@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TripLog — Segel-Logbuch. Bequemer Start ohne Installation.
+"""SailLog — Segel-Logbuch. Bequemer Start ohne Installation.
 
     python main.py
 """
@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from triplog.app import main  # noqa: E402
+from saillog.app import main  # noqa: E402
 
 if __name__ == "__main__":
     sys.exit(main())

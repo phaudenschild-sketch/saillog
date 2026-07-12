@@ -1,6 +1,6 @@
-# TripLog als Windows-Programm bauen (EXE + Installer)
+# SailLog als Windows-Programm bauen (EXE + Installer)
 
-Ziel: eine `TripLog.exe`, die andere Segler **ohne Python** starten können —
+Ziel: eine `SailLog.exe`, die andere Segler **ohne Python** starten können —
 und optional ein richtiger Installer mit Startmenü-Eintrag, Desktop-Symbol und
 Deinstaller.
 
@@ -18,12 +18,12 @@ abhängigkeitsfrei.
 
 Das Skript:
 - installiert bei Bedarf PyInstaller,
-- baut **`dist\TripLog\TripLog.exe`** (kompletter, eigenständiger Ordner),
+- baut **`dist\SailLog\SailLog.exe`** (kompletter, eigenständiger Ordner),
 - baut zusätzlich den **Installer**, falls *Inno Setup* installiert ist
-  (siehe unten) → `installer\Output\TripLog-Setup-0.1.0.exe`.
+  (siehe unten) → `installer\Output\SailLog-Setup-0.1.0.exe`.
 
-Zum Weitergeben genügt schon der Ordner **`dist\TripLog\`** als ZIP —
-Empfänger entpacken und `TripLog.exe` starten.
+Zum Weitergeben genügt schon der Ordner **`dist\SailLog\`** als ZIP —
+Empfänger entpacken und `SailLog.exe` starten.
 
 ---
 
@@ -32,9 +32,9 @@ Empfänger entpacken und `TripLog.exe` starten.
 ```bat
 cd C:\claude\masarasi
 python -m pip install --upgrade pyinstaller
-python -m PyInstaller --clean --noconfirm triplog.spec
+python -m PyInstaller --clean --noconfirm saillog.spec
 ```
-Ergebnis: `dist\TripLog\TripLog.exe`.
+Ergebnis: `dist\SailLog\SailLog.exe`.
 
 ### Optionale Zusatzfunktionen mit einpacken
 
@@ -45,7 +45,7 @@ Pakete **vor** dem Build — dann packt PyInstaller sie automatisch mit:
 
 ```bat
 python -m pip install pillow pyserial
-python -m PyInstaller --clean --noconfirm triplog.spec
+python -m PyInstaller --clean --noconfirm saillog.spec
 ```
 
 ---
@@ -59,9 +59,9 @@ Deinstaller):
 2. Entweder `build_windows.bat` erneut ausführen (erkennt Inno Setup
    automatisch), **oder** manuell:
    ```bat
-   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\triplog.iss
+   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\saillog.iss
    ```
-Ergebnis: **`installer\Output\TripLog-Setup-0.1.0.exe`** — das ist die eine
+Ergebnis: **`installer\Output\SailLog-Setup-0.1.0.exe`** — das ist die eine
 Datei, die du weitergibst.
 
 Das Setup nutzt `assets\icon.ico` als Programm-Symbol, zeigt die MIT-Lizenz an
@@ -71,10 +71,10 @@ und bietet optional ein Desktop-Symbol.
 
 ## Gut zu wissen
 
-- **Version anheben:** in `installer\triplog.iss` (`#define AppVersion`) und
+- **Version anheben:** in `installer\saillog.iss` (`#define AppVersion`) und
   `pyproject.toml` die Versionsnummer ändern.
 - **Datenablage bleibt getrennt:** Logbuch und Einstellungen liegen weiterhin
-  unter `%USERPROFILE%\.triplog\` — eine Deinstallation löscht die Daten **nicht**.
+  unter `%USERPROFILE%\.saillog\` — eine Deinstallation löscht die Daten **nicht**.
 - **SmartScreen-Hinweis:** Unsignierte EXE/Installer zeigen bei Erstnutzern evtl.
   eine Windows-SmartScreen-Warnung („Mehr Infos" → „Trotzdem ausführen"). Für
   eine Weitergabe im größeren Stil lohnt sich später ein Code-Signing-Zertifikat.

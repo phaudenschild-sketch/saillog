@@ -2,7 +2,7 @@
 
 import unittest
 
-from triplog.livedata import LiveData
+from saillog.livedata import LiveData
 
 
 class LiveDataTest(unittest.TestCase):

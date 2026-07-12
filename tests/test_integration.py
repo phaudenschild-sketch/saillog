@@ -7,11 +7,11 @@ import threading
 import time
 import unittest
 
-from triplog.livedata import LiveData
-from triplog.logbook import LogbookService
-from triplog.simulator import build_burst
-from triplog.source import NmeaSource
-from triplog.storage import LogbookStore
+from saillog.livedata import LiveData
+from saillog.logbook import LogbookService
+from saillog.simulator import build_burst
+from saillog.source import NmeaSource
+from saillog.storage import LogbookStore
 
 
 def _free_port() -> int:

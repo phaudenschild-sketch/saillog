@@ -1,13 +1,14 @@
 # Projektstatus & Weiterarbeit (Handover)
 
-Stand-Notiz für die nächste Arbeitssitzung an **TripLog** (Segel-Logbuch).
-Das Produkt heißt seit der Umbenennung **TripLog** (Python-Paket `triplog`);
-„Masarasi" ist der Schiffsname und bleibt nur als solcher erhalten.
-Das GitHub-Repo ist auf **`phaudenschild-sketch/triplog`** umbenannt
-(GitHub leitet den alten Namen automatisch weiter). Auf dem Laptop den Remote
-umstellen: `git remote set-url origin https://github.com/phaudenschild-sketch/triplog.git`
-(die Arbeitskopie darf weiterhin `C:\claude\masarasi` heißen — der Ordnername
-ist egal).
+Stand-Notiz für die nächste Arbeitssitzung an **SailLog** (Segel-Logbuch).
+Das Produkt heißt jetzt **SailLog** (Python-Paket `saillog`), Domain
+**saillog.ch** (reserviert). Vorherige Namen: Masarasi → TripLog → SailLog;
+„Masarasi" ist der **Schiffsname** und bleibt nur als solcher erhalten.
+Das **GitHub-Repo heißt aktuell noch `phaudenschild-sketch/triplog`** (die
+Programm-Umbenennung betrifft nur den Code/Produktnamen). Optional in GitHub →
+Settings → Rename auf `saillog` umbenennen; danach lokal
+`git remote set-url origin https://github.com/phaudenschild-sketch/saillog.git`
+(GitHub leitet alte Namen automatisch weiter). Arbeitskopie-Ordnername egal.
 
 ## Schnellstart
 
@@ -21,12 +22,12 @@ python -m unittest discover -s tests   # 243 Tests
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
 `pip install pyserial` (serieller Anschluss / Maretron).
 
-Konfiguration & Datenbank liegen unter `~/.triplog/`
+Konfiguration & Datenbank liegen unter `~/.saillog/`
 (`config.json`, `logbook.sqlite3`) — **nicht** im Repo.
 
 ## Bord-Hardware (dieses Boot)
 
-| Gerät | Anbindung in triplog | Liefert |
+| Gerät | Anbindung in saillog | Liefert |
 |---|---|---|
 | **B&G Zeus** (Plotter) | TCP `192.168.9.224:10110` | Position, SOG/COG, Wind (MWV/MWD), Tiefe, Wassertemp, Kurs (HDG/VHW), **Log** (VLW, Grunddistanz-Fallback), Lufttemp/**Luftdruck**/Krängung/Trimm/Ruder (XDR), AIS. **Keine Motordaten.** |
 | **Maretron USB100** | seriell `COM11 @ 115200` | NMEA2000→0183: **Drehzahl** (`IIRPM`), **Kühlwassertemperatur**, **Lichtmaschinenspannung**, **Motorstunden** (aus `$PMAREPD`), **Log** (`IIVLW`). Öldruck-Feld leer (kein Sensor). |
@@ -52,7 +53,7 @@ an die Oberfläche gebunden.
 Dienste per Multicast **239.2.1.1:2052** an (bestätigt über TripCons
 Statuszeile „listen … to multicast '239.2.1.1:2052'"). `discover.py --gofree`
 tritt dieser Gruppe bei, liest die Ankündigung (JSON) und schlägt die passende
-triplog-Quelle vor (`TCP <ip>:<port>` des `nmea-0183`-Dienstes).
+saillog-Quelle vor (`TCP <ip>:<port>` des `nmea-0183`-Dienstes).
 - `--iface 192.168.0.123` bindet an eine bestimmte lokale IP (wie TripCon) —
   nötig auf Rechnern mit mehreren Netzen (VM/WLAN+LAN), sonst wird evtl. auf
   dem falschen Netz gelauscht.
@@ -64,7 +65,7 @@ triplog-Quelle vor (`TCP <ip>:<port>` des `nmea-0183`-Dienstes).
 
 | Port | Dienst | Nutzen |
 |---|---|---|
-| **10110** | NMEA0183 / nmea-0183 | Klartext-NMEA-0183 (TCP) — **das nutzt triplog bereits** |
+| **10110** | NMEA0183 / nmea-0183 | Klartext-NMEA-0183 (TCP) — **das nutzt saillog bereits** |
 | 80 | http | Web-/GoFree-HTTP-API |
 | 21 | ftp | Dateizugriff |
 | 554 | rtsp | **Plotter-Bildschirm als Video** (mit VLC testbar) |
@@ -114,7 +115,7 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
 - **TripCon-Import im Menü** (**Extras → „TripCon-Backup importieren…"**):
   Dateiauswahl → read-only Analyse (Integrität/Törns/Einträge/Bilder/Zeitraum,
   `tripcon.analyze_tcdb`) → Rückfrage → Import im Thread
-  (`tripcon.import_into_triplog`, ersetzt frühere `tripcon`-Importe). Das CLI
+  (`tripcon.import_into_saillog`, ersetzt frühere `tripcon`-Importe). Das CLI
   (`import_tripcon.py`) bleibt für Export (CSV/GPX/Bilder) bestehen.
 - **Bedienkomfort:** Nach „✎ Eintrag speichern" springt der **Anlass** zurück
   auf „Routineeintrag" und die **Bemerkung** wird geleert (kein versehentliches
@@ -122,7 +123,7 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   10110 + GoFree-Suche statt fester IP; Maretron: COM3).
 - **Weitergabe/Kommerz:** `LICENSE` (MIT) ergänzt; Analyse & Ideen in
   `docs/WEITERGABE.md` (Weitergabe-Check + kommerzielle Optionen).
-- **Echter PDF-Export der Berichte** (`triplog/pdf.py`): findet einen
+- **Echter PDF-Export der Berichte** (`saillog/pdf.py`): findet einen
   installierten Chromium-Browser (Edge/Chrome/Chromium/Brave — PATH + bekannte
   Orte je OS, Override `config.pdf_browser_path` bzw. `TRIPLOG_BROWSER`) und
   ruft ihn headless mit `--print-to-pdf` auf → **keine zusätzlichen
@@ -142,20 +143,21 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   Einträge einbetten"** (Vorgabe an) statt separater „…mit Bildern"-Knöpfe; je
   Bereich nur noch **ein** Erstellen-Knopf. Behebt die Verwirrung „Fotos fehlen"
   (vorher hatte man versehentlich die Bild-lose Variante gewählt).
-- **Umbenennung Masarasi → TripLog:** Python-Paket `masarasi` → `triplog`
-  (alle Importe/Skripte/Tests), Produktname „TripLog" in allen Ausgaben
-  (Fenstertitel, Karte, Berichte, Crewliste, GPX-Metadaten). „SY MASARASI"
-  bleibt als **Schiffsname** erhalten. Datenverzeichnis `~/.masarasi` →
-  `~/.triplog` mit **automatischer einmaliger Übernahme** bestehender Daten
-  (`config._app_dir`, plus db_path-Umbiegung in `Config.load`).
-- **Logo & Copyright:** Marken-Modul `triplog/branding.py` (Inline-SVG-Logo
+- **Umbenennung Masarasi → TripLog → SailLog:** Python-Paket zuletzt `triplog`
+  → `saillog` (alle Importe/Skripte/Tests), Produktname „SailLog" in allen
+  Ausgaben (Fenstertitel, Karte, Berichte, Crewliste, GPX-Metadaten, Logo-
+  Wortmarke). „SY MASARASI" bleibt als **Schiffsname** erhalten. Datenverzeichnis
+  `~/.saillog` mit **automatischer einmaliger Übernahme** aus einem früheren Namen
+  — `config._LEGACY_DIRS = (".triplog", ".masarasi")`, Migration in
+  `config._app_dir` plus db_path-Umbiegung in `Config.load`.
+- **Logo & Copyright:** Marken-Modul `saillog/branding.py` (Inline-SVG-Logo
   `assets/logo.svg`, `APP_NAME`, `COPYRIGHT = "© Peter Haudenschild"`). Das Logo
   erscheint auf der Titelseite der Berichte und im Kopf der Crewliste; der
   Copyright-Hinweis steht im Fuß jeder Ausgabe.
-- **Windows-Build (EXE + Installer):** `triplog.spec` (PyInstaller, onedir,
+- **Windows-Build (EXE + Installer):** `saillog.spec` (PyInstaller, onedir,
   `console=False`, Icon `assets/icon.ico`, `pathex=['src']`), `build_windows.bat`
   (Ein-Klick: PyInstaller installieren → EXE bauen → optional Inno Setup),
-  `installer/triplog.iss` (Inno Setup: Startmenü/Desktop/Deinstaller, LICENSE),
+  `installer/saillog.iss` (Inno Setup: Startmenü/Desktop/Deinstaller, LICENSE),
   Anleitung `docs/BUILD.md`. Build unter Linux/xvfb verifiziert (Importgraph +
   Start der gefrorenen App). Muss final auf Windows gebaut werden. pyproject:
   optionales Extra `build = ["pyinstaller>=6.0"]`.
@@ -164,11 +166,11 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   Windows-Verknüpfung/späteren Installer). Das **Fenster-Icon** der App wird zur
   Laufzeit aus einem eingebetteten 64px-PNG gesetzt (`branding.ICON_PNG_B64` /
   `branding.set_window_icon`, in `gui.py` beim Start) — kein Dateizugriff nötig.
-- **GitHub-Repo umbenannt:** `masarasi` → **`triplog`** (am 2026-07-12 manuell
-  in den GitHub-Settings erledigt). GitHub leitet den alten Namen automatisch
-  weiter, daher funktionieren bestehende Klone/Pushes weiter; auf dem Laptop
-  bei Gelegenheit den Remote umstellen (`git remote set-url origin
-  https://github.com/phaudenschild-sketch/triplog.git`).
+- **GitHub-Repo:** früher `masarasi` → aktuell **`triplog`** (bereits umbenannt).
+  Der Produkt-Rename auf SailLog betrifft nur den Code; das Repo kann optional
+  in GitHub → Settings → Rename auf `saillog` umgestellt werden (danach lokal
+  `git remote set-url origin https://github.com/phaudenschild-sketch/saillog.git`;
+  GitHub leitet alte Namen automatisch weiter).
 - **Plotter-Screenshot** (`android_screencap.py`): holt den Bildschirm des
   Android-Tablets (Orca-/Plotter-Anzeige) per **adb** (`exec-out screencap -p`)
   ins Logbuch. Knopf **„📸 Plotter"** (sofort Eintrag mit Bild), Bild-Auswahl
@@ -198,7 +200,7 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   „voll-zu-voll" berechnet — unabhängig von der schwankenden Tankanzeige.
   **Restfüllstand + Reichweite** (Rest-Motorstunden) aus Tankgröße (Standard
   160 L, einstellbar) und aktuellen Motorstunden (`fuel.py`)
-- **Törn-Ebene (Voyage) über den Etappen:** In triplog ist ein „Trip" eine
+- **Törn-Ebene (Voyage) über den Etappen:** In saillog ist ein „Trip" eine
   Etappe (Tagesschlag). Mehrere Etappen lassen sich zu einem **Törn** (voyages-
   Tabelle, `trip.voyage_id`) zusammenfassen — Menü **Extras → „Törns/Etappen
   gruppieren…"** (Törn anlegen/umbenennen/löschen, Etappen zuordnen). Löschen
@@ -266,7 +268,7 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   - Mehrteiler-Zusammensetzung je Funkkanal (Wetherdock vergibt Sequenz-ID neu)
   - **Automatische COG-Korrektur:** erkennt Feeds, die COG fälschlich in ganzen
     Grad statt Zehntelgrad liefern (B&G-Multiplexer an Bord), und rechnet um
-  - `python -m triplog.ais "<!AIVDM-Zeile>"` — Sätze am Boot einzeln prüfen
+  - `python -m saillog.ais "<!AIVDM-Zeile>"` — Sätze am Boot einzeln prüfen
 - Werkzeuge (Repo-Root/Module): `find_sources.py`/`discover.py`
   (`--gofree --iface --raw`), `gofree_probe.py` (GoFree nav-ws/RTSP),
   `orca_probe.py` (Orca Core, siehe `docs/ORCA_CORE.md`), `import_tripcon.py`
@@ -302,7 +304,7 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
    nach Tablet-Neustart einmal `adb tcpip 5555` per USB. Dialog: Extras →
    Plotter-Screenshot (ADB)…
 4. **TripCon-Anlass verifizieren** (falls nötig): Mapping in
-   `src/triplog/tripcon.py` (`_resolve_code`) anpassen.
+   `src/saillog/tripcon.py` (`_resolve_code`) anpassen.
 5. **Optional:** CSV-Export wahlweise in Lokalzeit; weitere Zeitzonen;
    Rate-of-Turn (`ROT`)-Anzeige.
 
@@ -314,7 +316,7 @@ Motor-an/aus nutzt jetzt vorrangig die Drehzahl.
 ## Architektur (Kurz)
 
 ```
-src/triplog/
+src/saillog/
   app.py         Einstieg (GUI)
   gui.py         tkinter-Oberfläche (Quellen, Dashboard, Bedingungen,
                  Törns, Tabelle, Bearbeiten/Löschen, AIS-Karte, Zeitzone)
@@ -335,7 +337,7 @@ src/triplog/
   storage.py     SQLite: LogEntry/Trip, Migration, CSV/GPX, Bilder
   fields.py      Auswahllisten (Segel/Wetter/Sicht)
   timeutil.py    Zeitzonen-Umrechnung (UTC ↔ Anzeige)
-  config.py      Einstellungen (~/.triplog/config.json)
+  config.py      Einstellungen (~/.saillog/config.json)
   discover.py    Quellen-/Port-/GoFree-Scanner
   plotter_capture.py  Bild laden/als-PNG (Pillow optional, ungenutzt)
   legacy.py / tripcon.py  Analyse & Import alter TripCon-Sicherungen
