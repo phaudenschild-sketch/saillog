@@ -127,6 +127,13 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   Tabelle, `trip.voyage_id`) zusammenfassen — Menü **Extras → „Törns/Etappen
   gruppieren…"** (Törn anlegen/umbenennen/löschen, Etappen zuordnen). Löschen
   eines Törns lässt die Etappen bestehen.
+- **Eintrag bearbeiten inkl. Messwerte** (`_EditEntryDialog`, Knopf
+  „Bearbeiten…" / Doppelklick): neben Zeit, Anlass, Segel/Wetter, Ort/Crew,
+  Notiz und Bildern lassen sich jetzt auch die **automatisch erfassten
+  Messwerte korrigieren** — Breite/Länge, SOG/COG, Tiefe und wahrer Wind. Für
+  Fälle wie eine falsche Koordinate in einem Autolog-Eintrag, die die
+  Tagesdistanz verfälscht (z.B. „3500 sm an einem Tag"). Leeres Feld = Wert
+  entfernt (None); der Eintrag wird als bearbeitet markiert.
 - **Törn bearbeiten** (Knopf „✎ Törn bearbeiten…" in der Törn-Leiste,
   `_TripEditDialog`): Stammdaten eines bestehenden Törns nachträglich ändern —
   Name, Start-/Zielort, Start-/Endzeit (lokale Anzeige, intern UTC) sowie

@@ -1270,8 +1270,9 @@ def _parse_float(text: str) -> Optional[float]:
 class _EditEntryDialog:
     """Dialog zum Bearbeiten eines bestehenden Logbuch-Eintrags.
 
-    Messwerte (Position, Wind …) werden nur informativ angezeigt; geändert
-    werden die manuellen Felder, Zeit und Notiz.
+    Auch die automatisch erfassten Messwerte (Position, SOG/COG, Tiefe, Wind)
+    lassen sich korrigieren — z.B. eine falsche Koordinate, die die Tagesdistanz
+    verfälscht. Zusätzlich die manuellen Felder, Zeit, Bilder und Notiz.
     """
 
     _ENGINE = {None: "—", 1: "ein", 0: "aus"}
@@ -1293,21 +1294,53 @@ class _EditEntryDialog:
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
-        info = []
-        if entry.lat is not None and entry.lon is not None:
-            info.append(f"Pos {entry.lat:.4f}, {entry.lon:.4f}")
-        if entry.sog_kn is not None:
-            info.append(f"SOG {entry.sog_kn:.1f} kn")
-        if entry.depth_m is not None:
-            info.append(f"Tiefe {entry.depth_m:.1f} m")
-        info.append(f"Typ: {entry.entry_type}")
-        ttk.Label(frame, text="  ·  ".join(info),
-                  foreground="#555").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 8))
+        ttk.Label(frame, text=f"Typ: {entry.entry_type}",
+                  foreground="#555").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
 
         r = 1
 
         def lab(text, row, col=0):
             ttk.Label(frame, text=text).grid(row=row, column=col, sticky="e", padx=4, pady=2)
+
+        # Automatisch erfasste Messwerte — korrigierbar (z.B. falsche Koordinate,
+        # die die Tagesdistanz verfälscht).
+        meas = ttk.LabelFrame(frame, text="Messwerte (automatisch erfasst — korrigierbar)")
+        meas.grid(row=r, column=0, columnspan=4, sticky="we", pady=(0, 8))
+
+        def mlab(text, row, col):
+            ttk.Label(meas, text=text).grid(row=row, column=col, sticky="e", padx=(8, 3), pady=2)
+
+        def mfield(value, fmt="{:g}"):
+            var = tk.StringVar(value="" if value is None else fmt.format(value))
+            return var
+
+        mlab("Breite (°):", 0, 0)
+        self._lat = mfield(entry.lat, "{:.6f}")
+        ttk.Entry(meas, textvariable=self._lat, width=14).grid(row=0, column=1, sticky="w", padx=(0, 8))
+        mlab("Länge (°):", 0, 2)
+        self._lon = mfield(entry.lon, "{:.6f}")
+        ttk.Entry(meas, textvariable=self._lon, width=14).grid(row=0, column=3, sticky="w", padx=(0, 8))
+
+        mlab("SOG (kn):", 1, 0)
+        self._sog = mfield(entry.sog_kn)
+        ttk.Entry(meas, textvariable=self._sog, width=14).grid(row=1, column=1, sticky="w")
+        mlab("COG (°):", 1, 2)
+        self._cog = mfield(entry.cog_deg)
+        ttk.Entry(meas, textvariable=self._cog, width=14).grid(row=1, column=3, sticky="w")
+
+        mlab("Tiefe (m):", 2, 0)
+        self._depth = mfield(entry.depth_m)
+        ttk.Entry(meas, textvariable=self._depth, width=14).grid(row=2, column=1, sticky="w")
+        mlab("Wind wahr:", 2, 2)
+        windbox = ttk.Frame(meas)
+        windbox.grid(row=2, column=3, sticky="w")
+        self._tws = mfield(entry.tws_kn)
+        ttk.Entry(windbox, textvariable=self._tws, width=6).pack(side="left")
+        ttk.Label(windbox, text=" kn @ ").pack(side="left")
+        self._twd = mfield(entry.twd_deg)
+        ttk.Entry(windbox, textvariable=self._twd, width=6).pack(side="left")
+        ttk.Label(windbox, text=" °").pack(side="left")
+        r += 1
 
         lab("Zeit (lokal):", r)
         self._ts = tk.StringVar(value=ts_display or entry.timestamp)
@@ -1507,6 +1540,13 @@ class _EditEntryDialog:
         engine_map = {"—": None, "ein": 1, "aus": 0}
         self.result = {
             "timestamp": self._ts.get().strip(),
+            "lat": _parse_float(self._lat.get()),
+            "lon": _parse_float(self._lon.get()),
+            "sog_kn": _parse_float(self._sog.get()),
+            "cog_deg": _parse_float(self._cog.get()),
+            "depth_m": _parse_float(self._depth.get()),
+            "tws_kn": _parse_float(self._tws.get()),
+            "twd_deg": _parse_float(self._twd.get()),
             "logevent": self._logevent.get().strip(),
             "engine_on": engine_map.get(self._engine.get()),
             "mainsail": self._mainsail.get() if self._mainsail.get() != "—" else "",
