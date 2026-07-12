@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="TripLog">
+  <rect x="6" y="6" width="116" height="116" rx="26" fill="#0d2a4a"/>
+  <!-- gestrichelte Kurslinie (Track) -->
+  <path d="M20 100 C 40 74, 54 74, 72 54 S 100 30, 110 22" fill="none"
+        stroke="#e8820c" stroke-width="4.4" stroke-linecap="round" stroke-dasharray="2.5 9"/>
+  <!-- Mast -->
+  <line x1="66" y1="24" x2="66" y2="86" stroke="#eaf2fb" stroke-width="4"/>
+  <!-- Grosssegel (links) -->
+  <path d="M62 28 L62 84 L30 84 Z" fill="#eaf2fb"/>
+  <!-- Fock (rechts) -->
+  <path d="M70 36 L70 84 L96 84 Z" fill="#9fd2f2"/>
+  <!-- Rumpf -->
+  <path d="M26 88 H102 L91 104 A10 10 0 0 1 83 108 H45 A18 18 0 0 1 26 88 Z" fill="#1c7fc0"/>
+  <!-- Wellen -->
+  <path d="M24 116 q 11 7 22 0 t 22 0 t 22 0" fill="none" stroke="#1c7fc0"
+        stroke-width="3.6" stroke-linecap="round" opacity="0.7"/>
+</svg>

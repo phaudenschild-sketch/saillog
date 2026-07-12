@@ -13,7 +13,7 @@ automatisch weiter). Laptop-Arbeitskopie: `C:\claude\masarasi`.
 cd C:\claude\masarasi
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 234 Tests
+python -m unittest discover -s tests   # 235 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
@@ -130,6 +130,16 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   `assets/logo.svg`, `APP_NAME`, `COPYRIGHT = "© Peter Haudenschild"`). Das Logo
   erscheint auf der Titelseite der Berichte und im Kopf der Crewliste; der
   Copyright-Hinweis steht im Fuß jeder Ausgabe.
+- **App-Icon:** `assets/icon.svg` (quadratisches Boot-Badge) → gerendert nach
+  `assets/icon.png` (256, transparent) und `assets/icon.ico` (16–256, für
+  Windows-Verknüpfung/späteren Installer). Das **Fenster-Icon** der App wird zur
+  Laufzeit aus einem eingebetteten 64px-PNG gesetzt (`branding.ICON_PNG_B64` /
+  `branding.set_window_icon`, in `gui.py` beim Start) — kein Dateizugriff nötig.
+- **GitHub-Repo-Umbenennung nicht automatisch möglich:** Die Repo-Rename-API ist
+  in dieser Session gesperrt (GitHub-App muss vom Org-Admin verbunden sein) und
+  es gibt kein Rename-MCP-Tool. Muss manuell erfolgen: GitHub → Repo `masarasi`
+  → Settings → Rename → `triplog`; danach lokal
+  `git remote set-url origin https://github.com/phaudenschild-sketch/triplog.git`.
 - **Plotter-Screenshot** (`android_screencap.py`): holt den Bildschirm des
   Android-Tablets (Orca-/Plotter-Anzeige) per **adb** (`exec-out screencap -p`)
   ins Logbuch. Knopf **„📸 Plotter"** (sofort Eintrag mit Bild), Bild-Auswahl

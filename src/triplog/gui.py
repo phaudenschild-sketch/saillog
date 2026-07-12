@@ -10,7 +10,9 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
-from triplog import backup, crewlist, fuel, geo, photos, reports, timeutil, tripcon
+from triplog import (
+    backup, branding, crewlist, fuel, geo, photos, reports, timeutil, tripcon,
+)
 from triplog.ais import AisDecoder, AisTargets
 from triplog.autolog import AutoLogSettings
 from triplog.config import CONFIG_PATH, Config
@@ -83,6 +85,7 @@ class Application:
         self._trip_choices: Dict[str, Optional[int]] = {}
 
         root.title("TripLog — Segel-Logbuch")
+        branding.set_window_icon(root)
         root.geometry("1180x640")
         root.minsize(1000, 560)
 

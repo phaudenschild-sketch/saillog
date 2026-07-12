@@ -19,6 +19,12 @@ class BrandingTest(unittest.TestCase):
         self.assertIn("<svg", html)
         self.assertIn('height="48"', html)
 
+    def test_icon_png_is_valid(self):
+        import base64
+        raw = base64.b64decode(branding.ICON_PNG_B64)
+        self.assertEqual(raw[:8], b"\x89PNG\r\n\x1a\n")   # gültiges PNG
+        self.assertGreater(len(raw), 200)
+
     def test_report_carries_logo_and_copyright(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
