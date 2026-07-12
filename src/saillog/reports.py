@@ -22,7 +22,7 @@ import math
 from typing import Dict, List, Optional
 from xml.sax.saxutils import escape
 
-from saillog import branding, geo, timeutil
+from saillog import branding, geo, sun, timeutil
 from saillog.storage import LogEntry, Ship, Trip, Voyage
 
 _COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
@@ -340,6 +340,21 @@ h3 { font-size: 15px; margin: 16px 0 6px; }
 .mapwrap { border:1px solid #ccd; border-radius:6px; overflow:hidden;
            page-break-inside: avoid; }
 .trackmap { display:block; width:100%; height:auto; }
+.mtab { width:100%; border-collapse:collapse; font-size:12px; margin:8px 0; }
+.mtab th, .mtab td { border:1px solid #bcc; padding:5px 7px; text-align:left;
+                     vertical-align:top; }
+.mtab th { background:#eef3f6; font-size:11px; }
+.mtab td.num { text-align:right; font-variant-numeric:tabular-nums; }
+.mtab tr.sum td { font-weight:700; background:#f6f9fb; }
+.mtab td.sign { min-width:120px; }
+.reqbox { background:#f2f7fa; border:1px solid #d6e2ea; border-radius:6px;
+          padding:6px 12px; margin:8px 0; }
+.reqbox h3 { margin:8px 0 4px; }
+.ok { color:#1a7d1a; font-weight:600; } .open { color:#b25000; font-weight:600; }
+.sign2 { display:flex; gap:40px; margin-top:30px; }
+.sign2 div { flex:1; border-top:1px solid #333; padding-top:4px; color:#333;
+             font-size:12px; }
+.disc { color:#8592a0; font-size:11px; margin-top:14px; line-height:1.5; }
 .brandbar { display:flex; justify-content:center; margin: 4px 0 6px; }
 .rfoot { margin-top: 26px; padding-top: 8px; border-top: 1px solid #dde;
          color:#8592a0; font-size: 11px; display:flex; justify-content:space-between;
@@ -537,16 +552,53 @@ def _map_marks(entries: List[LogEntry], offset: float,
     return marks
 
 
+def map_page_html(track: List[List[float]], marks: List[dict],
+                  width: int = 1000, height: int = 640) -> str:
+    """Eigenständige Leaflet-Seite (nur Karte, mit OSM-Hintergrund) zum
+    Abfotografieren für das PDF — feste Pixelgröße, passt auf die Route ein."""
+    data = json.dumps({"track": track, "marks": marks})
+    js = (
+        "var d=" + data + ";"
+        "var map=L.map('map',{zoomControl:false});"
+        "L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',"
+        "{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);"
+        "var line=L.polyline(d.track,{color:'#d6156a',weight:3,opacity:.9}).addTo(map);"
+        "d.marks.forEach(function(m){L.circleMarker([m.lat,m.lon],{radius:5,"
+        "color:m.stroke,weight:1.3,fillColor:m.fill,fillOpacity:.95}).addTo(map);});"
+        "if(d.track.length){"
+        "L.circleMarker(d.track[0],{radius:6,color:'#0b5',weight:1.5,"
+        "fillColor:'#159c3f',fillOpacity:1}).addTo(map);"
+        "L.circleMarker(d.track[d.track.length-1],{radius:6,color:'#7a0012',"
+        "weight:1.5,fillColor:'#c0392b',fillOpacity:1}).addTo(map);}"
+        "map.fitBounds(line.getBounds().pad(0.12));"
+        "setTimeout(function(){map.invalidateSize();"
+        "map.fitBounds(line.getBounds().pad(0.12));},250);"
+    )
+    return (
+        '<!doctype html><html><head><meta charset="utf-8">'
+        '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">'
+        '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>'
+        f'<style>html,body{{margin:0}}#map{{width:{width}px;height:{height}px}}</style>'
+        f'</head><body><div id="map"></div><script>{js}</script></body></html>'
+    )
+
+
 def map_block(entries: List[LogEntry], offset: float = 0.0,
               types: Optional[set] = None, title: str = "Karte",
               track: Optional[List[List[float]]] = None,
-              static: bool = False) -> str:
+              static: bool = False, map_renderer=None) -> str:
     """Karte für den Bericht: Route (Linie) + markierte Einträge.
 
     ``types`` = Eintragstypen, die als Punkt markiert werden (None = alle).
     Die Route wird aus ``track`` gezogen (dichte Spur inkl. Track-Punkte), sonst
-    aus ``entries``. ``static=True`` erzeugt einen eigenständigen SVG-Plot
-    (offline, druckfest — für PDF), sonst die interaktive Leaflet-Karte.
+    aus ``entries``.
+
+    Reihenfolge der Darstellung:
+      * ``map_renderer`` gesetzt → statisches **Bild** mit OSM-Hintergrund
+        (Callback ``(track, marks) -> data-URI|None``; für PDF, behält die
+        Umgebungskarte). Liefert er None, greift der Fallback:
+      * ``static=True`` → eigenständiger **SVG-Plot** (offline, ohne Kacheln),
+      * sonst die interaktive **Leaflet-Karte** (HTML im Browser).
     """
     if track is None:
         track = [[e.lat, e.lon] for e in entries
@@ -560,6 +612,15 @@ def map_block(entries: List[LogEntry], offset: float = 0.0,
               '<span style="color:#e8820c">●</span> Autolog '
               '<span style="color:#d61e3c">●</span> Manuell '
               '<span style="color:#9aa0a6">●</span> Import — Route als Linie</div>')
+    if map_renderer is not None:
+        try:
+            uri = map_renderer(track, marks)
+        except Exception:  # noqa: BLE001
+            uri = None
+        if uri:
+            return (f'<h2 class="pb">{escape(title)}</h2>{legend}'
+                    f'<div class="mapwrap"><img class="trackmap" src="{uri}" '
+                    f'alt="Karte"></div>')
     if static:
         return (f'<h2 class="pb">{escape(title)}</h2>{legend}'
                 f'<div class="mapwrap">{track_svg(track, marks)}</div>')
@@ -599,7 +660,7 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
                      with_images: bool = False, with_map: bool = False,
                      map_types: Optional[set] = None,
                      entry_types: Optional[set] = None,
-                     static_map: bool = False) -> str:
+                     static_map: bool = False, map_renderer=None) -> str:
     entries = store.all(newest_first=False, trip_id=trip.id, limit=50000)
     ship = None
     if config.active_ship_id:
@@ -630,7 +691,7 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
     if with_map:
         parts.append(map_block(entries, offset, map_types, "Karte",
                                track=_track_points(store, [trip.id]),
-                               static=static_map))
+                               static=static_map, map_renderer=map_renderer))
     parts.append(f'<h2 class="pb">Logbuch</h2>')
     shown = 0
     for i, e in enumerate(entries):
@@ -675,7 +736,7 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
                        offset: float = 0.0, with_images: bool = False,
                        with_map: bool = False, map_types: Optional[set] = None,
                        entry_types: Optional[set] = None,
-                       static_map: bool = False) -> str:
+                       static_map: bool = False, map_renderer=None) -> str:
     """Törnbericht/Etappenbericht über MEHRERE Etappen (ein Törn)."""
     kind = "Etappenbericht" if with_images else "Törnbericht"
     ship = _active_ship(store, config)
@@ -712,7 +773,7 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
         combined = [e for t in trips for e in leg_entries[t.id]]
         parts.append(map_block(combined, offset, map_types, "Karte (ganzer Törn)",
                                track=_track_points(store, [t.id for t in trips]),
-                               static=static_map))
+                               static=static_map, map_renderer=map_renderer))
 
     for t in trips:
         ents = leg_entries[t.id]
@@ -752,7 +813,7 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
 def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
                     title: str = "Fahrtenbuch", with_map: bool = False,
                     map_types: Optional[set] = None,
-                    static_map: bool = False) -> str:
+                    static_map: bool = False, map_renderer=None) -> str:
     total = sailed = motor = 0.0
     ship_ids = set()
     parts = []
@@ -785,8 +846,190 @@ def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
     )
     map_html = (map_block(combined, offset, map_types, "Karte",
                           track=_track_points(store, [t.id for t in trips]),
-                          static=static_map)
+                          static=static_map, map_renderer=map_renderer)
                 if with_map else "")
     body = (head + ship_html + map_html
             + '<h2 class="pb">Fahrtenübersicht</h2>' + "".join(parts) + summary)
     return _doc(title, body, with_map=with_map and not static_map)
+
+
+# --- Seemeilen-Nachweis (Segelscheine DE/AT/CH) ----------------------------
+
+# Übliche Meilen-Anforderungen. (Genaue Zahlen/Bedingungen können sich ändern —
+# der Bericht weist ausdrücklich darauf hin, dass beim Prüfungsträger zu
+# verifizieren ist.) Tupel: (Bezeichnung, Seemeilen, Nachtmeilen relevant, Hinweis).
+LICENSE_REQUIREMENTS = [
+    ("🇩🇪 Deutschland (DSV/DMYV)", [
+        ("SKS – Sportküstenschifferschein", 300, False,
+         "Küstengewässer; Zulassung zur praktischen Prüfung"),
+        ("SSS – Sportseeschifferschein", 1000, False,
+         "Küsten-/Seegewässer (Teil oft als Wachführer gefordert)"),
+        ("SHS – Sporthochseeschifferschein", 1000, True,
+         "Hochsee, nach SSS; Nachtmeilen relevant"),
+    ]),
+    ("🇦🇹 Österreich (Fahrtbereiche FB)", [
+        ("FB3 – Küstenfahrt", 300, False,
+         "Richtwert küstennahe Fahrt"),
+        ("FB4 – Weltweite Fahrt / Hochsee", 1000, True,
+         "nach FB3; inkl. Nachtmeilen und längere Törns"),
+    ]),
+    ("🇨🇭 Schweiz (Hochseeschein CCS/SSA)", [
+        ("Hochseeschein", 1000, False,
+         "Nachweis im „Meilenbüchlein"),
+    ]),
+]
+
+
+def leg_night_nm(entries: List[LogEntry]) -> float:
+    """Nachtmeilen einer Etappe: Segmente, deren Mitte bei Dunkelheit liegt."""
+    night = 0.0
+    prev = None
+    prev_dt = None
+    for e in entries:
+        if e.lat is None or e.lon is None:
+            continue
+        dt = timeutil.parse_to_utc(e.timestamp)
+        if prev is not None and prev_dt is not None and dt is not None:
+            d = geo.haversine_nm(prev[0], prev[1], e.lat, e.lon)
+            mid_lat = (prev[0] + e.lat) / 2.0
+            mid_lon = (prev[1] + e.lon) / 2.0
+            mid_dt = prev_dt + (dt - prev_dt) / 2
+            if sun.is_night(mid_lat, mid_lon, mid_dt):
+                night += d
+        prev = (e.lat, e.lon)
+        prev_dt = dt
+    return night
+
+
+def _trip_role(store, trip: Trip, applicant: str, default_role: str) -> str:
+    """Funktion des Antragstellers auf dieser Etappe (aus der Crewliste, sonst
+    Standard)."""
+    name = (applicant or "").strip().lower()
+    if name:
+        for c in store.crew_for_trip(trip.id):
+            full = f"{c.first_name} {c.last_name}".strip().lower()
+            if name in (full, c.last_name.strip().lower()) and getattr(c, "position", ""):
+                return c.position
+    return default_role
+
+
+def meilennachweis_html(store, config, trips: List[Trip], offset: float = 0.0,
+                        applicant: str = "", role: str = "Skipper",
+                        with_night: bool = True, period_label: str = "") -> str:
+    """Seemeilen-Nachweis für Segelscheine (DE/AT/CH) als druckbares HTML."""
+    ship = _active_ship(store, config)
+    ship_name = ship.name if ship else ""
+    ship_detail = ""
+    if ship:
+        bits = [b for b in (ship.ship_type,
+                            (f"{ship.length_m:.1f} m".replace('.', ',')
+                             if ship.length_m else "")) if b]
+        ship_detail = " · ".join(bits)
+
+    rows = []
+    total = night_total = 0.0
+    role_miles: Dict[str, float] = {}
+    for i, t in enumerate(trips, start=1):
+        entries = store.all(newest_first=False, trip_id=t.id, limit=50000)
+        nm = leg_stats(entries)["total"]
+        if nm <= 0:
+            continue
+        night = leg_night_nm(entries) if with_night else 0.0
+        rt = _trip_role(store, t, applicant, role)
+        total += nm
+        night_total += night
+        role_miles[rt] = role_miles.get(rt, 0.0) + nm
+        von = t.start_location or "?"
+        nach = t.end_location or "…"
+        zeit = _date_only(t.start_dz, offset)
+        if t.end_dz and _date_only(t.end_dz, offset) != zeit:
+            zeit += "–" + _date_only(t.end_dz, offset)
+        night_cell = (f'<td class="num">{_de(night, 0)}</td>' if with_night else "")
+        rows.append(
+            f'<tr><td class="num">{i}</td><td>{escape(zeit)}</td>'
+            f'<td>{escape(von)} → {escape(nach)}</td>'
+            f'<td>{escape(ship_name)}</td><td>{escape(rt)}</td>'
+            f'<td class="num">{_de(nm, 0)}</td>{night_cell}'
+            f'<td class="sign"></td></tr>')
+
+    night_head = "<th>davon Nacht (sm)</th>" if with_night else ""
+    night_sum = f'<td class="num">{_de(night_total, 0)}</td>' if with_night else ""
+    table = (
+        '<table class="mtab"><thead><tr>'
+        '<th>Nr.</th><th>Zeitraum</th><th>Von → Nach (Revier)</th><th>Schiff</th>'
+        '<th>Funktion</th><th>Seemeilen</th>' + night_head +
+        '<th>Bestätigung / Unterschrift Skipper</th></tr></thead><tbody>'
+        + "".join(rows) +
+        f'<tr class="sum"><td></td><td colspan="4">Summe ({len(rows)} Törns)</td>'
+        f'<td class="num">{_de(total, 0)}</td>{night_sum}<td></td></tr>'
+        '</tbody></table>'
+    )
+
+    # Rollen-Aufschlüsselung (z.B. „davon als Skipper")
+    role_bits = " · ".join(f"{escape(r)}: {_de(m, 0)} sm"
+                           for r, m in sorted(role_miles.items(),
+                                              key=lambda kv: -kv[1]))
+
+    # Anforderungs-Übersicht mit Ampel
+    req_html = ['<h2 class="pb">Anforderungen &amp; Stand</h2>']
+    for land, lics in LICENSE_REQUIREMENTS:
+        req_html.append(f'<div class="reqbox"><h3>{land}</h3>')
+        req_html.append('<table class="mtab"><thead><tr><th>Schein</th>'
+                        '<th>gefordert</th><th>vorhanden</th><th>Status</th>'
+                        '<th>Hinweis</th></tr></thead><tbody>')
+        for name, miles, night_rel, hint in lics:
+            done = total >= miles
+            status = ('<span class="ok">erfüllt ✓</span>' if done
+                      else f'<span class="open">noch {_de(miles - total, 0)} sm</span>')
+            extra = ""
+            if night_rel and with_night:
+                extra = f" · Nachtmeilen vorhanden: {_de(night_total, 0)} sm"
+            req_html.append(
+                f'<tr><td>{escape(name)}</td>'
+                f'<td class="num">{miles} sm</td>'
+                f'<td class="num">{_de(total, 0)} sm</td>'
+                f'<td>{status}</td>'
+                f'<td>{escape(hint)}{extra}</td></tr>')
+        req_html.append('</tbody></table></div>')
+
+    period = period_label or (
+        (_date_only(min(t.start_dz for t in trips if t.start_dz), offset) + " – " +
+         _date_only(max((t.end_dz or t.start_dz) for t in trips), offset))
+        if trips else "")
+
+    head = (
+        f'<div class="title-page"><div class="brandbar">{branding.logo_html(72)}</div>'
+        f'<div class="big">Seemeilen-Nachweis</div>'
+        f'<div>für Segelscheine (Deutschland · Österreich · Schweiz)</div>'
+        f'<div class="sub">Antragsteller: <b>{escape(applicant or "—")}</b><br>'
+        f'{escape(period)}<br>Schiff: {escape(ship_name)}'
+        + (f' ({escape(ship_detail)})' if ship_detail else "")
+        + '</div></div><div class="pb"></div>')
+
+    summary = (
+        f'<div class="summary"><b>Gesamt: {_de(total, 0)} Seemeilen</b>'
+        + (f' · davon Nacht: {_de(night_total, 0)} sm' if with_night else "")
+        + (f'<br>{role_bits}' if role_bits else "")
+        + f'<br>{len(rows)} Törns'
+        + '</div>')
+
+    sign = (
+        '<div class="sign2"><div>Ort, Datum</div>'
+        '<div>Unterschrift Antragsteller/in</div></div>')
+
+    disclaimer = (
+        '<div class="disc"><b>Hinweis:</b> Dies ist eine aus dem Logbuch '
+        'erzeugte Zusammenstellung. Die Seemeilen wurden aus der GPS-Spur '
+        'berechnet (Großkreis). Nachtmeilen = Strecke bei Sonne unter dem '
+        'Horizont (astronomische Näherung). Anforderungen und deren genaue '
+        'Bedingungen (z.B. Meilen als Wachführer/Skipper, Nachtstunden, '
+        'Mindest-Törnlängen, Fahrtgebiete) unterscheiden sich je Schein und '
+        'ändern sich — bitte vor der Anmeldung beim jeweiligen Prüfungsträger '
+        'bestätigen lassen: DSV/DMYV (DE), zuständige Behörde/OeSV (AT), '
+        'Cruising Club der Schweiz / Seeschifffahrtsamt (CH). Jede Etappe ist '
+        'vom verantwortlichen Schiffsführer zu bestätigen (Spalte rechts).</div>')
+
+    body = (head
+            + '<h2 class="pb">Törnübersicht</h2>' + table + summary
+            + "".join(req_html) + sign + disclaimer)
+    return _doc("Seemeilen-Nachweis", body)

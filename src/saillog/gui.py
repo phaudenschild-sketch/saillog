@@ -113,6 +113,8 @@ class Application:
                            command=self._on_manage_voyages)
         extras.add_command(label="Plotter-Screenshot (ADB)…",
                            command=self._on_plotter_settings)
+        extras.add_command(label="🎓 Seemeilen-Nachweis (Segelscheine)…",
+                           command=self._on_meilennachweis)
         extras.add_separator()
         extras.add_command(label="TripCon-Backup importieren…",
                            command=self._on_import_tripcon)
@@ -956,47 +958,60 @@ class Application:
         with_map = res.get("with_map", False)
         with_images = res.get("with_images", False)
         types = res.get("entry_types")     # gilt für Bericht-Einträge UND Karte
-        # PDF: druckfester SVG-Kartenplot; HTML im Browser: interaktive Leaflet-Karte
-        static_map = bool(res.get("as_pdf"))
-        try:
-            if res["kind"] == "fahrtenbuch":
-                trips = self._store.all_trips(newest_first=False)
-                if not trips:
-                    messagebox.showinfo("Bericht", "Noch keine Törns vorhanden.")
-                    return
-                html = reports.voyage_log_html(
+
+        # Kontext/Validierung auf dem Main-Thread; die eigentliche HTML-Erzeugung
+        # passiert über eine Closure (für PDF im Hintergrund-Thread, damit die
+        # Karten-Aufnahme die Oberfläche nicht blockiert).
+        if res["kind"] == "fahrtenbuch":
+            trips = self._store.all_trips(newest_first=False)
+            if not trips:
+                messagebox.showinfo("Bericht", "Noch keine Törns vorhanden.")
+                return
+            name = "fahrtenbuch.html"
+
+            def make(mr, static):
+                return reports.voyage_log_html(
                     self._store, self._config, trips, offset, "Fahrtenbuch",
-                    with_map=with_map, map_types=types, static_map=static_map)
-                name = "fahrtenbuch.html"
-            elif res["kind"] == "voyage":
-                voyage = self._store.get_voyage(res["voyage_id"])
-                trips = self._store.trips_for_voyage(res["voyage_id"]) if voyage else []
-                if not trips:
-                    messagebox.showinfo(
-                        "Bericht", "Diesem Törn sind noch keine Etappen zugeordnet "
-                        "(Extras → 'Törns/Etappen gruppieren…').")
-                    return
-                html = reports.voyage_report_html(
+                    with_map=with_map, map_types=types,
+                    static_map=static, map_renderer=mr)
+        elif res["kind"] == "voyage":
+            voyage = self._store.get_voyage(res["voyage_id"])
+            trips = self._store.trips_for_voyage(res["voyage_id"]) if voyage else []
+            if not trips:
+                messagebox.showinfo(
+                    "Bericht", "Diesem Törn sind noch keine Etappen zugeordnet "
+                    "(Extras → 'Törns/Etappen gruppieren…').")
+                return
+            name = "toern_bericht.html"
+
+            def make(mr, static):
+                return reports.voyage_report_html(
                     self._store, self._config, voyage, trips, offset,
                     with_images=with_images, with_map=with_map,
-                    map_types=types, entry_types=types, static_map=static_map)
-                name = "toern_bericht.html"
-            else:
-                trip = self._store.get_trip(self._logbook.current_trip_id)
-                if trip is None:
-                    messagebox.showinfo("Bericht", "Bitte oben eine Etappe auswählen.")
-                    return
-                html = reports.trip_report_html(
+                    map_types=types, entry_types=types,
+                    static_map=static, map_renderer=mr)
+        else:
+            trip = self._store.get_trip(self._logbook.current_trip_id)
+            if trip is None:
+                messagebox.showinfo("Bericht", "Bitte oben eine Etappe auswählen.")
+                return
+            name = "etappen_bericht.html"
+
+            def make(mr, static):
+                return reports.trip_report_html(
                     self._store, self._config, trip, offset,
                     with_images=with_images, with_map=with_map,
-                    map_types=types, entry_types=types, static_map=static_map)
-                name = "etappen_bericht.html"
-        except Exception as exc:  # noqa: BLE001
-            messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
-            return
+                    map_types=types, entry_types=types,
+                    static_map=static, map_renderer=mr)
+
         if res.get("as_pdf"):
-            self._save_report_pdf(html, name, with_map)
+            self._save_report_pdf(make, name, with_map)
         else:
+            try:
+                html = make(None, False)      # interaktive Leaflet-Karte
+            except Exception as exc:  # noqa: BLE001
+                messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
+                return
             self._open_report_html(html, name)
 
     def _open_report_html(self, html: str, name: str) -> None:
@@ -1008,8 +1023,35 @@ class Application:
             return
         webbrowser.open(path.as_uri())
 
-    def _save_report_pdf(self, html: str, name: str, with_map: bool) -> None:
-        """Erzeugt ein echtes PDF über den installierten Chromium-Browser."""
+    def _pdf_map_renderer(self, track, marks):
+        """Fotografiert die Leaflet-Karte (mit OSM-Hintergrund) als PNG-Data-URI
+        fürs PDF ab; None bei Fehler (dann greift der SVG-Fallback)."""
+        import base64
+        import os
+        import tempfile
+        from saillog import pdf
+        fd, out = tempfile.mkstemp(suffix=".png", prefix="saillog_map_")
+        os.close(fd)
+        try:
+            page = reports.map_page_html(track, marks, 1000, 640)
+            ok = pdf.html_to_png(page, out, width=1000, height=640,
+                                 browser=self._config.pdf_browser_path, wait_ms=8000)
+            if not ok:
+                return None
+            with open(out, "rb") as fh:
+                data = fh.read()
+            return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
+        finally:
+            try:
+                os.remove(out)
+            except OSError:
+                pass
+
+    def _save_report_pdf(self, make_html, name: str, with_map: bool) -> None:
+        """Erzeugt ein echtes PDF über den installierten Chromium-Browser.
+
+        ``make_html(map_renderer, static_map)`` baut das HTML (mit statischer
+        Karte, inkl. OSM-Hintergrund per Screenshot); läuft im Hintergrund."""
         from saillog import pdf
         if pdf.find_browser(self._config.pdf_browser_path) is None:
             if messagebox.askyesno(
@@ -1017,7 +1059,10 @@ class Application:
                 "Kein Chromium-Browser (Edge/Chrome) gefunden, um direkt ein PDF "
                 "zu erzeugen.\n\nStattdessen den Bericht im Browser öffnen? Dort "
                 "über 'Drucken → Als PDF speichern' ausgeben."):
-                self._open_report_html(html, name)
+                try:
+                    self._open_report_html(make_html(None, False), name)
+                except Exception as exc:  # noqa: BLE001
+                    messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
             return
         out = filedialog.asksaveasfilename(
             title="Bericht als PDF speichern", defaultextension=".pdf",
@@ -1026,22 +1071,22 @@ class Application:
         )
         if not out:
             return
-        # Karte im PDF ist ein eingebetteter SVG-Plot (kein Nachladen) -> kurze
-        # Wartezeit genügt. Konvertierung läuft im Hintergrund.
-        wait_ms = 2500
         browser = self._config.pdf_browser_path
+        renderer = self._pdf_map_renderer if with_map else None
         import threading
 
         def work():
             try:
-                ok = pdf.html_to_pdf(html, out, browser=browser, wait_ms=wait_ms)
+                # static_map=True = SVG-Fallback, falls die Karten-Aufnahme scheitert
+                html = make_html(renderer, True)
+                ok = pdf.html_to_pdf(html, out, browser=browser, wait_ms=2500)
             except Exception:  # noqa: BLE001
                 ok = False
-            self._root.after(0, lambda: self._after_pdf(ok, out, html, name))
+            self._root.after(0, lambda: self._after_pdf(ok, out, make_html, name))
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _after_pdf(self, ok: bool, out: str, html: str, name: str) -> None:
+    def _after_pdf(self, ok: bool, out: str, make_html, name: str) -> None:
         if ok:
             if messagebox.askyesno("PDF-Export",
                                    f"PDF gespeichert:\n{out}\n\nJetzt öffnen?"):
@@ -1051,7 +1096,47 @@ class Application:
                 "PDF-Export",
                 "Das PDF konnte nicht erzeugt werden.\n\nStattdessen den Bericht "
                 "im Browser öffnen (dort 'Als PDF speichern')?"):
-                self._open_report_html(html, name)
+                try:
+                    self._open_report_html(make_html(None, False), name)
+                except Exception as exc:  # noqa: BLE001
+                    messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
+
+    # --- Seemeilen-Nachweis -------------------------------------------------
+
+    def _on_meilennachweis(self) -> None:
+        trips_all = self._store.all_trips(newest_first=False)
+        if not trips_all:
+            messagebox.showinfo("Seemeilen-Nachweis", "Noch keine Törns vorhanden.")
+            return
+        dialog = _MeilenDialog(self._root, self._config)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        r = dialog.result
+        offset = self._tz_offset()
+        # optionaler Zeitraum-Filter (nach Startdatum der Etappe)
+        trips = [t for t in trips_all
+                 if _in_date_range(t.start_dz, r["von"], r["bis"], offset)]
+        if not trips:
+            messagebox.showinfo("Seemeilen-Nachweis",
+                                "Im gewählten Zeitraum liegen keine Törns.")
+            return
+
+        name = "seemeilen_nachweis.html"
+
+        def make(mr, static):     # (map_renderer, static) — hier ohne Karte
+            return reports.meilennachweis_html(
+                self._store, self._config, trips, offset,
+                applicant=r["name"], role=r["role"], with_night=r["night"])
+
+        if r["as_pdf"]:
+            self._save_report_pdf(make, name, with_map=False)
+        else:
+            try:
+                self._open_report_html(make(None, False), name)
+            except Exception as exc:  # noqa: BLE001
+                messagebox.showerror("Seemeilen-Nachweis",
+                                     f"Erstellung fehlgeschlagen:\n{exc}")
 
     def _on_manage_voyages(self) -> None:
         dialog = _VoyageDialog(self._root, self._store)
@@ -1431,6 +1516,21 @@ def _parse_float(text: str) -> Optional[float]:
         return float(text)
     except ValueError:
         return None
+
+
+def _in_date_range(iso_ts: str, von: str, bis: str, offset: float) -> bool:
+    """True, wenn das (lokale) Datum von ``iso_ts`` in [von, bis] liegt.
+
+    ``von``/``bis`` sind 'JJJJ-MM-TT' oder leer (= unbegrenzt)."""
+    disp = timeutil.to_display(iso_ts, offset)
+    date = disp[:10] if disp else ""
+    if not date:
+        return not (von or bis)
+    if von and date < von.strip():
+        return False
+    if bis and date > bis.strip():
+        return False
+    return True
 
 
 class _EditEntryDialog:
@@ -3953,6 +4053,87 @@ class _ReportDialog:
             "voyage_id": voyage_id,
             "with_map": self._with_map.get(),
             "entry_types": types,
+            "as_pdf": self._output.get() == "pdf",
+        }
+        self.top.destroy()
+
+
+class _MeilenDialog:
+    """Eingaben für den Seemeilen-Nachweis (Segelscheine DE/AT/CH)."""
+
+    _ROLES = ["Skipper", "Co-Skipper", "Wachführer", "verantw. Rudergänger",
+              "Crew", "Mitsegler"]
+
+    def __init__(self, parent: tk.Tk, config) -> None:
+        self.result: Optional[dict] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Seemeilen-Nachweis")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=14)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame, wraplength=470, foreground="#555",
+            text="Erzeugt eine druckbare Meilen-Zusammenstellung aus deinen "
+                 "Törns — mit Übersicht der Anforderungen für SKS/SSS/SHS (DE), "
+                 "FB3/FB4 (AT) und Hochseeschein (CH). Jede Etappe hat eine "
+                 "Unterschriftsspalte für den Skipper.",
+        ).pack(anchor="w", pady=(0, 10))
+
+        grid = ttk.Frame(frame)
+        grid.pack(fill="x")
+
+        def row(label, r):
+            ttk.Label(grid, text=label).grid(row=r, column=0, sticky="e", padx=4, pady=4)
+
+        row("Antragsteller/in:", 0)
+        self._name = tk.StringVar(value=getattr(config, "skipper_name", "") or "")
+        ttk.Entry(grid, textvariable=self._name, width=32).grid(
+            row=0, column=1, columnspan=3, sticky="w", pady=4)
+
+        row("Funktion (Standard):", 1)
+        self._role = tk.StringVar(value="Skipper")
+        ttk.Combobox(grid, textvariable=self._role, width=22, values=self._ROLES).grid(
+            row=1, column=1, sticky="w")
+        ttk.Label(grid, text="(je Törn aus der Crewliste, falls hinterlegt)",
+                  foreground="#888").grid(row=1, column=2, columnspan=2, sticky="w")
+
+        row("Zeitraum von:", 2)
+        self._von = tk.StringVar()
+        ttk.Entry(grid, textvariable=self._von, width=14).grid(row=2, column=1, sticky="w")
+        ttk.Label(grid, text="bis:").grid(row=2, column=2, sticky="e")
+        self._bis = tk.StringVar()
+        ttk.Entry(grid, textvariable=self._bis, width=14).grid(row=2, column=3, sticky="w")
+        ttk.Label(grid, text="(JJJJ-MM-TT, leer = alle)", foreground="#888").grid(
+            row=3, column=1, columnspan=3, sticky="w")
+
+        self._night = tk.BooleanVar(value=True)
+        ttk.Checkbutton(frame, text="Nachtmeilen berechnen (aus Sonnenstand)",
+                        variable=self._night).pack(anchor="w", pady=(8, 0))
+
+        og = ttk.LabelFrame(frame, text="Ausgabe", padding=8)
+        og.pack(fill="x", pady=(8, 0))
+        self._output = tk.StringVar(value="pdf")
+        ttk.Radiobutton(og, text="Als PDF speichern", variable=self._output,
+                        value="pdf").pack(side="left", padx=(2, 12))
+        ttk.Radiobutton(og, text="Im Browser öffnen (HTML)", variable=self._output,
+                        value="html").pack(side="left")
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(pady=(12, 0))
+        ttk.Button(buttons, text="Nachweis erstellen", command=self._on_ok).pack(
+            side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(
+            side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        self.result = {
+            "name": self._name.get().strip(),
+            "role": self._role.get().strip() or "Skipper",
+            "von": self._von.get().strip(),
+            "bis": self._bis.get().strip(),
+            "night": self._night.get(),
             "as_pdf": self._output.get() == "pdf",
         }
         self.top.destroy()

@@ -37,6 +37,11 @@ Python.
   mit Schiffsdaten, Crew, Einträgen, Meilen-Zusammenfassung, optionaler **Karte**
   und **Logo/Copyright** — wahlweise **direkt als echtes PDF gespeichert**
   (nutzt den installierten Edge/Chrome) oder im Browser geöffnet
+- 🎓 **Seemeilen-Nachweis** (Menü Extras): druckbare Meilen-Zusammenstellung für
+  **Segelscheine im ganzen deutschsprachigen Raum** — SKS/SSS/SHS (DE), FB3/FB4
+  (AT), Hochseeschein (CH) — mit Törntabelle, **Nachtmeilen** (automatisch aus
+  dem Sonnenstand), Skipper-Unterschriftsspalte und Anforderungs-Übersicht
+  (erfüllt/offen). Als PDF oder HTML.
 - 🧾 **Crewliste** (Knopf „Crewliste…"): Bootsangaben (einmal gespeichert) und
   Crew je Törn erfassen und eine **zweisprachige, druckbare Crewliste (DE/EN)**
   fürs Ein-/Ausklarieren erzeugen — öffnet im Browser, dort drucken oder als

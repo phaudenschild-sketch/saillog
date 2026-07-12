@@ -97,9 +97,12 @@ sie selbst zusammenstückeln können. Priorisiert nach Aufwand/Nutzen:
    verschlüsselt in einen Objektspeicher.
 5. **Offline-Karten** (lokale Kachel-Pakete pro Revier). Für Blauwasser/keine
    Starlink-Reichweite relevant.
-6. **Elektronisches Bordbuch/„Meilennachweis“**: exportierbarer Nachweis
-   gefahrener Seemeilen/Zeiten für Scheine (SKS/SSS-Meilennachweis), mit
-   Unterschriftszeile. Sehr konkreter Nutzen für Ausbildungscrews.
+6. **Elektronisches Bordbuch/„Meilennachweis“** — ✅ **umgesetzt** (Extras →
+   „🎓 Seemeilen-Nachweis"): exportierbarer Nachweis gefahrener Seemeilen für
+   Scheine im ganzen deutschsprachigen Raum (SKS/SSS/SHS – DE, FB3/FB4 – AT,
+   Hochseeschein – CH), inkl. automatisch berechneter **Nachtmeilen**,
+   Skipper-Unterschriftsspalte und Anforderungs-Ampel. Sehr konkreter Nutzen
+   für Ausbildungscrews.
 7. **Wetter-/Track-Overlay**: GRIB/Wind über die Karte, Track-Export zu
    Diensten. Baut auf der bestehenden dichten Track-Aufzeichnung auf.
 

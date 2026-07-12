@@ -18,7 +18,7 @@ git remote set-url origin https://github.com/phaudenschild-sketch/saillog.git
 cd C:\claude\saillog           # (Ordnername egal; alt: C:\claude\masarasi)
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 243 Tests
+python -m unittest discover -s tests   # 254 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
@@ -133,14 +133,27 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   speichern" / „Im Browser öffnen (HTML)"** (PDF ist Vorgabe). PDF-Erzeugung
   läuft im Thread; ohne Browser oder bei Fehler sauberer Fallback auf den
   HTML-/Browser-Weg.
-- **Karte im PDF = eigenständiger SVG-Plot** (`reports.track_svg`, `map_block(
-  static=True)`): Leaflet-Kacheln laden im Headless-`--print-to-pdf` nicht
-  zuverlässig → für PDF wird stattdessen ein **druckfester SVG-Kartenplot**
-  eingebettet (Route, Start/Ziel, typisierte Marker, Lat/Lon-Gitter mit
-  Beschriftung, Maßstabsbalken in sm, Nordpfeil; äquirektangular mit
-  Breiten-Korrektur, offline). Der **HTML-Bericht im Browser** nutzt weiter die
-  **interaktive Leaflet-Karte**. Report-Funktionen: neuer Parameter
-  `static_map` (GUI setzt ihn = „als PDF").
+- **Karte im PDF = statisches Bild mit OSM-Hintergrund (per Screenshot).**
+  Leaflet-Kacheln laden im Headless-`--print-to-pdf` nicht zuverlässig. Deshalb
+  wird für das PDF die interaktive Leaflet-Karte **einmal abfotografiert**
+  (`reports.map_page_html` → `pdf.html_to_png`) und als statisches `<img>`
+  (Data-URI) eingebettet — so bleibt die **Umgebungskarte/Küstenlinie** erhalten
+  und druckt zuverlässig. Ablauf: `map_block(map_renderer=…)` ruft den Renderer;
+  im Fehlerfall (kein Netz/Browser) **Fallback auf den SVG-Kartenplot**
+  (`track_svg`, `static=True`: Route, Start/Ziel, typisierte Marker,
+  Lat/Lon-Gitter, Maßstab in sm, Nordpfeil — offline). Der **HTML-Bericht im
+  Browser** nutzt weiter die **interaktive** Leaflet-Karte. GUI baut das
+  PDF-HTML im Hintergrund-Thread (Screenshot blockiert die Oberfläche nicht).
+- **Seemeilen-Nachweis für Segelscheine (DE/AT/CH)** (Menü **Extras → „🎓
+  Seemeilen-Nachweis…"**, `reports.meilennachweis_html`, `_MeilenDialog`):
+  druckbare Meilen-Zusammenstellung aus den Törns — Törntabelle (Zeitraum,
+  Von→Nach, Schiff, **Funktion**, Seemeilen, **Nachtmeilen**, Skipper-
+  Unterschriftsspalte), Summen, Rollen-Aufschlüsselung und **Anforderungs-
+  Ampel** (SKS 300 / SSS 1000 / SHS 1000 – DE; FB3 ~300 / FB4 1000 – AT;
+  Hochseeschein 1000 – CH; `reports.LICENSE_REQUIREMENTS`) mit Erfüllt/Offen-
+  Status; klarer Verifizieren-beim-Prüfungsträger-Hinweis. **Nachtmeilen**
+  automatisch aus dem Sonnenstand (`sun.py`: Sonnenhöhe < -0,833° = Nacht,
+  Segment-Mitte). Zeitraum-Filter, Antragsteller/Funktion, Ausgabe PDF/HTML.
 - **Bericht-Dialog aufgeräumt:** Fotos sind jetzt eine **Checkbox „Fotos der
   Einträge einbetten"** (Vorgabe an) statt separater „…mit Bildern"-Knöpfe; je
   Bereich nur noch **ein** Erstellen-Knopf. Behebt die Verwirrung „Fotos fehlen"

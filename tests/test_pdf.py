@@ -46,6 +46,12 @@ class PdfHelpersTest(unittest.TestCase):
             self.assertFalse(pdf.html_to_pdf("<html></html>", out))
         self.assertFalse(os.path.exists(out))
 
+    def test_html_to_png_without_browser_returns_false(self):
+        out = os.path.join(tempfile.mkdtemp(), "x.png")
+        with mock.patch.object(pdf, "find_browser", return_value=None):
+            self.assertFalse(pdf.html_to_png("<html></html>", out))
+        self.assertFalse(os.path.exists(out))
+
 
 if __name__ == "__main__":
     unittest.main()

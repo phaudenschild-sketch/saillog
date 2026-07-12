@@ -133,6 +133,46 @@ def html_to_pdf(html: str, out_path: str, browser: str = "",
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
+def html_to_png(html: str, out_path: str, width: int = 1000, height: int = 640,
+                browser: str = "", wait_ms: int = 8000,
+                timeout: float = 120.0) -> bool:
+    """Rendert ``html`` als PNG-Screenshot (Chromium headless).
+
+    Für die Kartendarstellung im PDF: die interaktive Leaflet-Karte wird einmal
+    „abfotografiert" (inkl. OSM-Hintergrund), das Bild kommt dann statisch in den
+    Bericht. ``wait_ms`` gibt den Kacheln Zeit zum Laden.
+    """
+    exe = find_browser(browser)
+    if not exe:
+        return False
+    tmpdir = tempfile.mkdtemp(prefix="saillog_png_")
+    html_file = Path(tmpdir) / "map.html"
+    profile = Path(tmpdir) / "profile"
+    try:
+        html_file.write_text(html, encoding="utf-8")
+        base = [
+            exe, "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+            "--hide-scrollbars", f"--user-data-dir={profile}",
+            f"--window-size={int(width)},{int(height)}",
+            f"--virtual-time-budget={int(wait_ms)}",
+            f"--screenshot={out_path}", html_file.as_uri(),
+        ]
+        if os.name != "nt":
+            base.insert(1, "--no-sandbox")
+        for headless in ("--headless=new", "--headless"):
+            args = [base[0], headless] + base[1:]
+            try:
+                subprocess.run(args, timeout=timeout, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, check=False)
+            except (subprocess.TimeoutExpired, OSError):
+                continue
+            if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+                return True
+        return False
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 # Kleiner Selbsttest von der Kommandozeile: python -m saillog.pdf <in.html> <out.pdf>
 if __name__ == "__main__":  # pragma: no cover
     if len(sys.argv) != 3:
