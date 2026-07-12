@@ -937,6 +937,8 @@ class Application:
             return
         res = dialog.result
         offset = self._tz_offset()
+        with_map = res.get("with_map", False)
+        map_types = res.get("map_types")
         try:
             if res["kind"] == "fahrtenbuch":
                 trips = self._store.all_trips(newest_first=False)
@@ -944,7 +946,8 @@ class Application:
                     messagebox.showinfo("Bericht", "Noch keine Törns vorhanden.")
                     return
                 html = reports.voyage_log_html(
-                    self._store, self._config, trips, offset, "Fahrtenbuch")
+                    self._store, self._config, trips, offset, "Fahrtenbuch",
+                    with_map=with_map, map_types=map_types)
                 name = "fahrtenbuch.html"
             elif res["kind"] == "voyage":
                 voyage = self._store.get_voyage(res["voyage_id"])
@@ -956,7 +959,8 @@ class Application:
                     return
                 html = reports.voyage_report_html(
                     self._store, self._config, voyage, trips, offset,
-                    with_images=res["with_images"])
+                    with_images=res["with_images"], with_map=with_map,
+                    map_types=map_types)
                 name = "toern_bericht.html"
             else:
                 trip = self._store.get_trip(self._logbook.current_trip_id)
@@ -965,7 +969,8 @@ class Application:
                     return
                 html = reports.trip_report_html(
                     self._store, self._config, trip, offset,
-                    with_images=res["with_images"])
+                    with_images=res["with_images"], with_map=with_map,
+                    map_types=map_types)
                 name = "etappen_bericht.html"
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
@@ -3656,9 +3661,28 @@ class _ReportDialog:
 
         ttk.Label(
             frame, wraplength=480, foreground="#555",
-            text="Berichte werden als HTML im Browser geöffnet — dort über "
-                 "Drucken → 'Als PDF speichern' ausgeben.",
+            text="Berichte werden als HTML im Browser geöffnet — dort über den "
+                 "Knopf 'Drucken / Als PDF speichern' (oder Strg+P) ausgeben.",
         ).pack(anchor="w", pady=(0, 10))
+
+        # Karten-Optionen (gelten für jeden Bericht)
+        mg = ttk.LabelFrame(frame, text="Karte im Bericht", padding=8)
+        mg.pack(fill="x", pady=(0, 8))
+        self._with_map = tk.BooleanVar(value=False)
+        ttk.Checkbutton(mg, text="Karte einbetten (ohne AIS)",
+                        variable=self._with_map).grid(row=0, column=0, columnspan=3,
+                                                      sticky="w")
+        ttk.Label(mg, text="markierte Einträge:", foreground="#556").grid(
+            row=1, column=0, sticky="w", pady=(4, 0))
+        self._map_auto = tk.BooleanVar(value=True)
+        self._map_manual = tk.BooleanVar(value=True)
+        self._map_tripcon = tk.BooleanVar(value=True)
+        ttk.Checkbutton(mg, text="Autolog", variable=self._map_auto).grid(
+            row=1, column=1, sticky="w", padx=(6, 0), pady=(4, 0))
+        ttk.Checkbutton(mg, text="Manuell", variable=self._map_manual).grid(
+            row=1, column=2, sticky="w", padx=(6, 0), pady=(4, 0))
+        ttk.Checkbutton(mg, text="Import", variable=self._map_tripcon).grid(
+            row=1, column=3, sticky="w", padx=(6, 0), pady=(4, 0))
 
         # 1) Ganzer Törn (mehrere Etappen)
         vg = ttk.LabelFrame(frame, text="Ganzer Törn (mehrere Etappen)", padding=8)
@@ -3707,7 +3731,18 @@ class _ReportDialog:
 
     def _pick(self, kind: str, with_images: bool) -> None:
         voyage_id = self._voy_map.get(self._voy_var.get()) if kind == "voyage" else None
-        self.result = {"kind": kind, "with_images": with_images, "voyage_id": voyage_id}
+        map_types = set()
+        if self._map_auto.get():
+            map_types.add("auto")
+        if self._map_manual.get():
+            map_types.add("manual")
+        if self._map_tripcon.get():
+            map_types.add("tripcon")
+        self.result = {
+            "kind": kind, "with_images": with_images, "voyage_id": voyage_id,
+            "with_map": self._with_map.get(),
+            "map_types": map_types or None,
+        }
         self.top.destroy()
 
 

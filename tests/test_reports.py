@@ -114,6 +114,42 @@ class ReportTest(unittest.TestCase):
         self.assertTrue(html.lstrip().startswith("<!doctype html>"))
         self.assertIn("</html>", html)
 
+    def test_report_has_print_button(self):
+        html = reports.trip_report_html(self.store, self.cfg, self.trip, 0.0)
+        self.assertIn("window.print()", html)
+        self.assertIn("noprint", html)
+
+    def test_trip_report_with_map_embeds_leaflet(self):
+        # ohne Karte: keine Leaflet-Assets
+        plain = reports.trip_report_html(self.store, self.cfg, self.trip, 0.0)
+        self.assertNotIn("leaflet", plain)
+        # mit Karte: Leaflet + Kartendiv + Positionsdaten
+        html = reports.trip_report_html(self.store, self.cfg, self.trip, 0.0,
+                                        with_map=True)
+        self.assertIn("leaflet.js", html)
+        self.assertIn('id="map"', html)
+        self.assertIn("L.polyline", html)
+        self.assertIn("L.circleMarker", html)
+
+    def test_map_block_filters_entry_types(self):
+        entries = self.store.all(newest_first=False, trip_id=self.trip.id)
+        # Marker stecken als Daten im eingebetteten JSON (ein "fill" je Marker);
+        # die Route zieht sich über alle Positionspunkte.
+        # e1 = manual, e2 = auto -> nur manuelle markieren
+        only_manual = reports.map_block(entries, 0.0, {"manual"})
+        self.assertEqual(only_manual.count('"fill"'), 1)
+        # beide Typen -> zwei Marker
+        both = reports.map_block(entries, 0.0, {"manual", "auto"})
+        self.assertEqual(both.count('"fill"'), 2)
+        # None = alle Typen
+        allt = reports.map_block(entries, 0.0, None)
+        self.assertEqual(allt.count('"fill"'), 2)
+
+    def test_map_block_without_positions(self):
+        e = LogEntry(timestamp="2024-07-25T06:24:00Z", entry_type="manual")
+        html = reports.map_block([e], 0.0, None)
+        self.assertIn("Keine Positionsdaten", html)
+
     def test_voyage_report_multi_leg(self):
         # zweite Etappe + beide einem Törn zuordnen
         t2 = Trip(name="SY MASARASI", status="closed", start_location="Uvala Gradina",

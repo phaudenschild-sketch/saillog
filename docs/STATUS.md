@@ -10,7 +10,7 @@ Das Repo ist eigenständig: `github.com/phaudenschild-sketch/masarasi`
 cd C:\claude\masarasi
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 213 Tests
+python -m unittest discover -s tests   # 217 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
@@ -156,6 +156,12 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   Meilen-Summe gesegelt/Motor/gesamt aus der GPS-Spur). Eintrags-Raster:
   Position in Grad/Dezimalminuten, FüG/KüG, wahrer Wind, Tiefe, kumulatives
   Log, Luft/Bewölkung/Sicht, Segel, Notiz.
+  **Karte im Bericht** (optional, Auswahl im Bericht-Dialog): bettet eine
+  Leaflet-Karte **ohne AIS** ein — Route als Linie plus **markierte Einträge**,
+  wobei wählbar ist, welche Typen (Autolog/Manuell/Import) als Punkt erscheinen
+  (`reports.map_block`, Leaflet vom CDN wie die AIS-Karte). Jeder Bericht hat
+  oben einen **„Drucken / Als PDF speichern"-Knopf** (wie die Crewliste,
+  `.noprint` beim Druck ausgeblendet).
 - **Crewliste** (Ein-/Ausklarieren): Bootsangaben + Ort/Datum (gespeichert)
   + Crew je Törn; **Personen-Speicher** (einmal erfasste Personen sind über
   ein Auswahlmenü wiederverwendbar); druckbare, zweisprachige HTML-Liste

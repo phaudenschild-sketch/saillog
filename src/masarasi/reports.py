@@ -17,6 +17,7 @@ aufgeteilt. Fehlende Werte erscheinen als „---" (wie bei TripCon).
 from __future__ import annotations
 
 import base64
+import json
 from typing import Dict, List, Optional
 from xml.sax.saxutils import escape
 
@@ -329,20 +330,96 @@ h3 { font-size: 15px; margin: 16px 0 6px; }
 .roles { color:#556; margin: 2px 0 8px; font-size:12px; }
 .summary { margin-top:16px; padding:10px; background:#f2f5f7; border-radius:6px; font-size:15px; }
 .pb { page-break-before: always; }
-@media print { body { padding: 0; } .noprint { display:none; } }
+.toolbar { margin: 0 0 14px; }
+.toolbar button { font-size: 14px; padding: 6px 14px; cursor: pointer; }
+#map { height: 460px; border:1px solid #ccd; border-radius:6px; margin: 6px 0 4px;
+       page-break-inside: avoid; }
+.maplegend { color:#556; font-size:12px; margin-bottom: 8px; }
+.maplegend span { font-weight:600; }
+@media print {
+  body { padding: 0; } .noprint { display:none; }
+  #map { height: 150mm; }
+}
 """
 
+# Leaflet-Assets (nur für Berichte mit Karte) — an Bord über Starlink erreichbar.
+_MAP_HEAD = (
+    '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">'
+    '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>'
+)
 
-def _doc(title: str, body: str) -> str:
+_TOOLBAR = ('<div class="toolbar noprint">'
+            '<button onclick="window.print()">Drucken / Als PDF speichern</button>'
+            '</div>')
+
+
+def _doc(title: str, body: str, with_map: bool = False) -> str:
+    head_extra = _MAP_HEAD if with_map else ""
     return (f'<!doctype html><html lang="de"><head><meta charset="utf-8">'
-            f'<title>{escape(title)}</title><style>{_STYLE}</style></head>'
-            f'<body>{body}</body></html>')
+            f'<title>{escape(title)}</title><style>{_STYLE}</style>{head_extra}'
+            f'</head><body>{_TOOLBAR}{body}</body></html>')
+
+
+# --- Karte im Bericht (Leaflet, ohne AIS) ----------------------------------
+
+_ENTRY_COLORS = {
+    "manual": ("#7a0012", "#d61e3c"),      # rot
+    "tripcon": ("#333333", "#9aa0a6"),     # grau (Import)
+    "auto": ("#7a3d00", "#e8820c"),        # orange
+}
+
+
+def map_block(entries: List[LogEntry], offset: float = 0.0,
+              types: Optional[set] = None, title: str = "Karte") -> str:
+    """Leaflet-Karte für den Bericht: Route (Linie) + markierte Einträge.
+
+    ``types`` = Menge der Eintragstypen, die als Punkt markiert werden
+    (None = alle). Die Route wird aus allen Einträgen mit Position gezogen.
+    """
+    track = [[e.lat, e.lon] for e in entries if e.lat is not None and e.lon is not None]
+    marks = []
+    for e in entries:
+        if e.lat is None or e.lon is None:
+            continue
+        if types is not None and e.entry_type not in types:
+            continue
+        stroke, fill = _ENTRY_COLORS.get(e.entry_type, _ENTRY_COLORS["auto"])
+        marks.append({
+            "lat": e.lat, "lon": e.lon, "stroke": stroke, "fill": fill,
+            "time": _fmt_dt(e.timestamp, offset), "type": e.entry_type,
+            "anlass": e.logevent or "", "note": e.note or "",
+            "wind": wind_str(e.tws_kn, e.twd_deg) if e.tws_kn is not None else "",
+        })
+    if not track:
+        return (f'<h2 class="pb">{escape(title)}</h2>'
+                f'<div class="sub">Keine Positionsdaten für die Karte.</div>')
+    legend = ('<div class="maplegend"><span style="color:#e8820c">●</span> Autolog '
+              '<span style="color:#d61e3c">●</span> Manuell '
+              '<span style="color:#9aa0a6">●</span> Import — Route als Linie</div>')
+    data = json.dumps({"track": track, "marks": marks})
+    script = (
+        "<script>(function(){var d=" + data + ";"
+        "var map=L.map('map');"
+        "try{L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',"
+        "{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);}catch(e){}"
+        "var line=L.polyline(d.track,{color:'#d6156a',weight:3,opacity:.85}).addTo(map);"
+        "d.marks.forEach(function(m){"
+        "L.circleMarker([m.lat,m.lon],{radius:5,color:m.stroke,weight:1.3,"
+        "fillColor:m.fill,fillOpacity:.95}).addTo(map).bindPopup("
+        "'<b>'+m.time+'</b>'+(m.anlass?'<br>'+m.anlass:'')+"
+        "'<br>'+m.lat.toFixed(4)+', '+m.lon.toFixed(4)+"
+        "(m.wind?'<br>Wind wahr '+m.wind:'')+(m.note?'<br><i>'+m.note+'</i>':''));});"
+        "map.fitBounds(line.getBounds().pad(0.15));"
+        "setTimeout(function(){map.invalidateSize();},200);})();</script>"
+    )
+    return (f'<h2 class="pb">{escape(title)}</h2>{legend}<div id="map"></div>{script}')
 
 
 # --- Törn-Bericht (detailliert, ein Törn) ----------------------------------
 
 def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
-                     with_images: bool = False) -> str:
+                     with_images: bool = False, with_map: bool = False,
+                     map_types: Optional[set] = None) -> str:
     entries = store.all(newest_first=False, trip_id=trip.id, limit=50000)
     ship = None
     if config.active_ship_id:
@@ -368,8 +445,10 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
         f'<div class="pb"></div>',
         ship_block(ship),
         crew_block(crew),
-        f'<h2 class="pb">Logbuch</h2>',
     ]
+    if with_map:
+        parts.append(map_block(entries, offset, map_types, "Karte"))
+    parts.append(f'<h2 class="pb">Logbuch</h2>')
     for i, e in enumerate(entries):
         imgs = store.get_entry_images(e.id) if with_images else None
         parts.append(entry_card(e, offset, cum.get(i, 0.0), imgs))
@@ -377,7 +456,7 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
         f'<div class="summary"><b>Zusammenfassung {escape(trip.name or "")}</b><br>'
         f'Gesamt: {_de(stats["total"])} NM · Gesegelt: {_de(stats["sailed"])} NM · '
         f'Motor: {_de(stats["motor"])} NM<br>{len(entries)} Einträge</div>')
-    return _doc(f"{kind} {trip.name}", "".join(parts))
+    return _doc(f"{kind} {trip.name}", "".join(parts), with_map=with_map)
 
 
 # --- Törn-Bericht über mehrere Etappen (Voyage) ----------------------------
@@ -405,7 +484,8 @@ def _combined_crew(store, trips: List[Trip]) -> List:
 
 
 def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
-                       offset: float = 0.0, with_images: bool = False) -> str:
+                       offset: float = 0.0, with_images: bool = False,
+                       with_map: bool = False, map_types: Optional[set] = None) -> str:
     """Törnbericht/Etappenbericht über MEHRERE Etappen (ein Törn)."""
     kind = "Etappenbericht" if with_images else "Törnbericht"
     ship = _active_ship(store, config)
@@ -437,6 +517,10 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
         s = leg_stats(ents)
         total += s["total"]; sailed += s["sailed"]; motor += s["motor"]
 
+    if with_map:
+        combined = [e for t in trips for e in leg_entries[t.id]]
+        parts.append(map_block(combined, offset, map_types, "Karte (ganzer Törn)"))
+
     for t in trips:
         ents = leg_entries[t.id]
         when = _date_only(t.start_dz, offset)
@@ -464,20 +548,23 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
         f'<div class="summary pb"><b>Zusammenfassung {escape(voyage.name)}</b><br>'
         f'{len(trips)} Etappen · Gesamt: {_de(total)} NM · '
         f'Gesegelt: {_de(sailed)} NM · Motor: {_de(motor)} NM</div>')
-    return _doc(f"{kind} {voyage.name}", "".join(parts))
+    return _doc(f"{kind} {voyage.name}", "".join(parts), with_map=with_map)
 
 
 # --- Fahrtenbuch / Übersicht (mehrere Törns) -------------------------------
 
 def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
-                    title: str = "Fahrtenbuch") -> str:
+                    title: str = "Fahrtenbuch", with_map: bool = False,
+                    map_types: Optional[set] = None) -> str:
     total = sailed = motor = 0.0
     ship_ids = set()
     parts = []
+    combined: List[LogEntry] = []
     for trip in trips:
         entries = store.all(newest_first=False, trip_id=trip.id, limit=50000)
         crew = store.crew_for_trip(trip.id)
         parts.append(leg_card(store, trip, entries, offset, crew))
+        combined.extend(entries)
         s = leg_stats(entries)
         total += s["total"]; sailed += s["sailed"]; motor += s["motor"]
 
@@ -498,5 +585,7 @@ def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
         f'{len(trips)} Etappen · Gesamt: {_de(total)} NM · '
         f'Gesegelt: {_de(sailed)} NM · Motor: {_de(motor)} NM</div>'
     )
-    body = head + ship_html + '<h2 class="pb">Fahrtenübersicht</h2>' + "".join(parts) + summary
-    return _doc(title, body)
+    map_html = map_block(combined, offset, map_types, "Karte") if with_map else ""
+    body = (head + ship_html + map_html
+            + '<h2 class="pb">Fahrtenübersicht</h2>' + "".join(parts) + summary)
+    return _doc(title, body, with_map=with_map)
