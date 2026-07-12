@@ -76,8 +76,9 @@ Python.
 
 - Python 3.9 oder neuer (mit tkinter — bei den offiziellen Windows-Installern
   standardmäßig dabei)
-- **Optional** `pyserial` (nur für serielle Quellen wie den Maretron USB100):
-  `pip install pyserial`. Ohne läuft alles andere unverändert.
+- **Optional** `pyserial` (für serielle Quellen: **GPS-Maus (USB)** oder
+  NMEA-Adapter wie den Maretron USB100): `pip install pyserial`. Ohne läuft
+  alles andere unverändert.
 - **Optional** `pillow` (nur für den **Foto-Import**, verkleinert die Bilder):
   `pip install pillow`. Ohne Pillow ist der Foto-Import deaktiviert.
 - Für die **AIS-Karte** genügt ein Browser; die Kartenkacheln werden online
@@ -123,6 +124,24 @@ nutzen, siehe unten).
 B&G-Plotter geben NMEA0183 übers WLAN meist per **TCP (~Port 2053)** oder
 als **UDP-Broadcast** aus. Aktiviere am Plotter unter *Einstellungen →
 Netzwerk/WLAN* die NMEA-über-IP-Ausgabe. Host = IP des Plotters.
+
+### GPS-Maus (USB) — für Logbuch von Hand, ohne Bordnetz
+
+Wer **kein Instrumentennetz** hat, aber Position, Kurs und Fahrt nicht von
+Hand abtippen möchte, schließt eine einfache **GPS-Maus** (USB-GPS-Empfänger,
+z.B. „G-Mouse") an. Sie liefert Standard-NMEA über einen COM-Port; SailLog
+übernimmt daraus **Position, SOG und COG** automatisch in jeden neuen Eintrag.
+
+1. `pip install pyserial`
+2. GPS-Maus einstecken (erscheint als COM-Port, z.B. `COM13`)
+3. In SailLog: **Quellen… → Vorlage „GPS-Maus (USB)"** (oder **🔍 Ports…**,
+   um den richtigen COM-Port aus der Liste zu wählen). Die **Baudrate wird
+   automatisch erkannt** (Feld `Port/Baud = 0`).
+4. **Quelle hinzufügen → Übernehmen → Verbinden.**
+
+Beim Anlegen eines Eintrags (**➕ Neuer Eintrag…**) sind Breite/Länge, SOG und
+COG dann bereits ausgefüllt — alles bleibt editierbar. Die dichte
+**Track-Aufzeichnung** für die Karte funktioniert so ebenfalls (nur GPS nötig).
 
 ### Maretron USB100 (NMEA2000 → NMEA0183 über USB)
 

@@ -14,7 +14,12 @@ import time
 from typing import Callable, Optional
 
 from saillog.livedata import LiveData
-from saillog.nmea import NmeaParser
+from saillog.nmea import NmeaParser, valid_checksum
+
+# Übliche Baudraten von GPS-Mäusen/USB-NMEA-Adaptern, in Reihenfolge der
+# Wahrscheinlichkeit — für die automatische Baudraten-Erkennung (Baud = 0/leer).
+_SERIAL_BAUDS = (9600, 4800, 38400, 115200, 19200, 57600)
+_GPS_ADDRESSES = ("RMC", "GGA", "GLL", "VTG")
 
 # Status-Konstanten
 STATUS_DISCONNECTED = "disconnected"
@@ -41,7 +46,10 @@ class NmeaSource:
         log_correction: float = 1.0,
     ) -> None:
         self._host = host
-        self._port = int(port)
+        try:
+            self._port = int(port)          # Baud (seriell) bzw. Port (TCP/UDP)
+        except (TypeError, ValueError):
+            self._port = 0                  # 0/„auto" -> Baudrate selbst erkennen
         self._protocol = protocol.lower()
         self._live = live
         self._parser = NmeaParser()
@@ -109,7 +117,9 @@ class NmeaSource:
         self._set_status(STATUS_DISCONNECTED, "getrennt")
 
     def _run_serial(self) -> None:
-        # Serieller COM-Port (z.B. Maretron USB100). Host = COM-Port, Port = Baud.
+        # Serieller COM-Port: GPS-Maus (USB) oder NMEA-Adapter (z.B. Maretron
+        # USB100). Host = COM-Port, Port = Baud. Baud 0/leer -> automatisch
+        # erkennen (praktisch für GPS-Mäuse, deren Baudrate man selten kennt).
         try:
             import serial  # pyserial
         except ImportError:
@@ -118,13 +128,30 @@ class NmeaSource:
             )
             self._stop.wait(5.0)
             return
-        self._set_status(
-            STATUS_CONNECTING, f"öffne {self._host} @ {self._port} Baud"
-        )
-        ser = serial.Serial(self._host, self._port, timeout=1.0)
+
+        if self._port and self._port > 0:
+            self._set_status(
+                STATUS_CONNECTING, f"öffne {self._host} @ {self._port} Baud"
+            )
+            ser = serial.Serial(self._host, self._port, timeout=1.0)
+        else:
+            self._set_status(
+                STATUS_CONNECTING, f"suche Baudrate an {self._host} …"
+            )
+            ser = self._open_autobaud(serial)
+            if ser is None:
+                self._set_status(
+                    STATUS_ERROR, f"kein NMEA an {self._host} erkannt"
+                )
+                self._stop.wait(3.0)
+                return
+
         self._sock = ser  # zum Schließen in stop()
         try:
-            self._set_status(STATUS_CONNECTED, "verbunden (seriell)")
+            self._set_status(
+                STATUS_CONNECTED,
+                f"verbunden (seriell @ {ser.baudrate} Baud)"
+            )
             buffer = b""
             while not self._stop.is_set():
                 chunk = ser.read(256)
@@ -137,6 +164,52 @@ class NmeaSource:
                 ser.close()
             except Exception:  # noqa: BLE001
                 pass
+
+    def _open_autobaud(self, serial_mod, probe_seconds: float = 2.5):
+        """Probiert übliche Baudraten durch und liefert einen offenen Port, an
+        dem gültige GPS-NMEA-Sätze ankommen (sonst None)."""
+        for baud in _SERIAL_BAUDS:
+            if self._stop.is_set():
+                return None
+            try:
+                ser = serial_mod.Serial(self._host, baud, timeout=0.5)
+            except Exception:  # noqa: BLE001 - Port nicht öffenbar -> abbrechen
+                return None
+            self._set_status(
+                STATUS_CONNECTING, f"prüfe {self._host} @ {baud} Baud …"
+            )
+            if self._probe_gps(ser, seconds=probe_seconds):
+                return ser
+            try:
+                ser.close()
+            except Exception:  # noqa: BLE001
+                pass
+        return None
+
+    def _probe_gps(self, ser, seconds: float = 2.5) -> bool:
+        """True, wenn innerhalb weniger Sekunden ein gültiger GPS-Satz
+        (RMC/GGA/GLL/VTG mit korrekter Prüfsumme) eintrifft."""
+        deadline = time.time() + seconds
+        buffer = b""
+        while time.time() < deadline and not self._stop.is_set():
+            try:
+                chunk = ser.read(128)
+            except Exception:  # noqa: BLE001
+                return False
+            if not chunk:
+                continue
+            buffer += chunk
+            while b"\n" in buffer:
+                line, buffer = buffer.split(b"\n", 1)
+                text = line.decode("ascii", "ignore").strip()
+                if len(text) < 7 or text[0] not in "$!" or "," not in text:
+                    continue
+                if not valid_checksum(text):
+                    continue
+                address = text[1:text.find(",")]
+                if address[-3:] in _GPS_ADDRESSES:
+                    return True
+        return False
 
     def _run_tcp(self) -> None:
         self._set_status(STATUS_CONNECTING, f"verbinde mit {self._host}:{self._port}")

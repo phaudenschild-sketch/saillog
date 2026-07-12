@@ -2173,6 +2173,24 @@ class _NewEntryDialog:
         ttk.Label(wind, text=" °").pack(side="left")
         r += 1
 
+        # Position/Bewegung aus den Live-Daten vorbelegen — bei angeschlossener
+        # GPS-Maus (oder Instrumentennetz) muss man Position, SOG und COG so
+        # nicht von Hand eintippen. Alle Felder bleiben editierbar.
+        snap = snapshot or {}
+
+        def _pre(var, key, dec):
+            v = snap.get(key)
+            if v is not None:
+                var.set(f"{v:.{dec}f}".replace(".", ","))
+
+        _pre(self._lat, "lat", 5)
+        _pre(self._lon, "lon", 5)
+        _pre(self._sog, "sog_kn", 1)
+        _pre(self._cog, "cog_deg", 0)
+        _pre(self._depth, "depth_m", 1)
+        _pre(self._tws, "tws_kn", 1)
+        _pre(self._twd, "twd_deg", 0)
+
         # Motor / Segel
         lab("Motor:", r)
         self._engine = tk.StringVar(value="—")
@@ -4214,8 +4232,10 @@ class _SourcesDialog:
         tmpl = ttk.Frame(frame)
         tmpl.grid(row=4, column=0, columnspan=6, sticky="w", pady=(4, 0))
         ttk.Label(tmpl, text="Vorlagen:", foreground="#555").pack(side="left")
+        ttk.Button(tmpl, text="GPS-Maus (USB)", command=self._tmpl_gpsmaus).pack(side="left", padx=3)
         ttk.Button(tmpl, text="B&G (TCP 10110)", command=self._tmpl_bg).pack(side="left", padx=3)
         ttk.Button(tmpl, text="Maretron (COM)", command=self._tmpl_maretron).pack(side="left", padx=3)
+        ttk.Button(tmpl, text="🔍 Ports…", command=self._on_pick_port).pack(side="left", padx=3)
         self._gofree_btn = ttk.Button(
             tmpl, text="🔍 GoFree suchen", command=self._on_gofree_search
         )
@@ -4229,15 +4249,50 @@ class _SourcesDialog:
     def _refresh_list(self) -> None:
         self._listbox.delete(0, "end")
         for d in self._defs:
+            port = d.get("port")
+            baud = "auto" if str(port).strip() in ("0", "") else port
             self._listbox.insert(
-                "end", f"{d.get('protocol', 'tcp')}   {d.get('host')} : {d.get('port')}"
+                "end", f"{d.get('protocol', 'tcp')}   {d.get('host')} : {baud}"
             )
 
     def _update_hint(self) -> None:
         if self._proto.get() == "serial":
-            self._hint.config(text="seriell: Host = COM-Port (COM11), Port = Baud (115200)")
+            self._hint.config(text="seriell: Host = COM-Port (COM13), "
+                                   "Port = Baud (0 = automatisch erkennen)")
         else:
             self._hint.config(text="")
+
+    def _tmpl_gpsmaus(self) -> None:
+        # GPS-Maus (USB): NMEA über einen COM-Port. Baud 0 = automatisch
+        # erkennen. Port wird – wenn möglich – automatisch geraten, sonst
+        # über „🔍 Ports…" auswählen.
+        from saillog import serialports
+        self._proto.set("serial")
+        guess = serialports.guess_gps_port()
+        self._host.set(guess or "COM13")
+        self._port.set("0")
+        self._update_hint()
+
+    def _on_pick_port(self) -> None:
+        """Verfügbare COM-Ports auflisten und einen auswählen (für die GPS-Maus)."""
+        from saillog import serialports
+        ports = serialports.gps_first(serialports.available_ports())
+        if not ports:
+            messagebox.showinfo(
+                "COM-Ports",
+                "Keine seriellen Ports gefunden.\n\n"
+                "• GPS-Maus eingesteckt? Im Windows-Gerätemanager unter\n"
+                "  „Anschlüsse (COM & LPT)“ erscheint sie als COMx.\n"
+                "• Fehlt pyserial? Dann 'pip install pyserial'.")
+            return
+        chooser = _PortChooser(self.top, ports)
+        self.top.wait_window(chooser.top)
+        if chooser.result:
+            self._proto.set("serial")
+            self._host.set(chooser.result)
+            if not self._port.get().strip():
+                self._port.set("0")
+            self._update_hint()
 
     def _on_add(self) -> None:
         host = self._host.get().strip()
@@ -4320,6 +4375,39 @@ class _SourcesDialog:
 
     def _on_ok(self) -> None:
         self.result = self._defs
+        self.top.destroy()
+
+
+class _PortChooser:
+    """Kleiner Auswahldialog für einen seriellen Port (GPS-Maus)."""
+
+    def __init__(self, parent, ports) -> None:
+        self.result: Optional[str] = None
+        self._devices = [dev for dev, _desc in ports]
+        self.top = tk.Toplevel(parent)
+        self.top.title("COM-Port wählen")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="Gefundene serielle Ports "
+                              "(oben stehen wahrscheinliche GPS-Empfänger):").pack(
+            anchor="w")
+        self._listbox = tk.Listbox(frame, width=52, height=min(8, max(3, len(ports))))
+        for dev, desc in ports:
+            self._listbox.insert("end", f"{dev} — {desc}")
+        self._listbox.selection_set(0)
+        self._listbox.pack(pady=8, fill="x")
+        self._listbox.bind("<Double-Button-1>", lambda _e: self._on_ok())
+        buttons = ttk.Frame(frame)
+        buttons.pack()
+        ttk.Button(buttons, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        sel = self._listbox.curselection()
+        if sel:
+            self.result = self._devices[sel[0]]
         self.top.destroy()
 
 
