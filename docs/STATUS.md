@@ -127,6 +127,18 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   Tabelle, `trip.voyage_id`) zusammenfassen — Menü **Extras → „Törns/Etappen
   gruppieren…"** (Törn anlegen/umbenennen/löschen, Etappen zuordnen). Löschen
   eines Törns lässt die Etappen bestehen.
+- **Törn bearbeiten** (Knopf „✎ Törn bearbeiten…" in der Törn-Leiste,
+  `_TripEditDialog`): Stammdaten eines bestehenden Törns nachträglich ändern —
+  Name, Start-/Zielort, Start-/Endzeit (lokale Anzeige, intern UTC) sowie
+  Wasser/Diesel/Motorstunden/Log-Stand und Notiz. Für Tippfehler-Korrekturen
+  bei von Hand erfassten (älteren) Törns.
+- **Neuer Eintrag (manuell, rückdatierbar)** (Knopf „➕ Neuer Eintrag…" unter
+  der Tabelle, `_NewEntryDialog`): erfasst einen Logbuch-Eintrag mit **frei
+  wählbarer Zeit** und **von Hand eingegebener Position** (Dezimalgrad, S/W als
+  Minus) plus SOG/COG/Tiefe/wahrer Wind, Motor/Segel, Wetter, Ort/Crew/Notiz und
+  Törn-Auswahl. Für nachträgliche Einträge wie in TripCon, z.B. bei einem
+  **Unterbruch des Loggings**. (Der Knopf „✎ Eintrag speichern" oben nimmt
+  weiterhin die aktuellen Live-Werte mit Jetzt-Zeit.)
 - **Berichte** (`reports.py`, Knopf „📄 Bericht…" in der Törn-Leiste): druckbares
   HTML (im Browser → „Als PDF speichern"), nach TripCon-Vorbild:
   **Törn-Bericht** (ganzer Törn über mehrere Etappen: Titel mit Törnname/Revier/
@@ -149,6 +161,11 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   MMSI, Echolot-Einbautiefe, **Loggeber-Korrekturfaktor**), Tanks (Wasser/
   Treibstoff), Ausrüstung, Schiffsfoto; mehrere Schiffe, aktives auswählbar. Die
   **Loggeber-Korrektur** des aktiven Schiffs wirkt auf STW/Gesamtlog beim Einlesen.
+- **Logbuch-Karte (ohne AIS)** (Knopf „🗺 Logbuch-Karte…", `_LogMapDialog`):
+  öffnet dieselbe Leaflet-Karte, aber **ohne AIS-Ziele und ohne Live-Position** —
+  nur die Logbuch-Einträge des ausgewählten Törns. Im Dialog wählbar, **welche
+  Eintragstypen** gezeigt werden (Autolog / Manuell / Import). Der Knopf „🗺
+  AIS-Karte" zeigt weiterhin alles.
 - **AIS-Decoder** (`!AIVDM`/`!AIVDO`, Typen 1/2/3/5/18/19/24, Mehrteiler) +
   **AIS-Karte** (Leaflet + OpenFreeMap) mit eigenem Schiff, Zielen, Törn-Track
   und **anklickbaren Logbuch-Einträgen** (Popup mit Details); Ebenen-Umschalter
