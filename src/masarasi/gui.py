@@ -938,7 +938,7 @@ class Application:
         res = dialog.result
         offset = self._tz_offset()
         with_map = res.get("with_map", False)
-        map_types = res.get("map_types")
+        types = res.get("entry_types")     # gilt für Bericht-Einträge UND Karte
         try:
             if res["kind"] == "fahrtenbuch":
                 trips = self._store.all_trips(newest_first=False)
@@ -947,7 +947,7 @@ class Application:
                     return
                 html = reports.voyage_log_html(
                     self._store, self._config, trips, offset, "Fahrtenbuch",
-                    with_map=with_map, map_types=map_types)
+                    with_map=with_map, map_types=types)
                 name = "fahrtenbuch.html"
             elif res["kind"] == "voyage":
                 voyage = self._store.get_voyage(res["voyage_id"])
@@ -960,7 +960,7 @@ class Application:
                 html = reports.voyage_report_html(
                     self._store, self._config, voyage, trips, offset,
                     with_images=res["with_images"], with_map=with_map,
-                    map_types=map_types)
+                    map_types=types, entry_types=types)
                 name = "toern_bericht.html"
             else:
                 trip = self._store.get_trip(self._logbook.current_trip_id)
@@ -970,7 +970,7 @@ class Application:
                 html = reports.trip_report_html(
                     self._store, self._config, trip, offset,
                     with_images=res["with_images"], with_map=with_map,
-                    map_types=map_types)
+                    map_types=types, entry_types=types)
                 name = "etappen_bericht.html"
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
@@ -3665,24 +3665,26 @@ class _ReportDialog:
                  "Knopf 'Drucken / Als PDF speichern' (oder Strg+P) ausgeben.",
         ).pack(anchor="w", pady=(0, 10))
 
-        # Karten-Optionen (gelten für jeden Bericht)
-        mg = ttk.LabelFrame(frame, text="Karte im Bericht", padding=8)
+        # Eintragsarten-Filter + Karte (gelten für jeden Bericht)
+        mg = ttk.LabelFrame(frame, text="Eintragsarten & Karte", padding=8)
         mg.pack(fill="x", pady=(0, 8))
-        self._with_map = tk.BooleanVar(value=False)
-        ttk.Checkbutton(mg, text="Karte einbetten (ohne AIS)",
-                        variable=self._with_map).grid(row=0, column=0, columnspan=3,
-                                                      sticky="w")
-        ttk.Label(mg, text="markierte Einträge:", foreground="#556").grid(
-            row=1, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(mg, text="Angezeigte Eintragsarten (Bericht + Kartenmarkierung):",
+                  foreground="#556").grid(row=0, column=0, columnspan=4, sticky="w")
         self._map_auto = tk.BooleanVar(value=True)
         self._map_manual = tk.BooleanVar(value=True)
         self._map_tripcon = tk.BooleanVar(value=True)
         ttk.Checkbutton(mg, text="Autolog", variable=self._map_auto).grid(
-            row=1, column=1, sticky="w", padx=(6, 0), pady=(4, 0))
+            row=1, column=1, sticky="w", padx=(6, 0), pady=(2, 0))
         ttk.Checkbutton(mg, text="Manuell", variable=self._map_manual).grid(
-            row=1, column=2, sticky="w", padx=(6, 0), pady=(4, 0))
+            row=1, column=2, sticky="w", padx=(6, 0), pady=(2, 0))
         ttk.Checkbutton(mg, text="Import", variable=self._map_tripcon).grid(
-            row=1, column=3, sticky="w", padx=(6, 0), pady=(4, 0))
+            row=1, column=3, sticky="w", padx=(6, 0), pady=(2, 0))
+        ttk.Separator(mg, orient="horizontal").grid(
+            row=2, column=0, columnspan=4, sticky="we", pady=6)
+        self._with_map = tk.BooleanVar(value=False)
+        ttk.Checkbutton(mg, text="Karte einbetten (ohne AIS)",
+                        variable=self._with_map).grid(row=3, column=0, columnspan=4,
+                                                      sticky="w")
 
         # 1) Ganzer Törn (mehrere Etappen)
         vg = ttk.LabelFrame(frame, text="Ganzer Törn (mehrere Etappen)", padding=8)
@@ -3731,17 +3733,20 @@ class _ReportDialog:
 
     def _pick(self, kind: str, with_images: bool) -> None:
         voyage_id = self._voy_map.get(self._voy_var.get()) if kind == "voyage" else None
-        map_types = set()
+        types = set()
         if self._map_auto.get():
-            map_types.add("auto")
+            types.add("auto")
         if self._map_manual.get():
-            map_types.add("manual")
+            types.add("manual")
         if self._map_tripcon.get():
-            map_types.add("tripcon")
+            types.add("tripcon")
+        # alle drei (oder keine) gewählt = keine Einschränkung (None); sonst
+        # gilt der Filter für die Einträge im Bericht UND die Kartenmarkierung.
+        types = None if len(types) in (0, 3) else types
         self.result = {
             "kind": kind, "with_images": with_images, "voyage_id": voyage_id,
             "with_map": self._with_map.get(),
-            "map_types": map_types or None,
+            "entry_types": types,
         }
         self.top.destroy()
 

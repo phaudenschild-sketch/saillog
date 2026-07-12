@@ -369,6 +369,18 @@ _ENTRY_COLORS = {
 }
 
 
+def _keep(entry: LogEntry, types: Optional[set]) -> bool:
+    """True, wenn der Eintrag nach dem Typ-Filter angezeigt wird (None = alle)."""
+    return types is None or entry.entry_type in types
+
+
+def _entry_count(shown: int, total: int, types: Optional[set]) -> str:
+    """Textzeile für die Anzahl gezeigter Einträge (mit Hinweis bei Filter)."""
+    if types is None or shown == total:
+        return f"{total} Einträge"
+    return f"{shown} von {total} Einträgen (Typ-Filter)"
+
+
 def map_block(entries: List[LogEntry], offset: float = 0.0,
               types: Optional[set] = None, title: str = "Karte") -> str:
     """Leaflet-Karte für den Bericht: Route (Linie) + markierte Einträge.
@@ -419,7 +431,8 @@ def map_block(entries: List[LogEntry], offset: float = 0.0,
 
 def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
                      with_images: bool = False, with_map: bool = False,
-                     map_types: Optional[set] = None) -> str:
+                     map_types: Optional[set] = None,
+                     entry_types: Optional[set] = None) -> str:
     entries = store.all(newest_first=False, trip_id=trip.id, limit=50000)
     ship = None
     if config.active_ship_id:
@@ -449,13 +462,17 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
     if with_map:
         parts.append(map_block(entries, offset, map_types, "Karte"))
     parts.append(f'<h2 class="pb">Logbuch</h2>')
+    shown = 0
     for i, e in enumerate(entries):
+        if not _keep(e, entry_types):
+            continue
+        shown += 1
         imgs = store.get_entry_images(e.id) if with_images else None
         parts.append(entry_card(e, offset, cum.get(i, 0.0), imgs))
     parts.append(
         f'<div class="summary"><b>Zusammenfassung {escape(trip.name or "")}</b><br>'
         f'Gesamt: {_de(stats["total"])} NM · Gesegelt: {_de(stats["sailed"])} NM · '
-        f'Motor: {_de(stats["motor"])} NM<br>{len(entries)} Einträge</div>')
+        f'Motor: {_de(stats["motor"])} NM<br>{_entry_count(shown, len(entries), entry_types)}</div>')
     return _doc(f"{kind} {trip.name}", "".join(parts), with_map=with_map)
 
 
@@ -485,7 +502,8 @@ def _combined_crew(store, trips: List[Trip]) -> List:
 
 def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
                        offset: float = 0.0, with_images: bool = False,
-                       with_map: bool = False, map_types: Optional[set] = None) -> str:
+                       with_map: bool = False, map_types: Optional[set] = None,
+                       entry_types: Optional[set] = None) -> str:
     """Törnbericht/Etappenbericht über MEHRERE Etappen (ein Törn)."""
     kind = "Etappenbericht" if with_images else "Törnbericht"
     ship = _active_ship(store, config)
@@ -536,6 +554,8 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
             f'<div class="sub">{escape(when)}</div>{roles}')
         cum = _cumulative_nm(ents)
         for i, e in enumerate(ents):
+            if not _keep(e, entry_types):
+                continue
             imgs = store.get_entry_images(e.id) if with_images else None
             parts.append(entry_card(e, offset, cum.get(i, 0.0), imgs))
         st = leg_stats(ents)

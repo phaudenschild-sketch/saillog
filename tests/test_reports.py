@@ -145,6 +145,21 @@ class ReportTest(unittest.TestCase):
         allt = reports.map_block(entries, 0.0, None)
         self.assertEqual(allt.count('"fill"'), 2)
 
+    def test_trip_report_filters_entry_types(self):
+        # e1 = manual ("Ablegen"), e2 = auto ("Intervall")
+        full = reports.trip_report_html(self.store, self.cfg, self.trip, 0.0)
+        self.assertIn("Ablegen", full)
+        self.assertIn("Intervall", full)
+        self.assertIn("2 Einträge", full)
+        # nur manuelle Einträge im Bericht
+        only_manual = reports.trip_report_html(
+            self.store, self.cfg, self.trip, 0.0, entry_types={"manual"})
+        self.assertIn("Ablegen", only_manual)
+        self.assertNotIn("Intervall", only_manual)
+        self.assertIn("1 von 2 Einträgen", only_manual)
+        # Distanz-Zusammenfassung bleibt über ALLE Einträge berechnet
+        self.assertIn("Zusammenfassung", only_manual)
+
     def test_map_block_without_positions(self):
         e = LogEntry(timestamp="2024-07-25T06:24:00Z", entry_type="manual")
         html = reports.map_block([e], 0.0, None)
