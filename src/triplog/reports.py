@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 from typing import Dict, List, Optional
 from xml.sax.saxutils import escape
 
@@ -336,6 +337,9 @@ h3 { font-size: 15px; margin: 16px 0 6px; }
        page-break-inside: avoid; }
 .maplegend { color:#556; font-size:12px; margin-bottom: 8px; }
 .maplegend span { font-weight:600; }
+.mapwrap { border:1px solid #ccd; border-radius:6px; overflow:hidden;
+           page-break-inside: avoid; }
+.trackmap { display:block; width:100%; height:auto; }
 .brandbar { display:flex; justify-content:center; margin: 4px 0 6px; }
 .rfoot { margin-top: 26px; padding-top: 8px; border-top: 1px solid #dde;
          color:#8592a0; font-size: 11px; display:flex; justify-content:space-between;
@@ -391,18 +395,132 @@ def _entry_count(shown: int, total: int, types: Optional[set]) -> str:
     return f"{shown} von {total} Einträgen (Typ-Filter)"
 
 
-def map_block(entries: List[LogEntry], offset: float = 0.0,
-              types: Optional[set] = None, title: str = "Karte",
-              track: Optional[List[List[float]]] = None) -> str:
-    """Leaflet-Karte für den Bericht: Route (Linie) + markierte Einträge.
+def _nice_step(span: float, target_divs: int = 4) -> float:
+    """Runder Gitterabstand (1/2/5·10^n), der ``span`` in ~target Teile teilt."""
+    if span <= 0:
+        return 1.0
+    raw = span / max(1, target_divs)
+    mag = 10 ** math.floor(math.log10(raw))
+    for m in (1, 2, 5, 10):
+        if m * mag >= raw:
+            return m * mag
+    return 10 * mag
 
-    ``types`` = Menge der Eintragstypen, die als Punkt markiert werden
-    (None = alle). Die Route (Linie) wird aus ``track`` gezogen, falls
-    angegeben (dichte Spur inkl. reiner Track-Punkte), sonst aus ``entries``.
+
+def track_svg(track: List[List[float]], marks: List[dict],
+              width: int = 760, height: int = 470) -> str:
+    """Eigenständiger SVG-Kartenplot: Route + Marker + Gitter + Maßstab.
+
+    Ohne externe Kacheln/JS — rendert im Browser **und** im PDF identisch und
+    funktioniert offline. Äquirektangulare Projektion mit Breiten-Korrektur.
     """
-    if track is None:
-        track = [[e.lat, e.lon] for e in entries
-                 if e.lat is not None and e.lon is not None]
+    pts = [(p[0], p[1]) for p in track if p and p[0] is not None and p[1] is not None]
+    if not pts:
+        return ""
+    lats = [a for a, _ in pts] + [m["lat"] for m in marks]
+    lons = [b for _, b in pts] + [m["lon"] for m in marks]
+    lat0, lat1 = min(lats), max(lats)
+    lon0, lon1 = min(lons), max(lons)
+    meanlat = (lat0 + lat1) / 2.0
+    kx = max(0.05, math.cos(math.radians(meanlat)))    # Längengrad-Stauchung
+
+    def X(lon):
+        return lon * kx
+
+    def Y(lat):
+        return -lat
+
+    minx, maxx = X(lon0), X(lon1)
+    miny, maxy = Y(lat1), Y(lat0)                        # Y ist invertiert
+    dx = max(maxx - minx, 1e-6)
+    dy = max(maxy - miny, 1e-6)
+    pad = 46
+    iw, ih = width - 2 * pad, height - 2 * pad
+    scale = min(iw / dx, ih / dy)                        # gleichmäßig, Nordung erhalten
+    # zentrieren
+    ox = pad + (iw - dx * scale) / 2.0
+    oy = pad + (ih - dy * scale) / 2.0
+
+    def px(lat, lon):
+        return ox + (X(lon) - minx) * scale, oy + (Y(lat) - miny) * scale
+
+    # Route (bei sehr vielen Punkten ausdünnen)
+    step = max(1, len(pts) // 3000)
+    poly = " ".join(
+        f"{x:.1f},{y:.1f}" for x, y in (px(a, b) for a, b in pts[::step]))
+    # letzten Punkt sicher mitnehmen
+    lx, ly = px(*pts[-1])
+    poly += f" {lx:.1f},{ly:.1f}"
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
+        f'class="trackmap" role="img" aria-label="Kartenplot">',
+        f'<rect x="0" y="0" width="{width}" height="{height}" fill="#eef4f8" '
+        f'stroke="#cdd8e0"/>',
+    ]
+    # Gitter (Längen-/Breitengrade) mit Beschriftung
+    lon_step = _nice_step(lon1 - lon0)
+    lat_step = _nice_step(lat1 - lat0)
+
+    def _fmt_deg(v, pos, neg):
+        h = pos if v >= 0 else neg
+        return f"{abs(v):.2f}°{h}".replace(".", ",")
+
+    g = math.ceil(lon0 / lon_step) * lon_step
+    while g <= lon1 + 1e-9:
+        x, _ = px(lat0, g)
+        parts.append(f'<line x1="{x:.1f}" y1="{pad}" x2="{x:.1f}" y2="{height-pad}" '
+                     f'stroke="#d3dde6" stroke-width="1"/>')
+        parts.append(f'<text x="{x:.1f}" y="{height-pad+16}" font-size="10" '
+                     f'text-anchor="middle" fill="#7089">'
+                     f'{escape(_fmt_deg(g, "E", "W"))}</text>')
+        g += lon_step
+    g = math.ceil(lat0 / lat_step) * lat_step
+    while g <= lat1 + 1e-9:
+        _, y = px(g, lon0)
+        parts.append(f'<line x1="{pad}" y1="{y:.1f}" x2="{width-pad}" y2="{y:.1f}" '
+                     f'stroke="#d3dde6" stroke-width="1"/>')
+        parts.append(f'<text x="{pad-4}" y="{y+3:.1f}" font-size="10" '
+                     f'text-anchor="end" fill="#7089">'
+                     f'{escape(_fmt_deg(g, "N", "S"))}</text>')
+        g += lat_step
+
+    # Route
+    parts.append(f'<polyline points="{poly}" fill="none" stroke="#d6156a" '
+                 f'stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>')
+    # Start/Ende
+    sx, sy = px(*pts[0])
+    ex, ey = px(*pts[-1])
+    parts.append(f'<circle cx="{sx:.1f}" cy="{sy:.1f}" r="5" fill="#159c3f" '
+                 f'stroke="#0b5" stroke-width="1"/>')
+    parts.append(f'<circle cx="{ex:.1f}" cy="{ey:.1f}" r="5" fill="#c0392b" '
+                 f'stroke="#7a0012" stroke-width="1"/>')
+    # Marker je Eintrag
+    for m in marks:
+        mx, my = px(m["lat"], m["lon"])
+        parts.append(f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="3.4" '
+                     f'fill="{m["fill"]}" stroke="{m["stroke"]}" stroke-width="1"/>')
+    # Maßstab (nm): 1 nm = 1/60 Grad Breite
+    px_per_nm = scale / 60.0
+    if px_per_nm > 0:
+        nm = _nice_step(iw / px_per_nm * 0.3, 1) or 1
+        barpx = nm * px_per_nm
+        bx, by = pad + 6, height - pad - 10
+        parts.append(f'<line x1="{bx}" y1="{by}" x2="{bx+barpx:.1f}" y2="{by}" '
+                     f'stroke="#334" stroke-width="2.5"/>')
+        parts.append(f'<text x="{bx}" y="{by-5}" font-size="10" fill="#334">'
+                     f'{("%g" % nm)} sm</text>')
+    # Nordpfeil
+    nx, ny = width - pad - 6, pad + 4
+    parts.append(f'<g transform="translate({nx},{ny})"><polygon points="0,-14 4,4 0,0 -4,4" '
+                 f'fill="#334"/><text x="0" y="18" font-size="10" text-anchor="middle" '
+                 f'fill="#334">N</text></g>')
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _map_marks(entries: List[LogEntry], offset: float,
+               types: Optional[set]) -> List[dict]:
     marks = []
     for e in entries:
         if e.lat is None or e.lon is None:
@@ -416,12 +534,35 @@ def map_block(entries: List[LogEntry], offset: float = 0.0,
             "anlass": e.logevent or "", "note": e.note or "",
             "wind": wind_str(e.tws_kn, e.twd_deg) if e.tws_kn is not None else "",
         })
+    return marks
+
+
+def map_block(entries: List[LogEntry], offset: float = 0.0,
+              types: Optional[set] = None, title: str = "Karte",
+              track: Optional[List[List[float]]] = None,
+              static: bool = False) -> str:
+    """Karte für den Bericht: Route (Linie) + markierte Einträge.
+
+    ``types`` = Eintragstypen, die als Punkt markiert werden (None = alle).
+    Die Route wird aus ``track`` gezogen (dichte Spur inkl. Track-Punkte), sonst
+    aus ``entries``. ``static=True`` erzeugt einen eigenständigen SVG-Plot
+    (offline, druckfest — für PDF), sonst die interaktive Leaflet-Karte.
+    """
+    if track is None:
+        track = [[e.lat, e.lon] for e in entries
+                 if e.lat is not None and e.lon is not None]
+    marks = _map_marks(entries, offset, types)
     if not track:
         return (f'<h2 class="pb">{escape(title)}</h2>'
                 f'<div class="sub">Keine Positionsdaten für die Karte.</div>')
-    legend = ('<div class="maplegend"><span style="color:#e8820c">●</span> Autolog '
+    legend = ('<div class="maplegend"><span style="color:#159c3f">●</span> Start '
+              '<span style="color:#c0392b">●</span> Ziel '
+              '<span style="color:#e8820c">●</span> Autolog '
               '<span style="color:#d61e3c">●</span> Manuell '
               '<span style="color:#9aa0a6">●</span> Import — Route als Linie</div>')
+    if static:
+        return (f'<h2 class="pb">{escape(title)}</h2>{legend}'
+                f'<div class="mapwrap">{track_svg(track, marks)}</div>')
     data = json.dumps({"track": track, "marks": marks})
     script = (
         "<script>(function(){var d=" + data + ";"
@@ -457,7 +598,8 @@ def _track_points(store, trip_ids: List[int]) -> List[List[float]]:
 def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
                      with_images: bool = False, with_map: bool = False,
                      map_types: Optional[set] = None,
-                     entry_types: Optional[set] = None) -> str:
+                     entry_types: Optional[set] = None,
+                     static_map: bool = False) -> str:
     entries = store.all(newest_first=False, trip_id=trip.id, limit=50000)
     ship = None
     if config.active_ship_id:
@@ -487,7 +629,8 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
     ]
     if with_map:
         parts.append(map_block(entries, offset, map_types, "Karte",
-                               track=_track_points(store, [trip.id])))
+                               track=_track_points(store, [trip.id]),
+                               static=static_map))
     parts.append(f'<h2 class="pb">Logbuch</h2>')
     shown = 0
     for i, e in enumerate(entries):
@@ -500,7 +643,8 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
         f'<div class="summary"><b>Zusammenfassung {escape(trip.name or "")}</b><br>'
         f'Gesamt: {_de(stats["total"])} NM · Gesegelt: {_de(stats["sailed"])} NM · '
         f'Motor: {_de(stats["motor"])} NM<br>{_entry_count(shown, len(entries), entry_types)}</div>')
-    return _doc(f"{kind} {trip.name}", "".join(parts), with_map=with_map)
+    return _doc(f"{kind} {trip.name}", "".join(parts),
+                with_map=with_map and not static_map)
 
 
 # --- Törn-Bericht über mehrere Etappen (Voyage) ----------------------------
@@ -530,7 +674,8 @@ def _combined_crew(store, trips: List[Trip]) -> List:
 def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
                        offset: float = 0.0, with_images: bool = False,
                        with_map: bool = False, map_types: Optional[set] = None,
-                       entry_types: Optional[set] = None) -> str:
+                       entry_types: Optional[set] = None,
+                       static_map: bool = False) -> str:
     """Törnbericht/Etappenbericht über MEHRERE Etappen (ein Törn)."""
     kind = "Etappenbericht" if with_images else "Törnbericht"
     ship = _active_ship(store, config)
@@ -566,7 +711,8 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
     if with_map:
         combined = [e for t in trips for e in leg_entries[t.id]]
         parts.append(map_block(combined, offset, map_types, "Karte (ganzer Törn)",
-                               track=_track_points(store, [t.id for t in trips])))
+                               track=_track_points(store, [t.id for t in trips]),
+                               static=static_map))
 
     for t in trips:
         ents = leg_entries[t.id]
@@ -597,14 +743,16 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
         f'<div class="summary pb"><b>Zusammenfassung {escape(voyage.name)}</b><br>'
         f'{len(trips)} Etappen · Gesamt: {_de(total)} NM · '
         f'Gesegelt: {_de(sailed)} NM · Motor: {_de(motor)} NM</div>')
-    return _doc(f"{kind} {voyage.name}", "".join(parts), with_map=with_map)
+    return _doc(f"{kind} {voyage.name}", "".join(parts),
+                with_map=with_map and not static_map)
 
 
 # --- Fahrtenbuch / Übersicht (mehrere Törns) -------------------------------
 
 def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
                     title: str = "Fahrtenbuch", with_map: bool = False,
-                    map_types: Optional[set] = None) -> str:
+                    map_types: Optional[set] = None,
+                    static_map: bool = False) -> str:
     total = sailed = motor = 0.0
     ship_ids = set()
     parts = []
@@ -636,8 +784,9 @@ def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
         f'Gesegelt: {_de(sailed)} NM · Motor: {_de(motor)} NM</div>'
     )
     map_html = (map_block(combined, offset, map_types, "Karte",
-                          track=_track_points(store, [t.id for t in trips]))
+                          track=_track_points(store, [t.id for t in trips]),
+                          static=static_map)
                 if with_map else "")
     body = (head + ship_html + map_html
             + '<h2 class="pb">Fahrtenübersicht</h2>' + "".join(parts) + summary)
-    return _doc(title, body, with_map=with_map)
+    return _doc(title, body, with_map=with_map and not static_map)

@@ -15,7 +15,7 @@ ist egal).
 cd C:\claude\masarasi
 git pull
 python main.py                 # GUI starten
-python -m unittest discover -s tests   # 240 Tests
+python -m unittest discover -s tests   # 243 Tests
 ```
 
 Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
@@ -129,8 +129,19 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
   Python-Pakete**. Der Bericht-Dialog hat jetzt die Ausgabewahl **„Als PDF
   speichern" / „Im Browser öffnen (HTML)"** (PDF ist Vorgabe). PDF-Erzeugung
   läuft im Thread; ohne Browser oder bei Fehler sauberer Fallback auf den
-  HTML-/Browser-Weg. Karte im PDF: höheres `virtual-time-budget` (Route/Marker
-  rendern immer; Kacheln je nach Netz).
+  HTML-/Browser-Weg.
+- **Karte im PDF = eigenständiger SVG-Plot** (`reports.track_svg`, `map_block(
+  static=True)`): Leaflet-Kacheln laden im Headless-`--print-to-pdf` nicht
+  zuverlässig → für PDF wird stattdessen ein **druckfester SVG-Kartenplot**
+  eingebettet (Route, Start/Ziel, typisierte Marker, Lat/Lon-Gitter mit
+  Beschriftung, Maßstabsbalken in sm, Nordpfeil; äquirektangular mit
+  Breiten-Korrektur, offline). Der **HTML-Bericht im Browser** nutzt weiter die
+  **interaktive Leaflet-Karte**. Report-Funktionen: neuer Parameter
+  `static_map` (GUI setzt ihn = „als PDF").
+- **Bericht-Dialog aufgeräumt:** Fotos sind jetzt eine **Checkbox „Fotos der
+  Einträge einbetten"** (Vorgabe an) statt separater „…mit Bildern"-Knöpfe; je
+  Bereich nur noch **ein** Erstellen-Knopf. Behebt die Verwirrung „Fotos fehlen"
+  (vorher hatte man versehentlich die Bild-lose Variante gewählt).
 - **Umbenennung Masarasi → TripLog:** Python-Paket `masarasi` → `triplog`
   (alle Importe/Skripte/Tests), Produktname „TripLog" in allen Ausgaben
   (Fenstertitel, Karte, Berichte, Crewliste, GPX-Metadaten). „SY MASARASI"

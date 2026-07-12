@@ -954,7 +954,10 @@ class Application:
         res = dialog.result
         offset = self._tz_offset()
         with_map = res.get("with_map", False)
+        with_images = res.get("with_images", False)
         types = res.get("entry_types")     # gilt für Bericht-Einträge UND Karte
+        # PDF: druckfester SVG-Kartenplot; HTML im Browser: interaktive Leaflet-Karte
+        static_map = bool(res.get("as_pdf"))
         try:
             if res["kind"] == "fahrtenbuch":
                 trips = self._store.all_trips(newest_first=False)
@@ -963,7 +966,7 @@ class Application:
                     return
                 html = reports.voyage_log_html(
                     self._store, self._config, trips, offset, "Fahrtenbuch",
-                    with_map=with_map, map_types=types)
+                    with_map=with_map, map_types=types, static_map=static_map)
                 name = "fahrtenbuch.html"
             elif res["kind"] == "voyage":
                 voyage = self._store.get_voyage(res["voyage_id"])
@@ -975,8 +978,8 @@ class Application:
                     return
                 html = reports.voyage_report_html(
                     self._store, self._config, voyage, trips, offset,
-                    with_images=res["with_images"], with_map=with_map,
-                    map_types=types, entry_types=types)
+                    with_images=with_images, with_map=with_map,
+                    map_types=types, entry_types=types, static_map=static_map)
                 name = "toern_bericht.html"
             else:
                 trip = self._store.get_trip(self._logbook.current_trip_id)
@@ -985,8 +988,8 @@ class Application:
                     return
                 html = reports.trip_report_html(
                     self._store, self._config, trip, offset,
-                    with_images=res["with_images"], with_map=with_map,
-                    map_types=types, entry_types=types)
+                    with_images=with_images, with_map=with_map,
+                    map_types=types, entry_types=types, static_map=static_map)
                 name = "etappen_bericht.html"
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
@@ -1023,8 +1026,9 @@ class Application:
         )
         if not out:
             return
-        # Konvertierung kann ein paar Sekunden dauern -> im Hintergrund.
-        wait_ms = 6000 if with_map else 2500
+        # Karte im PDF ist ein eingebetteter SVG-Plot (kein Nachladen) -> kurze
+        # Wartezeit genügt. Konvertierung läuft im Hintergrund.
+        wait_ms = 2500
         browser = self._config.pdf_browser_path
         import threading
 
@@ -3885,9 +3889,13 @@ class _ReportDialog:
             row=1, column=3, sticky="w", padx=(6, 0), pady=(2, 0))
         ttk.Separator(mg, orient="horizontal").grid(
             row=2, column=0, columnspan=4, sticky="we", pady=6)
-        self._with_map = tk.BooleanVar(value=False)
+        self._with_images = tk.BooleanVar(value=True)
+        ttk.Checkbutton(mg, text="Fotos der Einträge einbetten",
+                        variable=self._with_images).grid(
+            row=3, column=0, columnspan=4, sticky="w")
+        self._with_map = tk.BooleanVar(value=True)
         ttk.Checkbutton(mg, text="Karte einbetten (ohne AIS)",
-                        variable=self._with_map).grid(row=3, column=0, columnspan=4,
+                        variable=self._with_map).grid(row=4, column=0, columnspan=4,
                                                       sticky="w")
 
         # 1) Ganzer Törn (mehrere Etappen)
@@ -3902,15 +3910,11 @@ class _ReportDialog:
         combo = ttk.Combobox(row, textvariable=self._voy_var, state="readonly",
                              width=34, values=list(self._voy_map.keys()))
         combo.pack(side="left", padx=6)
-        bv1 = ttk.Button(vg, text="Törn-Bericht", width=42,
-                         command=lambda: self._pick("voyage", False))
+        bv1 = ttk.Button(vg, text="Törn-Bericht erstellen", width=42,
+                         command=lambda: self._pick("voyage"))
         bv1.pack(fill="x", pady=(6, 2))
-        bv2 = ttk.Button(vg, text="Etappenbericht mit Bildern", width=42,
-                         command=lambda: self._pick("voyage", True))
-        bv2.pack(fill="x", pady=2)
         if not self._voy_map:
             combo.config(state="disabled"); bv1.config(state="disabled")
-            bv2.config(state="disabled")
             ttk.Label(vg, foreground="#b25000",
                       text="(Noch keine Törns — unter Extras → 'Törns/Etappen "
                            "gruppieren…' anlegen.)", wraplength=380).pack(anchor="w")
@@ -3918,24 +3922,21 @@ class _ReportDialog:
         # 2) Einzelne Etappe (aktueller Törn)
         eg = ttk.LabelFrame(frame, text="Einzelne Etappe (aktueller Törn)", padding=8)
         eg.pack(fill="x", pady=4)
-        be1 = ttk.Button(eg, text="Etappen-Bericht", width=42,
-                         command=lambda: self._pick("trip", False))
+        be1 = ttk.Button(eg, text="Etappen-Bericht erstellen", width=42,
+                         command=lambda: self._pick("trip"))
         be1.pack(fill="x", pady=2)
-        be2 = ttk.Button(eg, text="Etappen-Bericht mit Bildern", width=42,
-                         command=lambda: self._pick("trip", True))
-        be2.pack(fill="x", pady=2)
         if not has_trip:
-            be1.config(state="disabled"); be2.config(state="disabled")
+            be1.config(state="disabled")
             ttk.Label(eg, foreground="#b25000",
                       text="(Oben keine Etappe ausgewählt.)").pack(anchor="w")
 
         # 3) Fahrtenbuch
         ttk.Button(frame, text="Fahrtenbuch (alle Törns)", width=42,
-                   command=lambda: self._pick("fahrtenbuch", False)).pack(
+                   command=lambda: self._pick("fahrtenbuch")).pack(
             fill="x", pady=(8, 2))
         ttk.Button(frame, text="Abbrechen", command=self.top.destroy).pack(pady=(10, 0))
 
-    def _pick(self, kind: str, with_images: bool) -> None:
+    def _pick(self, kind: str) -> None:
         voyage_id = self._voy_map.get(self._voy_var.get()) if kind == "voyage" else None
         types = set()
         if self._map_auto.get():
@@ -3948,7 +3949,8 @@ class _ReportDialog:
         # gilt der Filter für die Einträge im Bericht UND die Kartenmarkierung.
         types = None if len(types) in (0, 3) else types
         self.result = {
-            "kind": kind, "with_images": with_images, "voyage_id": voyage_id,
+            "kind": kind, "with_images": self._with_images.get(),
+            "voyage_id": voyage_id,
             "with_map": self._with_map.get(),
             "entry_types": types,
             "as_pdf": self._output.get() == "pdf",

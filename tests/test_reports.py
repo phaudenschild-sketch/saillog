@@ -165,6 +165,29 @@ class ReportTest(unittest.TestCase):
         html = reports.map_block([e], 0.0, None)
         self.assertIn("Keine Positionsdaten", html)
 
+    def test_track_svg_plot(self):
+        track = [[43.0, 16.0], [43.1, 16.1], [43.2, 16.05]]
+        marks = [{"lat": 43.0, "lon": 16.0, "stroke": "#7a0012", "fill": "#d61e3c",
+                  "time": "", "type": "manual", "anlass": "", "note": "", "wind": ""}]
+        svg = reports.track_svg(track, marks)
+        self.assertIn("<svg", svg)
+        self.assertIn("<polyline", svg)      # Route
+        self.assertIn("sm", svg)             # Maßstabsbalken
+        self.assertIn("°N", svg)             # Gitterbeschriftung
+
+    def test_static_map_is_svg_not_leaflet(self):
+        entries = self.store.all(newest_first=False, trip_id=self.trip.id)
+        static = reports.map_block(entries, 0.0, None, "Karte", static=True)
+        self.assertIn('class="trackmap"', static)
+        self.assertNotIn("leaflet", static)
+        self.assertNotIn("L.polyline", static)
+
+    def test_pdf_report_uses_static_svg_map_no_leaflet(self):
+        html = reports.trip_report_html(self.store, self.cfg, self.trip, 0.0,
+                                        with_map=True, static_map=True)
+        self.assertIn('class="trackmap"', html)
+        self.assertNotIn("leaflet", html)     # auch keine Leaflet-Assets im <head>
+
     def test_map_block_uses_dense_track_for_line(self):
         entries = self.store.all(newest_first=False, trip_id=self.trip.id)
         dense = [[42.97, 16.66], [42.95, 16.66], [42.93, 16.65], [42.91, 16.65]]
