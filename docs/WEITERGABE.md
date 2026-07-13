@@ -49,9 +49,10 @@ Version sinnvoll machen?
    aber nicht in ein öffentliches Release. Vorschlag: STATUS.md aus dem
    Weitergabe-Paket herausnehmen (oder die IP-Tabelle durch generische
    Beispiele ersetzen).
-2. **Kurz-Anleitung „Von TripCon zu SailLog“**: eine Seite, die genau den Weg
-   Backup (`.tcdb`) → Extras-Import → erste Schritte zeigt. Das senkt die
-   Einstiegshürde für genau deine Zielgruppe am meisten. (Kann ich erstellen.)
+2. **Kurz-Anleitung „Von TripCon zu SailLog“**: ✅ **umgesetzt** –
+   [`docs/VON_TRIPCON_ZU_SAILLOG.md`](VON_TRIPCON_ZU_SAILLOG.md) zeigt den Weg
+   Backup (`.tcdb`) → Extras-Import → erste Schritte und was übernommen wird.
+   Senkt die Einstiegshürde für genau die Zielgruppe am meisten.
 3. **Fertiges Windows-Paket**: viele Segler haben kein Python. Eine
    `.exe`/Installer (PyInstaller) macht die Weitergabe drastisch einfacher.
    Aktuell ist „Python installieren + `python main.py`“ die Hürde. (Siehe

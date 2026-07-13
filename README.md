@@ -245,6 +245,10 @@ importieren…"**, `.tcdb` auswählen. SailLog zeigt zuerst eine Übersicht
 Einträge bekommen den Typ `tripcon`; ein erneuter Import ersetzt sie (keine
 Dubletten), eigene Einträge bleiben unberührt.
 
+> **Umsteiger-Anleitung:** Der komplette Weg von TripCon zu SailLog
+> (sichern → importieren → weiterführen, inkl. was übernommen wird) steht in
+> **[`docs/VON_TRIPCON_ZU_SAILLOG.md`](docs/VON_TRIPCON_ZU_SAILLOG.md)**.
+
 Für Skript-Nutzer geht es auch über die Kommandozeile:
 
 **Struktur ansehen** (Formate, Tabellen, Bilder):
