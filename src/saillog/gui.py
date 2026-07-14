@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import time
 import tkinter as tk
 import webbrowser
 from collections import deque
@@ -76,6 +77,8 @@ class Application:
         self._autolog_settings = AutoLogSettings.from_dict(self._config.autolog)
         # Foto-Import (Ordner-Überwachung; mehrere Ordner = mehrere Watcher)
         self._photo_watchers: List[photos.PhotoWatcher] = []
+        # Bündelung kurz nacheinander eintreffender Fotos zu einem Eintrag
+        self._photo_grouper = photos.PhotoGrouper()
 
         self._value_labels: Dict[str, tk.Label] = {}
         # Ringpuffer für die Rohdaten-Anzeige (Thread-sicher via deque.append)
@@ -799,6 +802,7 @@ class Application:
         self._config.photo_folders = dialog.result["folders"]
         self._config.photo_folder = ""     # Alt-Einzelfeld geräumt (jetzt Liste)
         self._config.photo_recursive = dialog.result["recursive"]
+        self._config.photo_group_seconds = dialog.result["group_seconds"]
         self._config.photo_import_enabled = dialog.result["enabled"]
         self._config.save()
         self._stop_photo_watcher()
@@ -827,14 +831,22 @@ class Application:
         self._photo_watchers = []
 
     def _on_photo_imported(self, jpeg: bytes, source_name: str) -> None:
-        # Läuft im Watcher-Thread: Eintrag + Bild anlegen, dann GUI aktualisieren.
-        conditions = dict(getattr(self, "_condition_values", {}) or {})
-        entry = self._logbook.record_photo(
-            trip_id=self._logbook.open_trip_id(), conditions=conditions
-        )
-        if entry is not None:
-            self._store.set_image(entry.id, jpeg, "image/jpeg",
-                                  created_dz=utc_now_iso())
+        # Läuft im Watcher-Thread (evtl. mehrere gleichzeitig): Fotos, die kurz
+        # nacheinander eintreffen, an denselben Eintrag hängen statt je einen
+        # neuen anzulegen. Der PhotoGrouper serialisiert das thread-sicher.
+        window = int(getattr(self._config, "photo_group_seconds", 0) or 0)
+
+        def _create_entry() -> Optional[int]:
+            conditions = dict(getattr(self, "_condition_values", {}) or {})
+            entry = self._logbook.record_photo(
+                trip_id=self._logbook.open_trip_id(), conditions=conditions
+            )
+            return entry.id if entry is not None else None
+
+        entry_id = self._photo_grouper.resolve(time.monotonic(), window, _create_entry)
+        if entry_id is not None:
+            self._store.add_entry_image(entry_id, jpeg, "image/jpeg",
+                                        created_dz=utc_now_iso())
         self._root.after(0, self._refresh_logbook)
 
     # --- Backup -------------------------------------------------------------
@@ -2563,21 +2575,31 @@ class _PhotoDialog:
                  "erfasst automatisch jedes Geräte-Unterverzeichnis)",
         ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
+        # Bündelung: mehrere kurz nacheinander eintreffende Fotos = ein Eintrag
+        grp = ttk.Frame(frame)
+        grp.grid(row=5, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ttk.Label(grp, text="Fotos bündeln, wenn sie innerhalb von").pack(side="left")
+        self._group_seconds = tk.StringVar(
+            value=str(int(getattr(config, "photo_group_seconds", 90) or 0)))
+        ttk.Spinbox(grp, from_=0, to=3600, width=5,
+                    textvariable=self._group_seconds).pack(side="left", padx=4)
+        ttk.Label(grp, text="Sekunden eintreffen (0 = jedes Foto einzeln)").pack(side="left")
+
         ttk.Label(
             frame, foreground="#777", wraplength=470,
             text=f"Bilder werden auf max. {int(config.photo_max_px or 1600)} px "
                  "verkleinert und als JPEG gespeichert.",
-        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        ).grid(row=6, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         if not photos.available():
             ttk.Label(
                 frame, foreground="#b25000", wraplength=470,
                 text="Hinweis: Für den Foto-Import wird Pillow benötigt — "
                      "installieren mit:  pip install pillow",
-            ).grid(row=6, column=0, columnspan=3, sticky="w", pady=(6, 0))
+            ).grid(row=7, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
         btns = ttk.Frame(frame)
-        btns.grid(row=7, column=0, columnspan=3, pady=(12, 0))
+        btns.grid(row=8, column=0, columnspan=3, pady=(12, 0))
         ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
         ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
 
@@ -2592,9 +2614,14 @@ class _PhotoDialog:
             self._listbox.delete(sel[0])
 
     def _on_ok(self) -> None:
+        try:
+            group = max(0, int(float(self._group_seconds.get())))
+        except (TypeError, ValueError):
+            group = 0
         self.result = {
             "folders": [f for f in self._listbox.get(0, "end") if f.strip()],
             "recursive": self._recursive.get(),
+            "group_seconds": group,
             "enabled": self._enabled.get(),
         }
         self.top.destroy()

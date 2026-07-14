@@ -119,6 +119,44 @@ class RecursiveWatcherTest(unittest.TestCase):
         self.assertEqual(len(self._got), 1)
 
 
+class PhotoGrouperTest(unittest.TestCase):
+    """Bündelung kurz nacheinander eintreffender Fotos zu einem Eintrag."""
+
+    def setUp(self):
+        self._next_id = 0
+
+    def _create(self):
+        self._next_id += 1
+        return self._next_id
+
+    def test_burst_within_window_is_one_entry(self):
+        g = photos.PhotoGrouper()
+        ids = [g.resolve(t, 90, self._create) for t in (0.0, 10.0, 20.0, 85.0)]
+        self.assertEqual(ids, [1, 1, 1, 1])          # alle im selben Eintrag
+        self.assertEqual(self._next_id, 1)           # nur ein Eintrag angelegt
+
+    def test_gap_larger_than_window_starts_new_entry(self):
+        g = photos.PhotoGrouper()
+        self.assertEqual(g.resolve(0.0, 90, self._create), 1)
+        self.assertEqual(g.resolve(200.0, 90, self._create), 2)   # > 90 s später
+
+    def test_rolling_window_keeps_grouping(self):
+        # Fotos alle 80 s -> jeweils < 90 s Abstand -> bleiben zusammen
+        g = photos.PhotoGrouper()
+        ids = [g.resolve(t, 90, self._create) for t in (0.0, 80.0, 160.0, 240.0)]
+        self.assertEqual(ids, [1, 1, 1, 1])
+
+    def test_window_zero_disables_grouping(self):
+        g = photos.PhotoGrouper()
+        ids = [g.resolve(t, 0, self._create) for t in (0.0, 1.0, 2.0)]
+        self.assertEqual(ids, [1, 2, 3])             # jedes Foto ein Eintrag
+
+    def test_failed_create_does_not_poison_group(self):
+        g = photos.PhotoGrouper()
+        self.assertIsNone(g.resolve(0.0, 90, lambda: None))   # Anlegen scheitert
+        self.assertEqual(g.resolve(5.0, 90, self._create), 1)  # nächstes legt neu an
+
+
 class ConfigFolderListTest(unittest.TestCase):
     def test_multiple_folders(self):
         from saillog.config import Config

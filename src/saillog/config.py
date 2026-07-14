@@ -70,6 +70,9 @@ class Config:
     photo_recursive: bool = False         # auch Unterordner mit überwachen
     photo_import_enabled: bool = False
     photo_max_px: int = 1600
+    # Mehrere kurz nacheinander eintreffende Fotos zu EINEM Eintrag bündeln:
+    # Zeitfenster in Sekunden (rollend). 0 = jedes Foto ein eigener Eintrag.
+    photo_group_seconds: int = 90
 
     # Plotter-Screenshot per ADB (Android-Tablet mit Orca-/Plotter-Anzeige)
     plotter_adb_path: str = "adb"       # Pfad zu adb(.exe); "adb" = im PATH

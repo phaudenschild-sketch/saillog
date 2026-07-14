@@ -185,3 +185,38 @@ class PhotoWatcher:
             except Exception:  # noqa: BLE001
                 pass
             self._stop.wait(self._poll)
+
+
+class PhotoGrouper:
+    """Bündelt kurz nacheinander eintreffende Fotos zu EINEM Logbuch-Eintrag.
+
+    Thread-sicher: mehrere Ordner-Watcher können gleichzeitig importieren.
+    ``resolve`` entscheidet (unter Lock), ob das Foto an den vorigen Eintrag
+    gehängt wird oder einen neuen bekommt — bei „neu" wird ``create_entry``
+    innerhalb des Locks aufgerufen, damit nicht zwei Threads gleichzeitig
+    einen Eintrag anlegen. Fenster ist rollend: solange weitere Fotos innerhalb
+    des Zeitfensters kommen, bleiben sie im selben Eintrag.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._entry_id: Optional[int] = None
+        self._deadline: float = 0.0
+
+    def resolve(self, now: float, window: float,
+                create_entry: Callable[[], Optional[int]]) -> Optional[int]:
+        """Gibt die Eintrags-id zurück, an die das Bild gehängt werden soll
+        (oder None, wenn kein Eintrag angelegt werden konnte)."""
+        with self._lock:
+            if window > 0 and self._entry_id is not None and now <= self._deadline:
+                entry_id = self._entry_id
+            else:
+                entry_id = create_entry()
+                self._entry_id = entry_id
+            self._deadline = now + window if window > 0 else 0.0
+            return entry_id
+
+    def reset(self) -> None:
+        with self._lock:
+            self._entry_id = None
+            self._deadline = 0.0
