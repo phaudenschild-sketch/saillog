@@ -81,13 +81,15 @@ class PhotoWatcher:
         max_px: int = 1600,
         poll: float = 3.0,
         processed_dirname: str = "verarbeitet",
+        recursive: bool = False,
     ) -> None:
         self._folder = Path(folder)
         self._on_photo = on_photo
         self._max_px = max_px
         self._poll = poll
+        self._recursive = recursive
         self._processed = self._folder / processed_dirname
-        self._pending: Dict[str, int] = {}   # Dateiname -> zuletzt gesehene Größe
+        self._pending: Dict[str, int] = {}   # Pfad -> zuletzt gesehene Größe
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
 
@@ -114,10 +116,16 @@ class PhotoWatcher:
 
     def _list_images(self):
         try:
-            return [
-                p for p in self._folder.iterdir()
-                if p.is_file() and p.suffix.lower() in _IMAGE_EXT
-            ]
+            items = self._folder.rglob("*") if self._recursive else self._folder.iterdir()
+            out = []
+            for p in items:
+                if not (p.is_file() and p.suffix.lower() in _IMAGE_EXT):
+                    continue
+                # den „verarbeitet"-Ordner nicht erneut einlesen
+                if self._processed in p.parents:
+                    continue
+                out.append(p)
+            return out
         except OSError:
             return []
 
@@ -127,23 +135,24 @@ class PhotoWatcher:
         processed = 0
         current = {}
         for path in self._list_images():
+            key = str(path)                               # voller Pfad -> eindeutig
             try:
                 size = path.stat().st_size
             except OSError:
                 continue
-            current[path.name] = size
-            prev = self._pending.get(path.name)
+            current[key] = size
+            prev = self._pending.get(key)
             if prev is None:
-                self._pending[path.name] = size          # erst nächstes Mal
+                self._pending[key] = size                 # erst nächstes Mal
             elif prev == size:
                 if self._process(path):
                     processed += 1
-                self._pending.pop(path.name, None)
+                self._pending.pop(key, None)
             else:
-                self._pending[path.name] = size           # noch am Kopieren
-        for name in list(self._pending):
-            if name not in current:
-                self._pending.pop(name, None)
+                self._pending[key] = size                 # noch am Kopieren
+        for key in list(self._pending):
+            if key not in current:
+                self._pending.pop(key, None)
         return processed
 
     def _process(self, path: Path) -> bool:

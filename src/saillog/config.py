@@ -65,7 +65,9 @@ class Config:
     pdf_browser_path: str = ""
 
     # Foto-Import: Ordner überwachen, Bilder verkleinern, Auto-Eintrag anlegen
-    photo_folder: str = ""
+    photo_folder: str = ""               # Einzelordner (Abwärtskompatibilität)
+    photo_folders: Optional[list] = None  # mehrere Ordner (z.B. je Gerät/App)
+    photo_recursive: bool = False         # auch Unterordner mit überwachen
     photo_import_enabled: bool = False
     photo_max_px: int = 1600
 
@@ -112,6 +114,24 @@ class Config:
     # Anzeige-Zeitzone: "system" (Rechnerzeit) oder "fixed" mit festem Versatz
     timezone_mode: str = "system"
     timezone_offset_hours: float = 0.0
+
+    def photo_folder_list(self) -> list:
+        """Effektive Liste der überwachten Foto-Ordner.
+
+        Nutzt ``photo_folders`` (mehrere, z.B. je Gerät). Ist die Liste leer,
+        wird der frühere Einzelordner ``photo_folder`` verwendet
+        (Abwärtskompatibilität). Duplikate werden entfernt.
+        """
+        folders = [str(f).strip() for f in (self.photo_folders or []) if str(f).strip()]
+        if not folders and self.photo_folder.strip():
+            folders = [self.photo_folder.strip()]
+        seen: set = set()
+        out: list = []
+        for f in folders:
+            if f not in seen:
+                seen.add(f)
+                out.append(f)
+        return out
 
     @classmethod
     def load(cls, path: Path = CONFIG_PATH) -> "Config":

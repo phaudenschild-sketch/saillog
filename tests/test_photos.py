@@ -73,5 +73,72 @@ class WatcherTest(unittest.TestCase):
         self.assertEqual(len(self._got), 1)
 
 
+class RecursiveWatcherTest(unittest.TestCase):
+    """Ein Watcher, der auf den PhotoSync-Hauptordner zeigt und die
+    Geräte-Unterordner mit erfasst."""
+
+    def setUp(self):
+        self._dir = tempfile.mkdtemp()
+        self._got = []
+        self._orig_resize = photos.resize_to_jpeg
+        photos.resize_to_jpeg = lambda path, max_px=1600, quality=82: b"JPEGDATA"
+
+    def tearDown(self):
+        photos.resize_to_jpeg = self._orig_resize
+        import shutil
+        shutil.rmtree(self._dir, ignore_errors=True)
+
+    def test_recursive_picks_up_device_subfolders(self):
+        # PhotoSync legt je Gerät einen Unterordner an
+        for sub in ("HandyA", "HandyB"):
+            Path(self._dir, sub).mkdir()
+        Path(self._dir, "HandyA", "IMG_0001.jpg").write_bytes(b"a")
+        Path(self._dir, "HandyB", "IMG_0001.jpg").write_bytes(b"b")  # gleicher Name!
+        w = photos.PhotoWatcher(self._dir, on_photo=lambda b, n: self._got.append(n),
+                                recursive=True)
+        self.assertEqual(w.scan_once(), 0)   # nur registriert
+        self.assertEqual(w.scan_once(), 2)   # beide Geräte-Fotos verarbeitet
+        self.assertEqual(len(self._got), 2)  # gleicher Dateiname, beide erfasst
+
+    def test_non_recursive_ignores_subfolders(self):
+        Path(self._dir, "HandyA").mkdir()
+        Path(self._dir, "HandyA", "IMG_0001.jpg").write_bytes(b"a")
+        w = photos.PhotoWatcher(self._dir, on_photo=lambda b, n: self._got.append(n),
+                                recursive=False)
+        w.scan_once(); w.scan_once()
+        self.assertEqual(self._got, [])      # Unterordner werden ignoriert
+
+    def test_processed_folder_not_rescanned(self):
+        Path(self._dir, "HandyA").mkdir()
+        Path(self._dir, "HandyA", "x.jpg").write_bytes(b"a")
+        w = photos.PhotoWatcher(self._dir, on_photo=lambda b, n: self._got.append(n),
+                                recursive=True)
+        w.scan_once(); w.scan_once()          # verarbeitet, wandert nach „verarbeitet"
+        n = w.scan_once()                     # darf nicht erneut auslösen
+        self.assertEqual(n, 0)
+        self.assertEqual(len(self._got), 1)
+
+
+class ConfigFolderListTest(unittest.TestCase):
+    def test_multiple_folders(self):
+        from saillog.config import Config
+        cfg = Config(photo_folders=["C:/A", "C:/B", "C:/A"])   # inkl. Duplikat
+        self.assertEqual(cfg.photo_folder_list(), ["C:/A", "C:/B"])
+
+    def test_falls_back_to_single_folder(self):
+        from saillog.config import Config
+        cfg = Config(photo_folder="C:/Alt")
+        self.assertEqual(cfg.photo_folder_list(), ["C:/Alt"])
+
+    def test_folders_take_precedence(self):
+        from saillog.config import Config
+        cfg = Config(photo_folder="C:/Alt", photo_folders=["C:/Neu"])
+        self.assertEqual(cfg.photo_folder_list(), ["C:/Neu"])
+
+    def test_empty(self):
+        from saillog.config import Config
+        self.assertEqual(Config().photo_folder_list(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

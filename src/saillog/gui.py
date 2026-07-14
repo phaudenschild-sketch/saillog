@@ -74,8 +74,8 @@ class Application:
         self._map_entry_types: Optional[set] = None
         # AutoLog-Auslöser (aus der Konfiguration)
         self._autolog_settings = AutoLogSettings.from_dict(self._config.autolog)
-        # Foto-Import (Ordner-Überwachung)
-        self._photo_watcher: Optional[photos.PhotoWatcher] = None
+        # Foto-Import (Ordner-Überwachung; mehrere Ordner = mehrere Watcher)
+        self._photo_watchers: List[photos.PhotoWatcher] = []
 
         self._value_labels: Dict[str, tk.Label] = {}
         # Ringpuffer für die Rohdaten-Anzeige (Thread-sicher via deque.append)
@@ -796,28 +796,35 @@ class Application:
         self._root.wait_window(dialog.top)
         if dialog.result is None:
             return
-        self._config.photo_folder = dialog.result["folder"]
+        self._config.photo_folders = dialog.result["folders"]
+        self._config.photo_folder = ""     # Alt-Einzelfeld geräumt (jetzt Liste)
+        self._config.photo_recursive = dialog.result["recursive"]
         self._config.photo_import_enabled = dialog.result["enabled"]
         self._config.save()
         self._stop_photo_watcher()
         self._maybe_start_photo_watcher()
 
     def _maybe_start_photo_watcher(self) -> None:
-        if not (self._config.photo_import_enabled and self._config.photo_folder):
+        folders = self._config.photo_folder_list()
+        if not (self._config.photo_import_enabled and folders):
             return
         if not photos.available():
             return  # ohne Pillow kein Foto-Import (Hinweis kommt im Dialog)
-        self._photo_watcher = photos.PhotoWatcher(
-            self._config.photo_folder,
-            on_photo=self._on_photo_imported,
-            max_px=int(self._config.photo_max_px or 1600),
-        )
-        self._photo_watcher.start()
+        recursive = bool(getattr(self._config, "photo_recursive", False))
+        for folder in folders:
+            watcher = photos.PhotoWatcher(
+                folder,
+                on_photo=self._on_photo_imported,
+                max_px=int(self._config.photo_max_px or 1600),
+                recursive=recursive,
+            )
+            watcher.start()
+            self._photo_watchers.append(watcher)
 
     def _stop_photo_watcher(self) -> None:
-        if self._photo_watcher is not None:
-            self._photo_watcher.stop()
-            self._photo_watcher = None
+        for watcher in self._photo_watchers:
+            watcher.stop()
+        self._photo_watchers = []
 
     def _on_photo_imported(self, jpeg: bytes, source_name: str) -> None:
         # Läuft im Watcher-Thread: Eintrag + Bild anlegen, dann GUI aktualisieren.
@@ -2526,47 +2533,68 @@ class _PhotoDialog:
 
         ttk.Label(
             frame, wraplength=470, foreground="#555",
-            text="Bilder in den gewählten Ordner legen → saillog erzeugt automatisch "
-                 "einen Logbuch-Eintrag mit dem (verkleinerten) Bild und den aktuellen "
-                 "NMEA-Daten. Verarbeitete Originale wandern in den Unterordner "
-                 "„verarbeitet\".",
+            text="Bilder in einen der überwachten Ordner legen → saillog erzeugt "
+                 "automatisch einen Logbuch-Eintrag mit dem (verkleinerten) Bild und "
+                 "den aktuellen NMEA-Daten. Verarbeitete Originale wandern in den "
+                 "Unterordner „verarbeitet\". Mehrere Ordner sind möglich — z.B. wenn "
+                 "PhotoSync je Gerät (Handy A, Handy B …) einen eigenen Unterordner "
+                 "anlegt.",
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
 
         self._enabled = tk.BooleanVar(value=config.photo_import_enabled)
         ttk.Checkbutton(frame, text="Foto-Import aktivieren", variable=self._enabled).grid(
             row=1, column=0, columnspan=3, sticky="w", pady=2)
 
-        ttk.Label(frame, text="Ordner:").grid(row=2, column=0, sticky="e", padx=(0, 4), pady=4)
-        self._folder = tk.StringVar(value=config.photo_folder)
-        ttk.Entry(frame, textvariable=self._folder, width=44).grid(row=2, column=1, sticky="w")
-        ttk.Button(frame, text="Wählen…", command=self._choose).grid(row=2, column=2, padx=4)
+        ttk.Label(frame, text="Überwachte Ordner:").grid(
+            row=2, column=0, columnspan=3, sticky="w", pady=(6, 2))
+        self._listbox = tk.Listbox(frame, width=52, height=4)
+        for folder in config.photo_folder_list():
+            self._listbox.insert("end", folder)
+        self._listbox.grid(row=3, column=0, columnspan=2, sticky="w")
+        side = ttk.Frame(frame)
+        side.grid(row=3, column=2, sticky="n", padx=4)
+        ttk.Button(side, text="+ Ordner…", command=self._add).pack(fill="x", pady=(0, 2))
+        ttk.Button(side, text="Entfernen", command=self._remove).pack(fill="x")
+
+        self._recursive = tk.BooleanVar(value=bool(getattr(config, "photo_recursive", False)))
+        ttk.Checkbutton(
+            frame, variable=self._recursive,
+            text="Unterordner einbeziehen (z.B. auf den PhotoSync-Hauptordner zeigen — "
+                 "erfasst automatisch jedes Geräte-Unterverzeichnis)",
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
         ttk.Label(
-            frame, foreground="#777",
+            frame, foreground="#777", wraplength=470,
             text=f"Bilder werden auf max. {int(config.photo_max_px or 1600)} px "
                  "verkleinert und als JPEG gespeichert.",
-        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(2, 0))
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         if not photos.available():
             ttk.Label(
                 frame, foreground="#b25000", wraplength=470,
                 text="Hinweis: Für den Foto-Import wird Pillow benötigt — "
                      "installieren mit:  pip install pillow",
-            ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
+            ).grid(row=6, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
         btns = ttk.Frame(frame)
-        btns.grid(row=5, column=0, columnspan=3, pady=(12, 0))
+        btns.grid(row=7, column=0, columnspan=3, pady=(12, 0))
         ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
         ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
 
-    def _choose(self) -> None:
-        directory = filedialog.askdirectory(title="Foto-Import-Ordner")
-        if directory:
-            self._folder.set(directory)
+    def _add(self) -> None:
+        directory = filedialog.askdirectory(title="Foto-Import-Ordner hinzufügen")
+        if directory and directory not in self._listbox.get(0, "end"):
+            self._listbox.insert("end", directory)
+
+    def _remove(self) -> None:
+        sel = self._listbox.curselection()
+        if sel:
+            self._listbox.delete(sel[0])
 
     def _on_ok(self) -> None:
         self.result = {
-            "folder": self._folder.get().strip(),
+            "folders": [f for f in self._listbox.get(0, "end") if f.strip()],
+            "recursive": self._recursive.get(),
             "enabled": self._enabled.get(),
         }
         self.top.destroy()
