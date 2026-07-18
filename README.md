@@ -55,7 +55,8 @@ Python.
   Logbuch/Track/AIS ein und aus. Der Kartenserver läuft nur lokal
   (`127.0.0.1`); Karten-Kacheln kommen vom CDN (an Bord über Starlink).
 - ⏱️ **AutoLog mit Auslösern** (wie TripCon, Knopf „AutoLog…"): Intervall,
-  Fahrt über Grund/durchs Wasser ≥ Schwelle, Kurswechsel (geglättet),
+  Fahrt über Grund/durchs Wasser ≥ Schwelle, Kurswechsel ≥ Schwelle (unter
+  Fahrt — jede Abweichung > Schwelle löst aus, z.B. eine Wende/Halse ~90°),
   Wassertiefe ≤ Schwelle, abrupte Fahrtreduzierung, Strecke seit letztem
   Eintrag — der Auslösegrund wird als **Anlass** mitgeschrieben (dem aktiven
   Törn zugeordnet, inkl. der Bedingungswerte)

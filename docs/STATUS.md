@@ -92,7 +92,8 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
 - **Dauerhafte Bedingungsfelder** (Anlass, Motor, Segel, Wetter, Sicht,
   Seegang, Bemerkung) — bei **jedem** Log (auto + manuell) mitgeschrieben
 - **AutoLog-Auslöser** (wie TripCon, `autolog.py`): Intervall, SOG-/STW-Schwelle,
-  Kurswechsel (geglättet), Flachwasser, abrupte Verzögerung, Strecke seit letztem
+  Kurswechsel ≥ Schwelle (unter Fahrt, aufsummierte Drehung — Wende/Halse sicher),
+  Flachwasser, abrupte Verzögerung, Strecke seit letztem
   Eintrag — der Auslösegrund wird als Anlass gespeichert. Knopf „AutoLog…".
   Automatische Einträge (AutoLog **und** Foto-Import) gehen **immer in den
   offenen Törn** (`status='open'`), unabhängig davon, welcher Törn gerade zum

@@ -99,6 +99,32 @@ class CourseTest(unittest.TestCase):
         e.evaluate({"cog_deg": 10.0}, 0.0)
         self.assertIsNone(e.evaluate({"cog_deg": 30.0}, 2.0))   # 20° < 40°
 
+    def test_tack_fires(self):
+        # Eine Wende (~90°) muss zuverlässig einen Eintrag erzeugen.
+        e = _engine(course_enabled=True, course_threshold=40.0, course_avg_seconds=1)
+        self.assertIsNone(e.evaluate({"cog_deg": 0.0, "sog_kn": 4.0}, 0.0))
+        self.assertIn("Kurswechsel", e.evaluate({"cog_deg": 90.0, "sog_kn": 4.0}, 2.0))
+
+    def test_full_circle_fires(self):
+        # 360°-Kreis bei 4 kn: der Kurs schließt sich (Anfang = Ende), muss aber
+        # trotzdem auslösen, weil sich die Drehung fortlaufend aufsummiert.
+        e = _engine(course_enabled=True, course_threshold=40.0, course_avg_seconds=120)
+        fires = 0
+        t = 0.0
+        # 60-s-Kreis, 2-s-Takt: Kurs läuft 0 -> 360
+        for i in range(31):
+            hdg = (i / 30.0 * 360.0) % 360.0
+            if e.evaluate({"cog_deg": hdg, "sog_kn": 4.0}, t):
+                fires += 1
+            t += 2.0
+        self.assertGreater(fires, 0)
+
+    def test_not_under_way_ignored(self):
+        # Unter 2 kn (Manövrieren/Hafen) darf ein Kurswechsel nicht auslösen.
+        e = _engine(course_enabled=True, course_threshold=40.0, course_avg_seconds=1)
+        self.assertIsNone(e.evaluate({"cog_deg": 0.0, "sog_kn": 0.5}, 0.0))
+        self.assertIsNone(e.evaluate({"cog_deg": 90.0, "sog_kn": 0.5}, 2.0))
+
 
 class MasterSwitchTest(unittest.TestCase):
     def test_disabled_never_fires(self):

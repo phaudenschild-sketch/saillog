@@ -6,7 +6,8 @@ aktivierten Bedingungen zutrifft (ODER-Verknüpfung):
 * Intervall (z.B. zur vollen Stunde)
 * Fahrt über Grund ≥ Schwelle (steigende Flanke)
 * Fahrt durchs Wasser ≥ Schwelle (steigende Flanke)
-* Kurswechsel ≥ Schwelle (über ein Mittelungsfenster geglättet)
+* Kurswechsel ≥ Schwelle (unter Fahrt, fortlaufend aufsummierte Drehung, leicht
+  geglättet — jede Abweichung > Schwelle löst aus, insbesondere eine Wende ~90°)
 * Wassertiefe ≤ Schwelle (beim Unterschreiten, mit Hysterese)
 * abrupte Fahrtreduzierung ≥ Schwelle (kn/s)
 * Entfernung zum letzten Eintrag ≥ Schwelle (NM)
@@ -22,6 +23,11 @@ from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional
 
 from saillog import geo
+
+# Kurswechsel-Erkennung
+_COURSE_MIN_SOG = 2.0      # kn — nur unter Fahrt auswerten (COG darunter unbrauchbar)
+_COURSE_SMOOTH_MAX = 8     # s  — Glättung gedeckelt, damit ein Kreis nicht „verschmiert"
+_COURSE_DEADBAND = 0.5     # °  — nur reines Rauschen unterdrücken (langsame Drehung zählt)
 
 
 @dataclass
@@ -85,6 +91,11 @@ def _angle_diff(a: float, b: float) -> float:
     return abs((a - b + 180.0) % 360.0 - 180.0)
 
 
+def _angle_diff_signed(a: float, b: float) -> float:
+    """Vorzeichenbehafteter kleinster Winkelabstand in Grad (-180..180]."""
+    return (a - b + 180.0) % 360.0 - 180.0
+
+
 def _circular_mean(angles: List[float]) -> Optional[float]:
     if not angles:
         return None
@@ -102,7 +113,8 @@ class AutoLogEngine:
         self.settings = settings
         self._next_interval: Optional[float] = None
         self._last_pos = None                 # (lat, lon) des letzten Eintrags
-        self._course_ref: Optional[float] = None
+        self._course_prev: Optional[float] = None   # zuletzt geglätteter Kurs
+        self._course_accum: float = 0.0             # aufsummierte Drehung (Grad)
         self._course_hist: deque = deque()    # (t, heading)
         self._depth_armed = True
         self._sog_armed = True
@@ -155,18 +167,35 @@ class AutoLogEngine:
 
         if s.course_enabled:
             h = _heading(snapshot)
-            if h is not None:
+            sog = snapshot.get("sog_kn")
+            # Nur unter Fahrt (≥ 2 kn) auswerten: darunter ist COG/Steuerkurs
+            # unbrauchbar (Rauschen im Hafen/beim Manövrieren). Über der Schwelle
+            # muss jede Abweichung > Schwelle sicher einen Eintrag erzeugen — vor
+            # allem eine Wende (~90°).
+            if h is not None and (sog is None or sog >= _COURSE_MIN_SOG):
                 self._course_hist.append((now, h))
-                cutoff = now - max(1, int(s.course_avg_seconds))
+                # Nur LEICHT glätten: ein langes Mittelungsfenster würde einen
+                # vollständigen 360°-Kreis „verschmieren", sodass der gemittelte
+                # Kurs nie ausschlägt. Darum gedeckelt.
+                window = min(max(1, int(s.course_avg_seconds)), _COURSE_SMOOTH_MAX)
+                cutoff = now - window
                 while self._course_hist and self._course_hist[0][0] < cutoff:
                     self._course_hist.popleft()
                 cur = _circular_mean([hh for _, hh in self._course_hist])
                 if cur is not None:
-                    if self._course_ref is None:
-                        self._course_ref = cur
-                    elif _angle_diff(cur, self._course_ref) >= s.course_threshold:
-                        reasons.append(f"Kurswechsel ≥ {s.course_threshold:g}°")
-                        self._course_ref = cur
+                    if self._course_prev is None:
+                        self._course_prev = cur
+                    else:
+                        # Drehung fortlaufend aufsummieren (mit Vorzeichen). So
+                        # löst auch ein voller Kreis aus, dessen Anfangs-/Endkurs
+                        # gleich ist — die Beträge addieren sich zu ≥ 360°.
+                        step = _angle_diff_signed(cur, self._course_prev)
+                        self._course_prev = cur
+                        if abs(step) >= _COURSE_DEADBAND:
+                            self._course_accum += step
+                        if abs(self._course_accum) >= s.course_threshold:
+                            reasons.append(f"Kurswechsel ≥ {s.course_threshold:g}°")
+                            self._course_accum = 0.0
 
         if s.depth_enabled:
             d = snapshot.get("depth_m")
