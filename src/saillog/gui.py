@@ -2426,6 +2426,11 @@ class _AutoLogDialog:
         ttk.Combobox(box, textvariable=self._avg, width=8, state="readonly",
                      values=self._AVG).grid(row=r, column=1, sticky="w")
         r += 1
+        ttk.Label(box, text="   nur ab Fahrt über Grund ≥").grid(row=r, column=0, sticky="w", padx=6)
+        self._course_min_sog = tk.StringVar(value=f"{settings.course_min_sog:g}")
+        ttk.Entry(box, textvariable=self._course_min_sog, width=8).grid(row=r, column=1, sticky="w")
+        ttk.Label(box, text="kn").grid(row=r, column=2, sticky="w")
+        r += 1
 
         self._depth_on = tk.BooleanVar(value=settings.depth_enabled)
         ttk.Checkbutton(box, text="wenn Wassertiefe ≤ (0,5–25)",
@@ -2518,6 +2523,8 @@ class _AutoLogDialog:
             course_enabled=self._course_on.get(),
             course_threshold=_parse_float(self._course.get()) or 40.0,
             course_avg_seconds=int(self._avg.get().split()[0]),
+            course_min_sog=_course_min_sog if (_course_min_sog := _parse_float(
+                self._course_min_sog.get())) is not None else 2.0,
             depth_enabled=self._depth_on.get(),
             depth_threshold=_parse_float(self._depth.get()) or 2.0,
             decel_enabled=self._decel_on.get(),

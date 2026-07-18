@@ -99,6 +99,36 @@ class CourseTest(unittest.TestCase):
         e.evaluate({"cog_deg": 10.0}, 0.0)
         self.assertIsNone(e.evaluate({"cog_deg": 30.0}, 2.0))   # 20° < 40°
 
+    def test_default_min_sog(self):
+        self.assertEqual(AutoLogSettings().course_min_sog, 2.0)
+
+    def test_stationary_course_noise_ignored(self):
+        # Schiff steht (SOG unter Mindestfahrt): Kompass-/GPS-Rauschen darf
+        # keinen Kurswechsel auslösen, egal wie groß der Sprung ist.
+        e = _engine(course_enabled=True, course_threshold=40.0,
+                    course_avg_seconds=1, course_min_sog=2.0)
+        self.assertIsNone(e.evaluate({"cog_deg": 10.0, "sog_kn": 0.3}, 0.0))
+        self.assertIsNone(e.evaluate({"cog_deg": 200.0, "sog_kn": 0.4}, 2.0))
+        self.assertIsNone(e.evaluate({"cog_deg": 90.0, "sog_kn": 0.2}, 4.0))
+
+    def test_fires_once_moving_again(self):
+        # Nach Stillstand wird der erste echte Kurs neue Referenz, dann löst
+        # eine ausreichende Änderung wieder aus.
+        e = _engine(course_enabled=True, course_threshold=40.0,
+                    course_avg_seconds=1, course_min_sog=2.0)
+        self.assertIsNone(e.evaluate({"cog_deg": 10.0, "sog_kn": 0.2}, 0.0))  # steht
+        self.assertIsNone(e.evaluate({"cog_deg": 90.0, "sog_kn": 5.0}, 2.0))  # fährt: Referenz
+        self.assertIn("Kurswechsel",
+                      e.evaluate({"cog_deg": 150.0, "sog_kn": 5.0}, 4.0))     # 60° Diff
+
+    def test_min_sog_zero_disables_guard(self):
+        # course_min_sog=0 -> Guard aus: Kurswechsel zählt auch bei SOG 0.
+        e = _engine(course_enabled=True, course_threshold=40.0,
+                    course_avg_seconds=1, course_min_sog=0.0)
+        self.assertIsNone(e.evaluate({"cog_deg": 10.0, "sog_kn": 0.0}, 0.0))
+        self.assertIn("Kurswechsel",
+                      e.evaluate({"cog_deg": 70.0, "sog_kn": 0.0}, 2.0))
+
 
 class MasterSwitchTest(unittest.TestCase):
     def test_disabled_never_fires(self):

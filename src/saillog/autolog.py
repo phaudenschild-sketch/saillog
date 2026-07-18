@@ -6,7 +6,8 @@ aktivierten Bedingungen zutrifft (ODER-Verknüpfung):
 * Intervall (z.B. zur vollen Stunde)
 * Fahrt über Grund ≥ Schwelle (steigende Flanke)
 * Fahrt durchs Wasser ≥ Schwelle (steigende Flanke)
-* Kurswechsel ≥ Schwelle (über ein Mittelungsfenster geglättet)
+* Kurswechsel ≥ Schwelle (über ein Mittelungsfenster geglättet, erst ab einer
+  Mindestfahrt — bei Stillstand kein Kursrauschen)
 * Wassertiefe ≤ Schwelle (beim Unterschreiten, mit Hysterese)
 * abrupte Fahrtreduzierung ≥ Schwelle (kn/s)
 * Entfernung zum letzten Eintrag ≥ Schwelle (NM)
@@ -43,6 +44,8 @@ class AutoLogSettings:
     course_enabled: bool = False
     course_threshold: float = 40.0    # Grad
     course_avg_seconds: int = 120
+    course_min_sog: float = 2.0       # kn — erst ab dieser Fahrt Kurswechsel werten
+                                      # (verhindert Rausch-Einträge bei Stillstand)
 
     depth_enabled: bool = True
     depth_threshold: float = 2.0      # m
@@ -155,7 +158,11 @@ class AutoLogEngine:
 
         if s.course_enabled:
             h = _heading(snapshot)
-            if h is not None:
+            sog = snapshot.get("sog_kn")
+            # Bei Stillstand liefert der Kompass/GPS nur Rauschen -> keine
+            # Kurswechsel werten (sonst dauernd Einträge im Hafen/beim Ankern).
+            moving = sog is None or sog >= s.course_min_sog
+            if h is not None and moving:
                 self._course_hist.append((now, h))
                 cutoff = now - max(1, int(s.course_avg_seconds))
                 while self._course_hist and self._course_hist[0][0] < cutoff:
@@ -167,6 +174,12 @@ class AutoLogEngine:
                     elif _angle_diff(cur, self._course_ref) >= s.course_threshold:
                         reasons.append(f"Kurswechsel ≥ {s.course_threshold:g}°")
                         self._course_ref = cur
+            elif not moving:
+                # Schiff steht: Kursverlauf verwerfen, damit nach dem Losfahren
+                # der erste echte Kurs die neue Referenz wird (kein Fehl-Trigger
+                # durch einen veralteten Kurs von vor dem Stopp).
+                self._course_hist.clear()
+                self._course_ref = None
 
         if s.depth_enabled:
             d = snapshot.get("depth_m")
