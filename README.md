@@ -126,6 +126,27 @@ B&G-Plotter geben NMEA0183 übers WLAN meist per **TCP (~Port 2053)** oder
 als **UDP-Broadcast** aus. Aktiviere am Plotter unter *Einstellungen →
 Netzwerk/WLAN* die NMEA-über-IP-Ausgabe. Host = IP des Plotters.
 
+### PredictWind DataHub
+
+Der PredictWind DataHub hängt am NMEA2000-Bus und wandelt die Daten in
+**NMEA0183 über WLAN/LAN** um — per **TCP und UDP**. Auf dem **eigenen
+WLAN des DataHub** ist er unter `10.10.10.1` erreichbar; die NMEA-Ausgabe
+läuft standardmäßig über **TCP 11102** (bzw. UDP 11101). TCP ist die
+empfohlene Wahl. In SailLog gibt es dafür die **Vorlage „PredictWind
+DataHub"** (Knopf unter *Quellen…*).
+
+| Feld | Wert |
+|---|---|
+| Host | `10.10.10.1` (bzw. IP im Router-Netz) |
+| Port | `11102` (TCP) — UDP: `11101` |
+| Protokoll | `tcp` |
+
+Die Ports lassen sich am DataHub unter `10.10.10.1` → **NMEA → Settings**
+prüfen/ändern. Hängt der DataHub am Boots-Router, hat er eine per DHCP
+zugewiesene IP — dann Discovery nutzen (`python discover.py <ip>` bzw.
+`--udp`). Mit **Rohdaten…** prüfen, welche Sätze ankommen (u.a. ob
+Motordaten für die automatische Motor-Erkennung dabei sind).
+
 ### GPS-Maus (USB) — für Logbuch von Hand, ohne Bordnetz
 
 Wer **kein Instrumentennetz** hat, aber Position, Kurs und Fahrt nicht von

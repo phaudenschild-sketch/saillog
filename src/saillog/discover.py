@@ -26,15 +26,18 @@ GOFREE_MULTICAST = "239.2.1.1"
 GOFREE_PORT = 2052
 
 # Häufige NMEA-über-IP-Ports bei Marine-Gateways/Plottern
-COMMON_TCP_PORTS = [2000, 10110, 2053, 2052, 10111, 2947, 39150, 8375, 4800, 3000]
-COMMON_UDP_PORTS = [2000, 10110, 2052, 2053, 4800, 8375]
+COMMON_TCP_PORTS = [2000, 10110, 11102, 2053, 2052, 10111, 2947, 39150, 8375, 4800, 3000]
+COMMON_UDP_PORTS = [2000, 10110, 11101, 2052, 2053, 4800, 8375]
 
-# Orca Core = 2000, Navico/B&G = 2052/2053, IANA NMEA-0183 = 10110
+# Orca Core = 2000, Navico/B&G = 2052/2053, IANA NMEA-0183 = 10110,
+# PredictWind DataHub = TCP 11102 / UDP 11101
 PORT_HINTS = {
     2000: "Orca Core / Yacht Devices / viele Gateways",
     2052: "Navico/B&G GoFree",
     2053: "Navico/B&G GoFree",
     10110: "NMEA-0183 (IANA-Standardport)",
+    11101: "PredictWind DataHub (UDP)",
+    11102: "PredictWind DataHub (TCP)",
     2947: "gpsd",
 }
 

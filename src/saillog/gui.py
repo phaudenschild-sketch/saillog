@@ -4346,6 +4346,7 @@ class _SourcesDialog:
         ttk.Label(tmpl, text="Vorlagen:", foreground="#555").pack(side="left")
         ttk.Button(tmpl, text="GPS-Maus (USB)", command=self._tmpl_gpsmaus).pack(side="left", padx=3)
         ttk.Button(tmpl, text="B&G (TCP 10110)", command=self._tmpl_bg).pack(side="left", padx=3)
+        ttk.Button(tmpl, text="PredictWind DataHub", command=self._tmpl_datahub).pack(side="left", padx=3)
         ttk.Button(tmpl, text="Maretron (COM)", command=self._tmpl_maretron).pack(side="left", padx=3)
         ttk.Button(tmpl, text="🔍 Ports…", command=self._on_pick_port).pack(side="left", padx=3)
         self._gofree_btn = ttk.Button(
@@ -4477,6 +4478,15 @@ class _SourcesDialog:
         # NMEA-0183-Standardport 10110 (TCP). Die Plotter-IP ist netzabhängig —
         # am einfachsten über „🔍 GoFree suchen" automatisch eintragen lassen.
         self._proto.set("tcp"); self._host.set(""); self._port.set("10110")
+        self._update_hint()
+
+    def _tmpl_datahub(self) -> None:
+        # PredictWind DataHub: wandelt NMEA2000 -> NMEA0183 und sendet per WLAN/
+        # LAN über TCP/UDP. Auf dem eigenen WLAN des DataHub ist er unter
+        # 10.10.10.1 erreichbar; NMEA-Ausgabe standardmäßig TCP 11102 (UDP
+        # 11101). Ports ggf. unter 10.10.10.1 -> NMEA -> Settings prüfen. Hängt
+        # er am Boots-Router, IP per „🔍 Ports…"/discover.py ermitteln.
+        self._proto.set("tcp"); self._host.set("10.10.10.1"); self._port.set("11102")
         self._update_hint()
 
     def _tmpl_maretron(self) -> None:
