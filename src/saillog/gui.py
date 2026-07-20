@@ -1577,8 +1577,33 @@ class _EditEntryDialog:
         self.top.title(f"Eintrag bearbeiten (#{entry.id})")
         self.top.transient(parent)
         self.top.grab_set()
-        frame = ttk.Frame(self.top, padding=12)
-        frame.pack(fill="both", expand=True)
+
+        # Knopfleiste unten FEST verankern — bleibt auch bei hohen (Hochkant-)
+        # Bildern immer sichtbar. Der Inhalt darüber ist bei Bedarf scrollbar,
+        # damit auf kleinen Laptop-Bildschirmen nichts abgeschnitten wird.
+        btnbar = ttk.Frame(self.top, padding=(12, 8))
+        btnbar.pack(side="bottom", fill="x")
+        ttk.Button(btnbar, text="Speichern", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(btnbar, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Separator(self.top, orient="horizontal").pack(side="bottom", fill="x")
+
+        # Scrollbarer Inhaltsbereich (Canvas + Frame)
+        canvas = tk.Canvas(self.top, highlightthickness=0)
+        vsb = ttk.Scrollbar(self.top, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        self._canvas = canvas
+        frame = ttk.Frame(canvas, padding=12)
+        win = canvas.create_window((0, 0), window=frame, anchor="nw")
+        frame.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        # innere Breite an die Canvas-Breite koppeln (nur vertikal scrollen)
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(win, width=e.width))
+        canvas.bind_all("<MouseWheel>", self._on_mousewheel)   # Windows/macOS
+        canvas.bind_all("<Button-4>", self._on_mousewheel)     # Linux hoch
+        canvas.bind_all("<Button-5>", self._on_mousewheel)     # Linux runter
+        self.top.bind("<Destroy>", self._on_destroy)
 
         ttk.Label(frame, text=f"Typ: {entry.entry_type}",
                   foreground="#555").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
@@ -1695,10 +1720,40 @@ class _EditEntryDialog:
             self._build_image_panel(frame, r)
             r += 1
 
-        buttons = ttk.Frame(frame)
-        buttons.grid(row=r, column=0, columnspan=4, pady=(10, 0))
-        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        # Fenstergröße an den Inhalt anpassen — aber nie höher/breiter als der
+        # Bildschirm. Ist der Inhalt höher, greift die Scrollleiste; die
+        # Speichern-Zeile unten bleibt dabei immer sichtbar.
+        self.top.update_idletasks()
+        content_w = frame.winfo_reqwidth() + vsb.winfo_reqwidth() + 4
+        content_h = frame.winfo_reqheight() + btnbar.winfo_reqheight() + 12
+        scr_w, scr_h = self.top.winfo_screenwidth(), self.top.winfo_screenheight()
+        w = min(content_w, int(scr_w * 0.95))
+        h = min(content_h, int(scr_h * 0.90))
+        x = max(0, (scr_w - w) // 2)
+        y = max(0, (scr_h - h) // 3)
+        self.top.geometry(f"{w}x{h}+{x}+{y}")
+        self.top.minsize(min(content_w, 480), 320)
+
+    def _on_mousewheel(self, event) -> None:
+        canvas = getattr(self, "_canvas", None)
+        if canvas is None:
+            return
+        if getattr(event, "num", None) == 4:
+            canvas.yview_scroll(-1, "units")
+        elif getattr(event, "num", None) == 5:
+            canvas.yview_scroll(1, "units")
+        elif getattr(event, "delta", 0):
+            canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+
+    def _on_destroy(self, event) -> None:
+        # globale Mausrad-Bindungen wieder lösen, sobald der Dialog schließt
+        if event.widget is self.top:
+            for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                try:
+                    self.top.unbind_all(seq)
+                except Exception:  # noqa: BLE001
+                    pass
+            self._canvas = None
 
     # --- Bilder (mehrere je Eintrag: ansehen, blättern, +/−) ---------------
 
@@ -1746,7 +1801,9 @@ class _EditEntryDialog:
             import io
             from PIL import Image, ImageTk
             im = Image.open(io.BytesIO(rec[0]))
-            im.thumbnail((380, 380))
+            # Höhe stärker begrenzen als Breite, damit ein Hochformat-Bild den
+            # Dialog nicht unnötig in die Höhe treibt (Rest löst die Scrollleiste).
+            im.thumbnail((380, 300))
             self._thumb = ImageTk.PhotoImage(im)
             self._img_label.config(image=self._thumb, text="")
         except Exception:  # noqa: BLE001  (kein Pillow → Text-Fallback)
