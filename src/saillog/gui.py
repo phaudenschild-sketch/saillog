@@ -97,6 +97,7 @@ class Application:
         self._refresh_logbook()
         self._schedule_live_update()
         self._maybe_start_photo_watcher()
+        self._autostart_logging()
 
         root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -331,12 +332,12 @@ class Application:
             parent, textvariable=self._cond_vars["engine_mode"], width=18,
             state="readonly", values=["automatisch", "ein", "aus"],
         ))
-        self._cond_vars["mainsail"] = tk.StringVar(value="—")
+        self._cond_vars["mainsail"] = tk.StringVar(value="Geborgen")
         add("Großsegel:", ttk.Combobox(
             parent, textvariable=self._cond_vars["mainsail"], width=18,
             state="readonly", values=MAINSAIL_OPTIONS,
         ))
-        self._cond_vars["genoa"] = tk.StringVar()
+        self._cond_vars["genoa"] = tk.StringVar(value="0")
         add("Genua %:", ttk.Spinbox(
             parent, from_=0, to=100, textvariable=self._cond_vars["genoa"], width=8,
         ))
@@ -344,7 +345,7 @@ class Application:
         add("Spinnaker:", ttk.Checkbutton(
             parent, text="gesetzt", variable=self._cond_vars["spinnaker"],
         ))
-        self._cond_vars["cloud"] = tk.StringVar(value="—")
+        self._cond_vars["cloud"] = tk.StringVar(value="wolkenlos")
         add("Bewölkung:", ttk.Combobox(
             parent, textvariable=self._cond_vars["cloud"], width=18,
             state="readonly", values=CLOUD_COVER_LABELS,
@@ -354,7 +355,7 @@ class Application:
             parent, textvariable=self._cond_vars["precip"], width=18,
             state="readonly", values=PRECIPITATION,
         ))
-        self._cond_vars["visibility"] = tk.StringVar(value="—")
+        self._cond_vars["visibility"] = tk.StringVar(value="gut")
         add("Sicht:", ttk.Combobox(
             parent, textvariable=self._cond_vars["visibility"], width=18,
             state="readonly", values=VISIBILITY_LABELS,
@@ -779,6 +780,12 @@ class Application:
             return
         self._logbook.start_auto(self._autolog_settings, on_entry=self._on_auto_entry)
         self._auto_btn.config(text="Auto-Logging stoppen")
+
+    def _autostart_logging(self) -> None:
+        """AutoLogging direkt beim Programmstart mitstarten (per Knopf stoppbar)."""
+        if not self._logbook.auto_running:
+            self._logbook.start_auto(self._autolog_settings, on_entry=self._on_auto_entry)
+            self._auto_btn.config(text="Auto-Logging stoppen")
 
     def _on_autolog_settings(self) -> None:
         dialog = _AutoLogDialog(self._root, self._autolog_settings)

@@ -59,7 +59,8 @@ Python.
   Fahrt — jede Abweichung > Schwelle löst aus, z.B. eine Wende/Halse ~90°),
   Wassertiefe ≤ Schwelle, abrupte Fahrtreduzierung, Strecke seit letztem
   Eintrag — der Auslösegrund wird als **Anlass** mitgeschrieben (dem aktiven
-  Törn zugeordnet, inkl. der Bedingungswerte)
+  Törn zugeordnet, inkl. der Bedingungswerte). **Startet automatisch beim
+  Programmstart** (per Knopf „Auto-Logging stoppen" jederzeit abschaltbar)
 - ✏️ **Einträge bearbeiten & löschen** — Doppelklick öffnet den Eintrag;
   geänderte Einträge werden mit einem **✎-Marker** gekennzeichnet
 - 🕐 **Zeitzone** einstellbar (Systemzeit oder fester UTC-Versatz); intern
