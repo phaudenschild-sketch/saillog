@@ -96,6 +96,24 @@ class ParserTest(unittest.TestCase):
         self.assertAlmostEqual(result[nmea.HEEL], -0.7)
         self.assertAlmostEqual(result[nmea.TRIM], 0.9)
 
+    def test_rsa_rudder_angle(self):
+        # Standard-Rudersatz; Steuerbord gültig (A)
+        self.assertAlmostEqual(self.parser.parse("$GPRSA,1.8,A,,V")[nmea.RUDDER], 1.8)
+        # beide ungültig (V) -> nichts
+        self.assertEqual(self.parser.parse("$IIRSA,,V,,V"), {})
+
+    def test_vbw_speed_through_water(self):
+        result = self.parser.parse("$IIVBW,4.88,,A,,,V,,V,,V")
+        self.assertAlmostEqual(result[nmea.STW], 4.88)
+
+    def test_dbk_depth_below_keel(self):
+        result = self.parser.parse("$IIDBK,206.1,f,62.8,M,34.4,F")
+        self.assertAlmostEqual(result[nmea.DEPTH], 62.8)
+
+    def test_xdr_water_temp_from_gateway(self):
+        result = self.parser.parse("$IIXDR,C,18.4,C,ENV_WATER_T")
+        self.assertAlmostEqual(result[nmea.WATER_TEMP], 18.4)
+
     def test_unknown_sentence(self):
         self.assertEqual(self.parser.parse("$GPGSA,A,3,04,05,,09"), {})
 

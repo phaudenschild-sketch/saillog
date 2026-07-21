@@ -282,6 +282,29 @@ def _vhw(f):
     }
 
 
+def _rsa(f):
+    # $--RSA,stbd,status,port,status  — Ruderlage in Grad (A=gültig, V=ungültig).
+    # Standard-Rudersatz vieler Gateways (ergänzend zu XDR/RUDD).
+    angle = _to_float(f[1]) if len(f) > 1 else None
+    status = (f[2] or "").upper() if len(f) > 2 else ""
+    if angle is None or status == "V":                 # Steuerbord ungültig ->
+        angle = _to_float(f[3]) if len(f) > 3 else None  # Backbord-Ruder versuchen
+        status = (f[4] or "").upper() if len(f) > 4 else ""
+        if angle is None or status == "V":
+            return {}
+    return {RUDDER: angle}
+
+
+def _vbw(f):
+    # $--VBW,laengs_wasser,quer_wasser,status_wasser,laengs_grund,…
+    # Fahrt durchs Wasser (Längskomponente) als Standard-Alternative zu VHW.
+    speed = _to_float(f[1]) if len(f) > 1 else None
+    status = (f[3] or "").upper() if len(f) > 3 else ""
+    if speed is None or status == "V":
+        return {}
+    return {STW: speed}
+
+
 def _vlw(f):
     # $--VLW,wasser_gesamt,N,wasser_reset,N,grund_gesamt,N,grund_reset,N
     # Manche Geräte (z.B. B&G) lassen die Wasser-Gesamtdistanz leer -> dann
@@ -323,6 +346,8 @@ def _xdr(f):
                 result[AIR_TEMP] = value
             elif any(k in tid for k in _ENGINE_HINTS):
                 result[ENGINE_TEMP] = value
+            elif "WATER" in tid or "SEA" in tid:   # z.B. ENV_WATER_T
+                result[WATER_TEMP] = value
         elif ttype == "P":  # Druck
             if "BARO" in tid or "ATMOS" in tid:
                 # B = bar -> mbar (×1000); P = Pascal -> mbar (÷100)
@@ -382,11 +407,14 @@ _HANDLERS = {
     "MWD": _mwd,
     "DPT": _dpt,
     "DBT": _dbt,
+    "DBK": _dbt,   # Tiefe unter Kiel (gleiches Feldformat wie DBT)
     "MTW": _mtw,
     "HDG": _hdg,
     "HDT": _hdt,
     "HDM": _hdm,
     "VHW": _vhw,
+    "VBW": _vbw,   # Fahrt durchs Wasser (Alternative zu VHW)
+    "RSA": _rsa,   # Ruderlage
     "VLW": _vlw,
     "RPM": _rpm,
     "XDR": _xdr,
