@@ -22,7 +22,10 @@ Python.
   (Voll/Reff 1/Reff 2/geborgen), Genua 0–100 %, Spinnaker, Bewölkung,
   Niederschlag, Sicht, Seegang/Wellenhöhe, Bemerkung — stehen fest in der
   Hauptmaske und werden bei **jedem** Log (automatisch **und** manuell)
-  mitgeschrieben; einfach ändern, wenn sich die Bedingungen ändern
+  mitgeschrieben; einfach ändern, wenn sich die Bedingungen ändern. Die
+  **Anlass-Auswahl** ist TripCon-artig vorbelegt (Anlegen, Ablegen, Segel
+  setzen, Reffen, Wende, Halse …) und unter **Stammdaten → „Anlass-Liste
+  bearbeiten…"** frei anpassbar
 - 📏 **Log-Stand** (`VLW`) und **Motorstunden** aus dem NMEA-Netz gelesen und
   bei Törnbeginn/-abschluss automatisch vorbelegt
 - 🗺️ **Törns** — Einträge gruppieren; Törn mit Startort, Wasser-/Diesel­menge,

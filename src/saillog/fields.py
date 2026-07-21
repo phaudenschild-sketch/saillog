@@ -6,6 +6,23 @@ verwenden.
 
 from __future__ import annotations
 
+# --- Anlass (Logevent) ------------------------------------------------------
+
+# Standard-Auswahl für den „Anlass" eines Eintrags — angelehnt an TripCon.
+# In der App unter Extras → „Anlass-Liste…" frei anpassbar (config.logevents).
+DEFAULT_LOGEVENTS = [
+    "Routineeintrag", "Anlegen", "Ablegen", "Segel setzen", "Segel einholen",
+    "Segel wechseln", "Reffen", "Ausreffen", "Im Hafen", "Wende", "Halse",
+    "Distanz", "Dienstwechsel", "Mast legen", "Schleusen",
+]
+
+
+def logevents(configured=None):
+    """Liefert die Anlass-Liste: konfigurierte Werte oder die Standardliste."""
+    items = [str(x).strip() for x in (configured or []) if str(x).strip()]
+    return items or list(DEFAULT_LOGEVENTS)
+
+
 # --- Segelkonfiguration -----------------------------------------------------
 
 # Großsegel-Zustand

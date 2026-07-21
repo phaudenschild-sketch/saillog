@@ -12,7 +12,8 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
 from saillog import (
-    backup, branding, crewlist, fuel, geo, photos, reports, timeutil, tripcon,
+    backup, branding, crewlist, fields, fuel, geo, photos, reports, timeutil,
+    tripcon,
 )
 from saillog.ais import AisDecoder, AisTargets
 from saillog.autolog import AutoLogSettings
@@ -76,6 +77,8 @@ class Application:
         self._map_entry_types: Optional[set] = None
         # AutoLog-Auslöser (aus der Konfiguration)
         self._autolog_settings = AutoLogSettings.from_dict(self._config.autolog)
+        # Anlass-Auswahl (anpassbar; None -> Standardliste)
+        self._logevents = fields.logevents(self._config.logevents)
         # Foto-Import (Ordner-Überwachung; mehrere Ordner = mehrere Watcher)
         self._photo_watchers: List[photos.PhotoWatcher] = []
         # Bündelung kurz nacheinander eintreffender Fotos zu einem Eintrag
@@ -114,6 +117,9 @@ class Application:
         stamm = tk.Menu(menubar, tearoff=0)
         stamm.add_command(label="Personen verwalten…", command=self._on_manage_persons)
         stamm.add_command(label="Schiffe verwalten…", command=self._on_manage_ships)
+        stamm.add_separator()
+        stamm.add_command(label="Anlass-Liste bearbeiten…",
+                          command=self._on_edit_logevents)
         menubar.add_cascade(label="Stammdaten", menu=stamm)
         extras = tk.Menu(menubar, tearoff=0)
         extras.add_command(label="Törns/Etappen gruppieren…",
@@ -328,11 +334,12 @@ class Application:
             widget.grid(row=r, column=base + 1, sticky="w", padx=(0, 8), pady=2)
             self._row += 1
 
-        self._cond_vars["logevent"] = tk.StringVar(value="Routineeintrag")
-        add("Anlass:", ttk.Combobox(
+        self._cond_vars["logevent"] = tk.StringVar(value=self._logevents[0])
+        self._logevent_combo = ttk.Combobox(
             parent, textvariable=self._cond_vars["logevent"], width=18,
-            values=["Routineeintrag", "Wache", "Manöver", "Hafen", "Ankern", "Besonderes"],
-        ))
+            values=self._logevents,
+        )
+        add("Anlass:", self._logevent_combo)
         self._cond_vars["engine_mode"] = tk.StringVar(value="automatisch")
         add("Motor:", ttk.Combobox(
             parent, textvariable=self._cond_vars["engine_mode"], width=18,
@@ -418,7 +425,7 @@ class Application:
         elif source == "Plotter-Screenshot":
             self._attach_image_async(entry.id, plotter=True)
         # Nach dem Speichern: Anlass zurück auf Standard, Bemerkung leeren
-        self._cond_vars["logevent"].set("Routineeintrag")
+        self._cond_vars["logevent"].set(self._logevents[0])
         self._cond_vars["note"].set("")
 
     # --- Plotter-Screenshot (ADB vom Android-Tablet) -----------------------
@@ -819,6 +826,7 @@ class Application:
             "trip": trip,
             "measurements": self._live.snapshot(),
             "conditions": dict(getattr(self, "_condition_values", {}) or {}),
+            "logevents": list(self._logevents),
         }
 
     def _remote_submit(self, conditions: dict) -> dict:
@@ -850,12 +858,18 @@ class Application:
             import random
             self._config.remote_pin = f"{random.randint(0, 9999):04d}"
             self._config.save()
+        import base64
+        try:
+            icon = base64.b64decode(branding.ICON_PNG_B64)
+        except Exception:  # noqa: BLE001
+            icon = b""
         server = RemoteServer(
             info_provider=self._remote_info,
             submit=self._remote_submit,
             pin=self._config.remote_pin,
             host="0.0.0.0",
             port=int(self._config.remote_port or 8770),
+            icon_png=icon,
         )
         try:
             server.start()
@@ -883,6 +897,23 @@ class Application:
             self._remote_server.stop()
             self._remote_server = None
         self._maybe_start_remote()
+
+    def _on_edit_logevents(self) -> None:
+        """Anlass-Auswahlliste anpassen (wirkt auf Maske, Dialoge und Handy)."""
+        dialog = _LogeventsDialog(self._root, self._logevents)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        self._logevents = fields.logevents(dialog.result)
+        # Kompakt speichern: None, wenn identisch mit der Standardliste
+        self._config.logevents = (
+            None if self._logevents == fields.DEFAULT_LOGEVENTS else self._logevents
+        )
+        self._config.save()
+        self._logevent_combo["values"] = self._logevents
+        if self._cond_vars["logevent"].get() not in self._logevents:
+            self._cond_vars["logevent"].set(self._logevents[0])
+        # Der Handy-/Tablet-Server liest die Liste live über den Info-Callback.
 
     def _on_autolog_settings(self) -> None:
         dialog = _AutoLogDialog(self._root, self._autolog_settings)
@@ -1423,7 +1454,8 @@ class Application:
         self._refresh_logbook()
 
     def _on_manual_entry(self) -> None:
-        dialog = _ManualEntryDialog(self._root, self._live.snapshot())
+        dialog = _ManualEntryDialog(self._root, self._live.snapshot(),
+                                    logevents=self._logevents)
         self._root.wait_window(dialog.top)
         if dialog.result is None:
             return
@@ -1577,6 +1609,7 @@ class Application:
             self._root, entry, ts_display,
             store=self._store, capture=self._plotter_jpeg,
             max_px=int(self._config.photo_max_px or 1600),
+            logevents=self._logevents,
         )
         self._root.wait_window(dialog.top)
         if dialog.result is not None:
@@ -1670,8 +1703,10 @@ class _EditEntryDialog:
     _ENGINE = {None: "—", 1: "ein", 0: "aus"}
 
     def __init__(self, parent: tk.Tk, entry, ts_display: str = "",
-                 store=None, capture=None, max_px: int = 1600) -> None:
+                 store=None, capture=None, max_px: int = 1600,
+                 logevents: Optional[List[str]] = None) -> None:
         self.result: Optional[Dict] = None
+        self._logevents = logevents or fields.DEFAULT_LOGEVENTS
         self._store = store
         self._entry_id = entry.id
         self._capture = capture
@@ -1765,8 +1800,7 @@ class _EditEntryDialog:
         lab("Anlass:", r, 2)
         self._logevent = tk.StringVar(value=entry.logevent)
         ttk.Combobox(frame, textvariable=self._logevent, width=18,
-                     values=["Routineeintrag", "Wache", "Manöver", "Hafen", "Ankern",
-                             "Besonderes"]).grid(row=r, column=3, sticky="w")
+                     values=self._logevents).grid(row=r, column=3, sticky="w")
         r += 1
 
         lab("Motor:", r)
@@ -2015,8 +2049,10 @@ class _EditEntryDialog:
 class _ManualEntryDialog:
     """Dialog für einen manuellen Logbuch-Eintrag mit Auto-Fill."""
 
-    def __init__(self, parent: tk.Tk, snapshot: Dict[str, float]) -> None:
+    def __init__(self, parent: tk.Tk, snapshot: Dict[str, float],
+                 logevents: Optional[List[str]] = None) -> None:
         self.result: Optional[Dict] = None
+        self._logevents = logevents or fields.DEFAULT_LOGEVENTS
         self.top = tk.Toplevel(parent)
         self.top.title("Manueller Eintrag")
         self.top.transient(parent)
@@ -2314,10 +2350,9 @@ class _NewEntryDialog:
         r += 1
 
         lab("Anlass:", r)
-        self._logevent = tk.StringVar(value="Routineeintrag")
+        self._logevent = tk.StringVar(value=self._logevents[0])
         ttk.Combobox(frame, textvariable=self._logevent, width=19,
-                     values=["Routineeintrag", "Wache", "Manöver", "Hafen", "Ankern",
-                             "Besonderes"]).grid(row=r, column=1, sticky="w")
+                     values=self._logevents).grid(row=r, column=1, sticky="w")
         lab("Ort / Hafen:", r, 2)
         self._location = tk.StringVar()
         ttk.Entry(frame, textvariable=self._location, width=28).grid(
@@ -2691,6 +2726,52 @@ class _AutoLogDialog:
             track_course_threshold=_parse_float(self._track_course.get()) or 10.0,
             track_interval_seconds=self._track_iv_seconds(self._track_iv.get()),
         )
+        self.top.destroy()
+
+
+class _LogeventsDialog:
+    """Anlass-Auswahlliste bearbeiten (eine Zeile = ein Anlass)."""
+
+    def __init__(self, parent, logevents: List[str]) -> None:
+        self.result: Optional[List[str]] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Anlass-Liste bearbeiten")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=14)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="Ein Anlass pro Zeile. Reihenfolge = Auswahl-"
+                  "Reihenfolge; der erste ist der Standard.",
+                  foreground="#333").pack(anchor="w", pady=(0, 8))
+        self._text = tk.Text(frame, width=34, height=16)
+        self._text.pack(fill="both", expand=True)
+        self._text.insert("1.0", "\n".join(logevents))
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x", pady=(12, 0))
+        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Standard wiederherstellen",
+                   command=self._on_default).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _on_default(self) -> None:
+        self._text.delete("1.0", "end")
+        self._text.insert("1.0", "\n".join(fields.DEFAULT_LOGEVENTS))
+
+    def _on_save(self) -> None:
+        raw = self._text.get("1.0", "end")
+        items = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        if not items:
+            messagebox.showwarning("Anlass-Liste", "Bitte mindestens einen Anlass angeben.")
+            return
+        # Duplikate entfernen, Reihenfolge erhalten
+        seen, uniq = set(), []
+        for it in items:
+            if it not in seen:
+                seen.add(it)
+                uniq.append(it)
+        self.result = uniq
         self.top.destroy()
 
 

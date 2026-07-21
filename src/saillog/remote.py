@@ -96,11 +96,27 @@ class _Handler(BaseHTTPRequestHandler):
         return {k: v[0] for k, v in parsed.items()}
 
     # --- Routen ---------------------------------------------------------
+    def _send_bytes(self, data: bytes, content_type: str) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self) -> None:  # noqa: N802 (von BaseHTTPRequestHandler)
         path = self.path.split("?", 1)[0]
-        if path in ("/favicon.ico",):
-            self.send_response(204)
-            self.end_headers()
+        # Vor dem Login erreichbar: Icon + Manifest (für „Zum Home-Bildschirm")
+        if path in ("/icon.png", "/apple-touch-icon.png", "/favicon.ico"):
+            icon = getattr(self.server, "saillog_icon", b"")  # type: ignore[attr-defined]
+            if icon:
+                self._send_bytes(icon, "image/png")
+            else:
+                self.send_response(204)
+                self.end_headers()
+            return
+        if path == "/manifest.webmanifest":
+            self._send_bytes(_manifest().encode("utf-8"), "application/manifest+json")
             return
         if not self._authed():
             self._send_html(_login_page())
@@ -204,11 +220,35 @@ button.secondary{background:#0b3d5c}
 
 
 def _page(inner: str) -> str:
+    # Meta-Tags + Manifest, damit „Zum Home-Bildschirm hinzufügen" auf iOS und
+    # Android ein eigenes App-Icon „SailLog" erzeugt und die Seite im Vollbild
+    # (wie eine App) startet.
+    head = (
+        "<meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1, viewport-fit=cover'>"
+        "<title>SailLog</title>"
+        "<meta name='theme-color' content='#0b3d5c'>"
+        "<meta name='mobile-web-app-capable' content='yes'>"
+        "<meta name='apple-mobile-web-app-capable' content='yes'>"
+        "<meta name='apple-mobile-web-app-status-bar-style' content='black-translucent'>"
+        "<meta name='apple-mobile-web-app-title' content='SailLog'>"
+        "<link rel='apple-touch-icon' href='/icon.png'>"
+        "<link rel='icon' href='/icon.png'>"
+        "<link rel='manifest' href='/manifest.webmanifest'>"
+        "<style>" + _STYLE + "</style>"
+    )
     return (
-        "<!doctype html><html lang='de'><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        "<title>SailLog — Eintrag</title><style>" + _STYLE + "</style></head>"
+        "<!doctype html><html lang='de'><head>" + head + "</head>"
         "<body><div class='wrap'>" + inner + "</div></body></html>"
+    )
+
+
+def _manifest() -> str:
+    return (
+        '{"name":"SailLog","short_name":"SailLog","start_url":"/",'
+        '"scope":"/","display":"standalone","orientation":"portrait",'
+        '"background_color":"#0b3d5c","theme_color":"#0b3d5c",'
+        '"icons":[{"src":"/icon.png","sizes":"64x64","type":"image/png","purpose":"any"}]}'
     )
 
 
@@ -249,6 +289,7 @@ def _form_page(info: Dict) -> str:
         f"Wind {_fmt(m.get('tws_kn'))} kn · Tiefe {_fmt(m.get('depth_m'))} m</div>"
     )
 
+    logevents = info.get("logevents") or _LOGEVENTS
     genoa = c.get("genoa_percent")
     genoa_val = "" if genoa is None else f"{genoa:g}"
     wave = c.get("wave_height_m")
@@ -263,7 +304,7 @@ def _form_page(info: Dict) -> str:
         "<h1>⛵ Neuer Eintrag</h1>" + live +
         "<div class='card'><form method='post' action='/entry'><div class='grid'>"
         "<div class='full'><label>Anlass</label>"
-        f"<select name='logevent'>{_options(_LOGEVENTS, c.get('logevent') or 'Routineeintrag')}</select></div>"
+        f"<select name='logevent'>{_options(logevents, c.get('logevent') or (logevents[0] if logevents else ''))}</select></div>"
         "<div class='full'><label>Bemerkung</label>"
         "<textarea name='note' placeholder='z.B. Ankermanöver in der Bucht'></textarea></div>"
         "<div><label>Motor</label>"
@@ -317,12 +358,14 @@ class RemoteServer:
         pin: str,
         host: str = "0.0.0.0",
         port: int = 8770,
+        icon_png: bytes = b"",
     ) -> None:
         self._info = info_provider
         self._submit = submit
         self._pin = str(pin)
         self._host = host
         self._port = int(port)
+        self._icon = icon_png or b""
         self._httpd: Optional[ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
 
@@ -335,6 +378,7 @@ class RemoteServer:
         httpd.saillog_submit = self._submit      # type: ignore[attr-defined]
         httpd.saillog_pin = self._pin            # type: ignore[attr-defined]
         httpd.saillog_tokens = set()             # type: ignore[attr-defined]
+        httpd.saillog_icon = self._icon          # type: ignore[attr-defined]
         self._httpd = httpd
         self._port = httpd.server_address[1]
         self._thread = threading.Thread(target=httpd.serve_forever, daemon=True)

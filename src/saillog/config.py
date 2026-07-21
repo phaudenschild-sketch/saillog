@@ -89,6 +89,9 @@ class Config:
     remote_port: int = 8770
     remote_pin: str = ""                 # leer -> beim ersten Start erzeugt
 
+    # Anlass-Auswahl (Logevent); None = Standardliste (fields.DEFAULT_LOGEVENTS)
+    logevents: Optional[list] = None
+
     # Aktives Schiff (Stammdaten); dessen Loggeber-Korrektur wirkt auf STW/Log
     active_ship_id: Optional[int] = None
 

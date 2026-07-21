@@ -21,13 +21,15 @@ class RemoteServerTest(unittest.TestCase):
                            "precipitation": "", "visibility": "gut"},
         }
 
+        self.info["logevents"] = ["Ablegen", "Anlegen", "Wende", "Halse"]
+
         def submit(conditions):
             self.submitted.append(conditions)
             return {"time": "2026-07-21 08:00", "lat": 43.02, "lon": 16.71,
                     "logevent": conditions.get("logevent", "")}
 
         self.server = RemoteServer(lambda: self.info, submit, pin="1234",
-                                   host="127.0.0.1", port=0)
+                                   host="127.0.0.1", port=0, icon_png=b"\x89PNG_test")
         self.server.start()
         self.base = f"http://127.0.0.1:{self.server.port}"
 
@@ -86,6 +88,25 @@ class RemoteServerTest(unittest.TestCase):
         self.assertEqual(c["note"], "Test")
         self.assertEqual(c["genoa_percent"], 0.0)
         self.assertEqual(c["wave_height_m"], 0.3)
+
+    def test_custom_logevents_in_form(self):
+        op = self._opener()
+        self._post(op, "/login", {"pin": "1234"})
+        _, form = self._get(op, "/")
+        self.assertIn("Ablegen", form)
+        self.assertIn("Halse", form)
+        self.assertNotIn(">Besonderes<", form)   # alte Liste nicht mehr da
+
+    def test_manifest_and_icon_without_login(self):
+        op = self._opener()
+        # ohne Login erreichbar (Browser lädt sie vor der Anmeldung)
+        _, manifest = self._get(op, "/manifest.webmanifest")
+        self.assertIn('"standalone"', manifest)
+        self.assertIn('SailLog', manifest)
+        with op.open(self.base + "/icon.png") as r:
+            self.assertEqual(r.status, 200)
+            self.assertEqual(r.headers.get("Content-Type"), "image/png")
+            self.assertTrue(r.read().startswith(b"\x89PNG"))
 
     def test_entry_without_login_blocked(self):
         op = self._opener()
