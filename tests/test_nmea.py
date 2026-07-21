@@ -85,6 +85,17 @@ class ParserTest(unittest.TestCase):
         self.assertAlmostEqual(result[nmea.COG], 84.4)
         self.assertAlmostEqual(result[nmea.SOG], 22.4)
 
+    def test_xdr_heel_from_bg(self):
+        # B&G-Schreibweise: Kennung „HEEL"
+        result = self.parser.parse("$IIXDR,A,12.3,D,HEEL")
+        self.assertAlmostEqual(result[nmea.HEEL], 12.3)
+
+    def test_xdr_roll_and_pitch_from_orca(self):
+        # Orca (IMU) sendet Krängung als „ROLL" und Trimm als „PTCH"
+        result = self.parser.parse("$IIXDR,A,0.9,D,PTCH,A,-0.7,D,ROLL*7F")
+        self.assertAlmostEqual(result[nmea.HEEL], -0.7)
+        self.assertAlmostEqual(result[nmea.TRIM], 0.9)
+
     def test_unknown_sentence(self):
         self.assertEqual(self.parser.parse("$GPGSA,A,3,04,05,,09"), {})
 

@@ -332,9 +332,11 @@ def _xdr(f):
                     value = value / 100000.0
                 result[OIL_PRESSURE] = value
         elif ttype == "A":  # Winkel
-            if "HEEL" in tid:
+            # Krängung: B&G sendet „HEEL", Orca (IMU) sendet „ROLL" — beides ist
+            # dieselbe Größe. Ebenso Trimm: „TRIM" bzw. „PTCH"/„PITCH".
+            if "HEEL" in tid or "ROLL" in tid:
                 result[HEEL] = value
-            elif "TRIM" in tid:
+            elif "TRIM" in tid or "PTCH" in tid or "PITCH" in tid:
                 result[TRIM] = value
             elif "RUDD" in tid:
                 result[RUDDER] = value
