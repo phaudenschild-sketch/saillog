@@ -61,6 +61,14 @@ Python.
   Eintrag — der Auslösegrund wird als **Anlass** mitgeschrieben (dem aktiven
   Törn zugeordnet, inkl. der Bedingungswerte). **Startet automatisch beim
   Programmstart** (per Knopf „Auto-Logging stoppen" jederzeit abschaltbar)
+- 📱 **Fern-Erfassung (Handy/Tablet)** (Knopf „📱 Handy/Tablet…"): Der Laptop
+  stellt im **Bordnetz (WLAN)** eine **PIN-geschützte, responsive Seite** bereit
+  (Handy einspaltig, Tablet zweispaltig). Am Handy/Tablet im Browser die
+  angezeigte Adresse öffnen (oder „zum Home-Bildschirm hinzufügen" — startet wie
+  eine App), Eintrag tippen, speichern — landet **direkt im selben Logbuch**.
+  Position, Wind und Tiefe kommen automatisch aus dem Bordnetz. Reine
+  Standardbibliothek, kein App Store, keine Installation (läuft, solange der
+  Laptop im selben WLAN erreichbar ist)
 - ✏️ **Einträge bearbeiten & löschen** — Doppelklick öffnet den Eintrag;
   geänderte Einträge werden mit einem **✎-Marker** gekennzeichnet
 - 🕐 **Zeitzone** einstellbar (Systemzeit oder fester UTC-Versatz); intern

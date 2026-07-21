@@ -28,6 +28,7 @@ from saillog.fields import (
 from saillog.livedata import LiveData
 from saillog.logbook import LogbookService, utc_now_iso
 from saillog.nmea import FIELD_LABELS
+from saillog.remote import RemoteServer
 from saillog.source import (
     STATUS_CONNECTED,
     STATUS_CONNECTING,
@@ -98,6 +99,8 @@ class Application:
         self._schedule_live_update()
         self._maybe_start_photo_watcher()
         self._autostart_logging()
+        self._remote_server: Optional[RemoteServer] = None
+        self._maybe_start_remote()
 
         root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -214,6 +217,9 @@ class Application:
         ttk.Button(controls, text="📷 Foto-Import…", command=self._on_photo_settings).grid(
             row=0, column=2, padx=4
         )
+        ttk.Button(controls, text="📱 Handy/Tablet…",
+                   command=self._on_remote_settings).grid(row=1, column=0, padx=(8, 4),
+                                                          pady=(0, 6), sticky="w")
 
         entry_grp = ttk.Frame(controls)
         entry_grp.grid(row=0, column=3, padx=8)
@@ -786,6 +792,97 @@ class Application:
         if not self._logbook.auto_running:
             self._logbook.start_auto(self._autolog_settings, on_entry=self._on_auto_entry)
             self._auto_btn.config(text="Auto-Logging stoppen")
+
+    # --- Fern-Erfassung (Handy/Tablet im Bordnetz) -------------------------
+
+    @staticmethod
+    def _lan_ip() -> str:
+        """Beste lokale IP im Bordnetz ermitteln (ohne Internet zu brauchen)."""
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("192.168.1.1", 80))   # es fließen keine Daten, nur Routing
+            ip = s.getsockname()[0]
+        except Exception:  # noqa: BLE001
+            ip = "127.0.0.1"
+        finally:
+            s.close()
+        return ip
+
+    def _remote_info(self) -> dict:
+        """Aktuelle Werte für die Handy-Seite (läuft im Server-Thread)."""
+        tid = self._logbook.current_trip_id
+        trip = None
+        if tid is not None:
+            trip = next((d for d, i in self._trip_choices.items() if i == tid), None)
+        return {
+            "trip": trip,
+            "measurements": self._live.snapshot(),
+            "conditions": dict(getattr(self, "_condition_values", {}) or {}),
+        }
+
+    def _remote_submit(self, conditions: dict) -> dict:
+        """Legt einen Eintrag vom Handy an (läuft im Server-Thread)."""
+        entry = self._logbook.add_current(
+            conditions=conditions,
+            note=conditions.get("note", ""),
+            trip_id=self._logbook.current_trip_id,
+        )
+        # Logbuch-Tabelle im GUI-Thread aktualisieren
+        try:
+            self._root.after(0, self._refresh_logbook)
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "time": timeutil.to_display(entry.timestamp, self._tz_offset()),
+            "lat": entry.lat,
+            "lon": entry.lon,
+            "logevent": entry.logevent or "",
+        }
+
+    def _maybe_start_remote(self) -> None:
+        """Startet den Fern-Erfassungs-Server, falls aktiviert."""
+        self._remote_server = None
+        if not self._config.remote_enabled:
+            return
+        # PIN beim ersten Start erzeugen und speichern
+        if not (self._config.remote_pin or "").strip():
+            import random
+            self._config.remote_pin = f"{random.randint(0, 9999):04d}"
+            self._config.save()
+        server = RemoteServer(
+            info_provider=self._remote_info,
+            submit=self._remote_submit,
+            pin=self._config.remote_pin,
+            host="0.0.0.0",
+            port=int(self._config.remote_port or 8770),
+        )
+        try:
+            server.start()
+        except OSError as exc:
+            messagebox.showwarning(
+                "Fern-Erfassung",
+                f"Der Handy-Zugang konnte nicht gestartet werden (Port "
+                f"{self._config.remote_port} belegt?).\n\n{exc}",
+            )
+            return
+        self._remote_server = server
+
+    def _on_remote_settings(self) -> None:
+        dialog = _RemoteDialog(self._root, self._config, self._remote_server,
+                               self._lan_ip())
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        self._config.remote_enabled = dialog.result["enabled"]
+        self._config.remote_port = dialog.result["port"]
+        self._config.remote_pin = dialog.result["pin"]
+        self._config.save()
+        # Server mit neuen Einstellungen neu aufsetzen
+        if self._remote_server is not None:
+            self._remote_server.stop()
+            self._remote_server = None
+        self._maybe_start_remote()
 
     def _on_autolog_settings(self) -> None:
         dialog = _AutoLogDialog(self._root, self._autolog_settings)
@@ -1526,6 +1623,8 @@ class Application:
             src.stop()
         if self._map_server is not None:
             self._map_server.stop()
+        if self._remote_server is not None:
+            self._remote_server.stop()
         # Automatische Sicherung beim Beenden (best effort, blockiert nie)
         if self._config.backup_on_close and self._config.backup_folder:
             try:
@@ -2592,6 +2691,91 @@ class _AutoLogDialog:
             track_course_threshold=_parse_float(self._track_course.get()) or 10.0,
             track_interval_seconds=self._track_iv_seconds(self._track_iv.get()),
         )
+        self.top.destroy()
+
+
+class _RemoteDialog:
+    """Einstellungen + Zugangsdaten der Handy-/Tablet-Fern-Erfassung."""
+
+    def __init__(self, parent, config, server, lan_ip: str) -> None:
+        self.result: Optional[Dict] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Fern-Erfassung (Handy/Tablet)")
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=14)
+        frame.pack(fill="both", expand=True)
+
+        running = server is not None and server.running
+        port = int(config.remote_port or 8770)
+        url = f"http://{lan_ip}:{port}/"
+
+        ttk.Label(frame, text="Logbuch-Einträge vom Handy/Tablet im Bordnetz erfassen.",
+                  foreground="#333").grid(row=0, column=0, columnspan=2, sticky="w",
+                                          pady=(0, 8))
+
+        self._enabled = tk.BooleanVar(value=config.remote_enabled)
+        ttk.Checkbutton(frame, text="Fern-Erfassung aktiv (beim Start automatisch)",
+                        variable=self._enabled).grid(row=1, column=0, columnspan=2,
+                                                     sticky="w", pady=2)
+
+        # Zugangsdaten prominent anzeigen
+        box = ttk.LabelFrame(frame, text="So verbindest du dich")
+        box.grid(row=2, column=0, columnspan=2, sticky="we", pady=(8, 8))
+        ttk.Label(box, text="1. Handy/Tablet ins selbe WLAN wie der Laptop.").grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 2))
+        ttk.Label(box, text="2. Im Browser diese Adresse öffnen:").grid(
+            row=1, column=0, columnspan=2, sticky="w", padx=8, pady=2)
+        addr = ttk.Entry(box, width=30, font=("TkDefaultFont", 11, "bold"))
+        addr.insert(0, url)
+        addr.configure(state="readonly")
+        addr.grid(row=2, column=0, sticky="w", padx=8, pady=2)
+        ttk.Label(box, text="3. Mit der PIN anmelden:").grid(
+            row=3, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 2))
+
+        ttk.Label(frame, text="Port:").grid(row=3, column=0, sticky="e", padx=4, pady=3)
+        self._port = tk.StringVar(value=str(port))
+        ttk.Entry(frame, textvariable=self._port, width=10).grid(
+            row=3, column=1, sticky="w")
+        ttk.Label(frame, text="PIN:").grid(row=4, column=0, sticky="e", padx=4, pady=3)
+        self._pin = tk.StringVar(value=config.remote_pin or "")
+        pinrow = ttk.Frame(frame)
+        pinrow.grid(row=4, column=1, sticky="w")
+        ttk.Entry(pinrow, textvariable=self._pin, width=10).pack(side="left")
+        ttk.Button(pinrow, text="Neue PIN", command=self._new_pin).pack(side="left", padx=6)
+
+        status = "läuft" if running else "aus"
+        ttk.Label(frame, text=f"Status: {status}", foreground="#555").grid(
+            row=5, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        ttk.Label(frame,
+                  text="Tipp: Seite am Handy „zum Home-Bildschirm hinzufügen“ —\n"
+                       "dann startet sie wie eine App.",
+                  foreground="#777").grid(row=6, column=0, columnspan=2, sticky="w",
+                                          pady=(2, 0))
+
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=7, column=0, columnspan=2, pady=(12, 0))
+        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Im Browser öffnen",
+                   command=lambda: webbrowser.open(url)).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _new_pin(self) -> None:
+        import random
+        self._pin.set(f"{random.randint(0, 9999):04d}")
+
+    def _on_save(self) -> None:
+        pin = (self._pin.get() or "").strip()
+        if self._enabled.get() and not pin:
+            messagebox.showwarning("Fern-Erfassung",
+                                   "Bitte eine PIN vergeben (oder „Neue PIN“).")
+            return
+        try:
+            port = int(self._port.get())
+        except ValueError:
+            messagebox.showwarning("Fern-Erfassung", "Ungültiger Port.")
+            return
+        self.result = {"enabled": self._enabled.get(), "port": port, "pin": pin}
         self.top.destroy()
 
 

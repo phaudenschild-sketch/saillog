@@ -84,6 +84,11 @@ class Config:
     backup_on_close: bool = False
     backup_keep: int = 5
 
+    # Fern-Erfassung (Handy/Tablet im Bordnetz): kleiner Webserver, PIN-Schutz
+    remote_enabled: bool = True
+    remote_port: int = 8770
+    remote_pin: str = ""                 # leer -> beim ersten Start erzeugt
+
     # Aktives Schiff (Stammdaten); dessen Loggeber-Korrektur wirkt auf STW/Log
     active_ship_id: Optional[int] = None
 
