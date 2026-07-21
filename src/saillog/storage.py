@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import sqlite3
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -221,9 +222,58 @@ class Ship:
     log_correction: float = 1.0       # Korrekturfaktor Loggeber
     water_tank_l: Optional[float] = None      # Wassertank (Liter)
     fuel_tank_l: Optional[float] = None       # Treibstofftank (Liter)
-    sails: str = ""                   # Antrieb/Segel (Freitext)
-    equipment: str = ""               # Ausstattung (Freitext)
-    power_source: str = ""            # Stromversorgung (Freitext)
+    sails: str = ""                   # Antrieb/Segel (Freitext, alt/Fallback)
+    equipment: str = ""               # Ausstattung (Freitext, alt/Fallback)
+    power_source: str = ""            # Stromversorgung (Freitext, alt/Fallback)
+
+
+# --- Ausrüstung (flexibel, Parameter-Datenbank ↔ Schiff) -------------------
+# „Antrieb" umfasst Großsegel, Vorsegel und Motor. Das Modell ist bewusst
+# generisch (category + name + attrs-JSON), damit es später auch Ausstattung,
+# Tanks und Stromversorgung tragen kann.
+
+EQUIP_CATEGORIES = {          # interner Schlüssel -> Anzeigename
+    "mainsail": "Großsegel",
+    "headsail": "Vorsegel",
+    "motor": "Motor",
+}
+REEF_TYPES = ["kein Reff", "Bindereff", "Rollreff"]
+
+
+@dataclass
+class EquipmentParam:
+    """Ein wiederverwendbarer Ausrüstungs-Baustein (Parameter-Datenbank)."""
+
+    id: Optional[int] = None
+    category: str = ""                 # z.B. 'mainsail' | 'headsail' | 'motor'
+    name: str = ""
+    attrs: Optional[dict] = None       # kategoriespezifische Parameter
+
+
+@dataclass
+class ShipEquipment:
+    """Eine einem konkreten Schiff zugeordnete Ausrüstung (eigene Werte)."""
+
+    id: Optional[int] = None
+    ship_id: Optional[int] = None
+    category: str = ""
+    name: str = ""
+    attrs: Optional[dict] = None
+    param_id: Optional[int] = None     # Herkunft aus der Parameter-DB (optional)
+
+
+# Standard-Parameter-Datenbank (nur beim ersten Start, wenn leer):
+_SEED_EQUIPMENT = [
+    ("mainsail", "Großsegel", {"reef": "Bindereff"}),
+    ("mainsail", "Trysegel", {"reef": "kein Reff"}),
+    ("headsail", "Sturmfock", {"reef": "kein Reff"}),
+    ("headsail", "Fock", {"reef": "Rollreff"}),
+    ("headsail", "Genua", {"reef": "Rollreff"}),
+    ("headsail", "Genua II", {"reef": "Rollreff"}),
+    ("headsail", "Blister", {"reef": "kein Reff"}),
+    ("headsail", "Gennaker", {"reef": "kein Reff"}),
+    ("headsail", "Spinnaker", {"reef": "kein Reff"}),
+]
 
 
 @dataclass
@@ -418,10 +468,43 @@ class LogbookStore:
                 "  note TEXT DEFAULT ''\n)"
             )
             conn.execute(
+                "CREATE TABLE IF NOT EXISTS equipment_params (\n"
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+                "  category TEXT NOT NULL,\n"
+                "  name TEXT NOT NULL,\n"
+                "  attrs TEXT DEFAULT ''\n)"
+            )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS ship_equipment (\n"
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+                "  ship_id INTEGER NOT NULL,\n"
+                "  category TEXT NOT NULL,\n"
+                "  name TEXT NOT NULL,\n"
+                "  attrs TEXT DEFAULT '',\n"
+                "  param_id INTEGER\n)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ship_equipment_ship "
+                "ON ship_equipment(ship_id)"
+            )
+            conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_log_timestamp "
                 "ON log_entries(timestamp)"
             )
             self._migrate(conn)
+            self._seed_equipment(conn)
+
+    @staticmethod
+    def _seed_equipment(conn) -> None:
+        """Standard-Parameter-Datenbank anlegen, solange sie leer ist."""
+        count = conn.execute("SELECT COUNT(*) FROM equipment_params").fetchone()[0]
+        if count:
+            return
+        for category, name, attrs in _SEED_EQUIPMENT:
+            conn.execute(
+                "INSERT INTO equipment_params (category, name, attrs) VALUES (?, ?, ?)",
+                (category, name, json.dumps(attrs)),
+            )
 
     def _migrate(self, conn) -> None:
         """Fügt fehlende Spalten in bestehenden Datenbanken hinzu."""
@@ -1000,7 +1083,93 @@ class LogbookStore:
     def delete_ship(self, ship_id: int) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM ship_photos WHERE ship_id = ?", (ship_id,))
+            conn.execute("DELETE FROM ship_equipment WHERE ship_id = ?", (ship_id,))
             conn.execute("DELETE FROM ships WHERE id = ?", (ship_id,))
+
+    # --- Ausrüstung: Parameter-Datenbank -----------------------------------
+
+    @staticmethod
+    def _load_attrs(raw) -> dict:
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+            return data if isinstance(data, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+
+    def equipment_params(self, category: Optional[str] = None) -> List[EquipmentParam]:
+        """Alle Bausteine der Parameter-Datenbank (optional nach Kategorie)."""
+        with self._connect() as conn:
+            if category is None:
+                rows = conn.execute(
+                    "SELECT * FROM equipment_params ORDER BY category, name, id"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM equipment_params WHERE category = ? ORDER BY name, id",
+                    (category,),
+                ).fetchall()
+        return [EquipmentParam(id=r["id"], category=r["category"], name=r["name"],
+                               attrs=self._load_attrs(r["attrs"])) for r in rows]
+
+    def add_equipment_param(self, param: EquipmentParam) -> int:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO equipment_params (category, name, attrs) VALUES (?, ?, ?)",
+                (param.category, param.name, json.dumps(param.attrs or {})),
+            )
+            param.id = cur.lastrowid
+        return param.id
+
+    def update_equipment_param(self, param: EquipmentParam) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE equipment_params SET category = ?, name = ?, attrs = ? WHERE id = ?",
+                (param.category, param.name, json.dumps(param.attrs or {}), param.id),
+            )
+
+    def delete_equipment_param(self, param_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM equipment_params WHERE id = ?", (param_id,))
+
+    # --- Ausrüstung: pro Schiff --------------------------------------------
+
+    def ship_equipment(self, ship_id: int,
+                       category: Optional[str] = None) -> List[ShipEquipment]:
+        with self._connect() as conn:
+            if category is None:
+                rows = conn.execute(
+                    "SELECT * FROM ship_equipment WHERE ship_id = ? ORDER BY category, id",
+                    (ship_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM ship_equipment WHERE ship_id = ? AND category = ? "
+                    "ORDER BY id", (ship_id, category),
+                ).fetchall()
+        return [ShipEquipment(id=r["id"], ship_id=r["ship_id"], category=r["category"],
+                              name=r["name"], attrs=self._load_attrs(r["attrs"]),
+                              param_id=r["param_id"]) for r in rows]
+
+    def set_ship_equipment(self, ship_id: int, items: List[ShipEquipment],
+                           category: Optional[str] = None) -> None:
+        """Ersetzt die Ausrüstung eines Schiffs (optional nur einer Kategorie)."""
+        with self._connect() as conn:
+            if category is None:
+                conn.execute("DELETE FROM ship_equipment WHERE ship_id = ?", (ship_id,))
+            else:
+                conn.execute(
+                    "DELETE FROM ship_equipment WHERE ship_id = ? AND category = ?",
+                    (ship_id, category),
+                )
+            for it in items:
+                conn.execute(
+                    "INSERT INTO ship_equipment (ship_id, category, name, attrs, param_id) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (ship_id, it.category, it.name, json.dumps(it.attrs or {}),
+                     it.param_id),
+                )
 
     def set_ship_photo(self, ship_id: int, data: bytes,
                        mime: str = "image/jpeg") -> None:

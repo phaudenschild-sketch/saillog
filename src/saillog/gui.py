@@ -38,7 +38,8 @@ from saillog.source import (
     NmeaSource,
 )
 from saillog.storage import (
-    CrewMember, FuelEntry, LogbookStore, LogEntry, Person, Ship, Trip, Voyage,
+    CrewMember, EquipmentParam, EQUIP_CATEGORIES, FuelEntry, LogbookStore,
+    LogEntry, Person, REEF_TYPES, Ship, ShipEquipment, Trip, Voyage,
 )
 from saillog.webmap import MapServer
 
@@ -3436,6 +3437,17 @@ class _ShipManagerDialog:
         i = self._combo.current()
         return self._ships[i] if 0 <= i < len(self._ships) else None
 
+    def _equip_summary(self, ship_id) -> str:
+        """Antrieb (Groß-/Vorsegel, Motor) des Schiffs als kurze Zeile."""
+        if not ship_id:
+            return "—"
+        parts = []
+        for key, label in EQUIP_CATEGORIES.items():
+            names = [e.name for e in self._store.ship_equipment(ship_id, key)]
+            if names:
+                parts.append(f"{label}: {', '.join(names)}")
+        return "  |  ".join(parts) if parts else "—"
+
     def _on_select(self) -> None:
         s = self._selected()
         self._config.active_ship_id = s.id if s else None
@@ -3462,7 +3474,7 @@ class _ShipManagerDialog:
                 f"Loggeber-Korrektur: {s.log_correction:g}",
                 f"Tanks: Wasser {v(s.water_tank_l, 'l')}, "
                 f"Treibstoff {v(s.fuel_tank_l, 'l')}",
-                f"Segel/Antrieb: {s.sails or '—'}",
+                f"Antrieb: {self._equip_summary(s.id)}",
                 f"Ausstattung: {s.equipment or '—'}",
                 f"Stromversorgung: {s.power_source or '—'}",
             ]))
@@ -3498,6 +3510,97 @@ class _ShipManagerDialog:
                 self._config.active_ship_id = None
                 self._config.save()
             self._refresh()
+
+
+class _MotorParamDialog:
+    """Neuen Motor in die Parameter-Datenbank aufnehmen."""
+
+    def __init__(self, parent) -> None:
+        self.result: Optional[EquipmentParam] = None
+        self.top = tk.Toplevel(parent)
+        self.top.title("Motor hinzufügen")
+        self.top.transient(parent)
+        self.top.grab_set()
+        f = ttk.Frame(self.top, padding=14)
+        f.pack(fill="both", expand=True)
+
+        ttk.Label(f, text="Bezeichnung").grid(row=0, column=0, columnspan=2, sticky="w")
+        self._name = tk.StringVar()
+        ttk.Entry(f, textvariable=self._name, width=32).grid(
+            row=1, column=0, columnspan=4, sticky="we", pady=(0, 8))
+
+        ttk.Label(f, text="Öldruck  maximal").grid(row=2, column=0, sticky="w")
+        ttk.Label(f, text="Schrittweite").grid(row=2, column=2, sticky="w", padx=(10, 0))
+        self._oil_max = tk.StringVar(value="2")
+        self._oil_step = tk.StringVar(value="0.1")
+        ttk.Entry(f, textvariable=self._oil_max, width=8).grid(row=3, column=0, sticky="w")
+        ttk.Label(f, text="Bar").grid(row=3, column=1, sticky="w")
+        ttk.Entry(f, textvariable=self._oil_step, width=8).grid(row=3, column=2, sticky="w", padx=(10, 0))
+        ttk.Label(f, text="Bar").grid(row=3, column=3, sticky="w")
+
+        ttk.Label(f, text="Drehzahl  maximal").grid(row=4, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(f, text="Schrittweite").grid(row=4, column=2, sticky="w", padx=(10, 0), pady=(8, 0))
+        self._rpm_max = tk.StringVar(value="6000")
+        self._rpm_step = tk.StringVar(value="100")
+        ttk.Entry(f, textvariable=self._rpm_max, width=8).grid(row=5, column=0, sticky="w")
+        ttk.Label(f, text="U/min").grid(row=5, column=1, sticky="w")
+        ttk.Entry(f, textvariable=self._rpm_step, width=8).grid(row=5, column=2, sticky="w", padx=(10, 0))
+        ttk.Label(f, text="U/min").grid(row=5, column=3, sticky="w")
+
+        btns = ttk.Frame(f)
+        btns.grid(row=6, column=0, columnspan=4, pady=(14, 0))
+        ttk.Button(btns, text="Speichern", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _on_save(self) -> None:
+        name = self._name.get().strip()
+        if not name:
+            messagebox.showwarning("Motor", "Bitte eine Bezeichnung angeben.")
+            return
+        self.result = EquipmentParam(category="motor", name=name, attrs={
+            "oil_max": _parse_float(self._oil_max.get()),
+            "oil_step": _parse_float(self._oil_step.get()),
+            "rpm_max": _parse_float(self._rpm_max.get()),
+            "rpm_step": _parse_float(self._rpm_step.get()),
+        })
+        self.top.destroy()
+
+
+class _SailParamDialog:
+    """Neues Segel (Groß-/Vorsegel) in die Parameter-Datenbank aufnehmen."""
+
+    def __init__(self, parent, category: str, category_label: str) -> None:
+        self.result: Optional[EquipmentParam] = None
+        self._category = category
+        self.top = tk.Toplevel(parent)
+        self.top.title(f"{category_label} hinzufügen")
+        self.top.transient(parent)
+        self.top.grab_set()
+        f = ttk.Frame(self.top, padding=14)
+        f.pack(fill="both", expand=True)
+
+        ttk.Label(f, text="Bezeichnung").grid(row=0, column=0, sticky="w")
+        self._name = tk.StringVar()
+        ttk.Entry(f, textvariable=self._name, width=28).grid(
+            row=1, column=0, sticky="we", pady=(0, 8))
+        ttk.Label(f, text="Art des Reffs").grid(row=2, column=0, sticky="w")
+        self._reef = tk.StringVar(value=REEF_TYPES[0])
+        ttk.Combobox(f, textvariable=self._reef, state="readonly", width=20,
+                     values=REEF_TYPES).grid(row=3, column=0, sticky="w")
+
+        btns = ttk.Frame(f)
+        btns.grid(row=4, column=0, pady=(14, 0))
+        ttk.Button(btns, text="Speichern", command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _on_save(self) -> None:
+        name = self._name.get().strip()
+        if not name:
+            messagebox.showwarning("Segel", "Bitte eine Bezeichnung angeben.")
+            return
+        self.result = EquipmentParam(category=self._category, name=name,
+                                     attrs={"reef": self._reef.get()})
+        self.top.destroy()
 
 
 class _ShipEditDialog:
@@ -3568,10 +3671,95 @@ class _ShipEditDialog:
                       wraplength=120).pack(padx=8, pady=(4, 8))
         self._update_photo_status()
 
+        # Ausrüstung — Antrieb (Parameter-Datenbank <-> dieses Schiff)
+        self._equip: Dict[str, list] = {}
+        for key in EQUIP_CATEGORIES:
+            self._equip[key] = (self._store.ship_equipment(ship.id, key)
+                                if ship.id else [])
+        self._build_equipment(frame, per_col)
+
         buttons = ttk.Frame(frame)
-        buttons.grid(row=per_col, column=0, columnspan=5, pady=(12, 0))
+        buttons.grid(row=per_col + 1, column=0, columnspan=5, pady=(12, 0))
         ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
         ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    # --- Ausrüstung -------------------------------------------------------
+    def _build_equipment(self, frame, row) -> None:
+        box = ttk.LabelFrame(frame, text="Ausrüstung — Antrieb")
+        box.grid(row=row, column=0, columnspan=5, sticky="we", pady=(12, 0))
+        ttk.Label(box, text="Antrieb:").grid(row=0, column=0, sticky="e", padx=6, pady=4)
+        self._equip_cat = tk.StringVar(value=EQUIP_CATEGORIES["mainsail"])
+        cat = ttk.Combobox(box, textvariable=self._equip_cat, state="readonly",
+                           width=14, values=list(EQUIP_CATEGORIES.values()))
+        cat.grid(row=0, column=1, sticky="w")
+        cat.bind("<<ComboboxSelected>>", lambda _e: self._refresh_equip())
+        ttk.Button(box, text="＋ Neu…", command=self._on_add_param).grid(
+            row=0, column=2, padx=6, sticky="w")
+
+        ttk.Label(box, text="Parameter-Datenbank", foreground="#555").grid(
+            row=1, column=0, columnspan=2, pady=(4, 0))
+        ttk.Label(box, text="dieses Schiff", foreground="#555").grid(
+            row=1, column=3, columnspan=2, pady=(4, 0))
+        self._db_list = tk.Listbox(box, width=28, height=6, exportselection=False)
+        self._db_list.grid(row=2, column=0, columnspan=2, padx=6, pady=(0, 8), sticky="we")
+        mid = ttk.Frame(box)
+        mid.grid(row=2, column=2)
+        ttk.Button(mid, text="→", width=3, command=self._equip_add).pack(pady=3)
+        ttk.Button(mid, text="←", width=3, command=self._equip_remove).pack(pady=3)
+        self._ship_list = tk.Listbox(box, width=28, height=6, exportselection=False)
+        self._ship_list.grid(row=2, column=3, columnspan=2, padx=6, pady=(0, 8), sticky="we")
+        self._refresh_equip()
+
+    def _cat_key(self) -> str:
+        name = self._equip_cat.get()
+        return next((k for k, v in EQUIP_CATEGORIES.items() if v == name), "mainsail")
+
+    @staticmethod
+    def _equip_label(item) -> str:
+        reef = (item.attrs or {}).get("reef")
+        if reef and reef != "kein Reff":
+            return f"{item.name}  ·  {reef}"
+        return item.name
+
+    def _refresh_equip(self) -> None:
+        key = self._cat_key()
+        self._db_params = self._store.equipment_params(key)
+        self._db_list.delete(0, "end")
+        for p in self._db_params:
+            self._db_list.insert("end", self._equip_label(p))
+        self._ship_list.delete(0, "end")
+        for e in self._equip[key]:
+            self._ship_list.insert("end", self._equip_label(e))
+
+    def _equip_add(self) -> None:
+        sel = self._db_list.curselection()
+        if not sel:
+            return
+        p = self._db_params[sel[0]]
+        key = self._cat_key()
+        self._equip[key].append(ShipEquipment(
+            ship_id=self._ship.id, category=key, name=p.name,
+            attrs=dict(p.attrs or {}), param_id=p.id))
+        self._refresh_equip()
+
+    def _equip_remove(self) -> None:
+        sel = self._ship_list.curselection()
+        if not sel:
+            return
+        del self._equip[self._cat_key()][sel[0]]
+        self._refresh_equip()
+
+    def _on_add_param(self) -> None:
+        key = self._cat_key()
+        if key == "motor":
+            dlg = _MotorParamDialog(self.top)
+        else:
+            dlg = _SailParamDialog(self.top, key, EQUIP_CATEGORIES[key])
+        self.top.wait_window(dlg.top)
+        if dlg.result is None:
+            return
+        self._store.add_equipment_param(dlg.result)
+        self._refresh_equip()
 
     def _has_photo(self) -> bool:
         if self._photo_action is not None:
@@ -3633,6 +3821,11 @@ class _ShipEditDialog:
         else:
             self._store.update_ship(s)
         self.ship_id = s.id
+        # Ausrüstung (Antrieb) je Kategorie speichern
+        for key in EQUIP_CATEGORIES:
+            for it in self._equip.get(key, []):
+                it.ship_id = s.id
+            self._store.set_ship_equipment(s.id, self._equip.get(key, []), category=key)
         if self._photo_action is not None:
             if self._photo_action[0] == "set":
                 self._store.set_ship_photo(s.id, self._photo_action[1])

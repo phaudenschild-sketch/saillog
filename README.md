@@ -45,6 +45,12 @@ Python.
   (AT), Hochseeschein (CH) — mit Törntabelle, **Nachtmeilen** (automatisch aus
   dem Sonnenstand), Skipper-Unterschriftsspalte und Anforderungs-Übersicht
   (erfüllt/offen). Als PDF oder HTML.
+- 🛥️ **Schiffe & Ausrüstung** (Menü Stammdaten → „Schiffe verwalten"): Schiffs-
+  Kennwerte plus eine **flexible Ausrüstung** nach TripCon-Vorbild — eine
+  wiederverwendbare **Parameter-Datenbank** und je Schiff die konkrete Auswahl
+  (Knöpfe „→"/„←"). Bereich **Antrieb** umgesetzt: **Großsegel, Vorsegel**
+  (mit Reff-Art) und **Motor** (mit Öldruck-/Drehzahl-Parametern); eigene
+  Einträge über „＋ Neu…"
 - 🧾 **Crewliste** (Knopf „Crewliste…"): Bootsangaben (einmal gespeichert) und
   Crew je Törn erfassen und eine **zweisprachige, druckbare Crewliste (DE/EN)**
   fürs Ein-/Ausklarieren erzeugen — öffnet im Browser, dort drucken oder als
