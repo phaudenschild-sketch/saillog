@@ -12,8 +12,8 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
 from saillog import (
-    backup, branding, crewlist, fields, fuel, geo, photos, reports, timeutil,
-    tripcon,
+    backup, branding, crewlist, fields, fuel, geo, photos, qrcode, reports,
+    timeutil, tripcon,
 )
 from saillog.ais import AisDecoder, AisTargets
 from saillog.autolog import AutoLogSettings
@@ -2812,8 +2812,14 @@ class _RemoteDialog:
         addr.insert(0, url)
         addr.configure(state="readonly")
         addr.grid(row=2, column=0, sticky="w", padx=8, pady=2)
-        ttk.Label(box, text="3. Mit der PIN anmelden:").grid(
+        ttk.Label(box, text="3. Mit der PIN anmelden.").grid(
             row=3, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 2))
+        # QR-Code der Adresse — am Handy scannen zum Öffnen
+        self._qr_canvas = tk.Canvas(box, highlightthickness=0, bg="white")
+        self._qr_canvas.grid(row=0, column=2, rowspan=4, padx=(6, 10), pady=8)
+        ttk.Label(box, text="↑ scannen zum Öffnen", foreground="#777").grid(
+            row=4, column=2, pady=(0, 6))
+        self._draw_qr(url)
 
         ttk.Label(frame, text="Port:").grid(row=3, column=0, sticky="e", padx=4, pady=3)
         self._port = tk.StringVar(value=str(port))
@@ -2841,6 +2847,24 @@ class _RemoteDialog:
         ttk.Button(buttons, text="Im Browser öffnen",
                    command=lambda: webbrowser.open(url)).pack(side="left", padx=4)
         ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+
+    def _draw_qr(self, url: str) -> None:
+        """Zeichnet den QR-Code der Adresse auf den Canvas (Standardbibliothek)."""
+        try:
+            matrix = qrcode.encode(url, error="M")
+        except Exception:  # noqa: BLE001
+            return
+        n = len(matrix)
+        quiet, scale = 2, 4
+        dim = (n + 2 * quiet) * scale
+        self._qr_canvas.configure(width=dim, height=dim)
+        self._qr_canvas.delete("all")
+        for r in range(n):
+            for c in range(n):
+                if matrix[r][c]:
+                    x, y = (c + quiet) * scale, (r + quiet) * scale
+                    self._qr_canvas.create_rectangle(
+                        x, y, x + scale, y + scale, fill="black", outline="")
 
     def _new_pin(self) -> None:
         import random
