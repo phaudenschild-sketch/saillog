@@ -20,6 +20,20 @@ class LiveDataTest(unittest.TestCase):
         self.assertEqual(live.snapshot(now=120.0), {})
         self.assertIsNone(live.get("sog_kn", now=120.0))
 
+    def test_slow_engine_values_kept_longer(self):
+        # Motor-Dynamikdaten kommen selten -> längeres Frische-Fenster (60 s).
+        live = LiveData(stale_after=10.0)
+        live.update({"engine_temp_c": 92.8, "alternator_v": 14.6,
+                     "engine_hours": 240.0, "sog_kn": 5.0}, now=100.0)
+        # nach 30 s: SOG (schnell) veraltet, Motorwerte bleiben
+        snap = live.snapshot(now=130.0)
+        self.assertNotIn("sog_kn", snap)
+        self.assertEqual(snap["engine_temp_c"], 92.8)
+        self.assertEqual(snap["alternator_v"], 14.6)
+        self.assertEqual(snap["engine_hours"], 240.0)
+        # nach 70 s: auch die Motorwerte veraltet
+        self.assertEqual(live.snapshot(now=170.0), {})
+
     def test_get_single(self):
         live = LiveData()
         live.update({"depth_m": 12.0}, now=50.0)

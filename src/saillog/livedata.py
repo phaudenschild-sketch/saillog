@@ -10,6 +10,18 @@ from typing import Dict, Optional
 # Zweit-/Reset-Quellen werden ignoriert, solange der Höchstwert aktuell ist.
 _MONOTONIC_MAX = {"log_total_nm"}
 
+# Langsam gesendete Motor-„Dynamikdaten" (Temp, Ladespannung, Betriebsstunden,
+# Öldruck): manche Geräte (z.B. Maretron $PMAREPD) senden sie nur alle paar
+# Sekunden bis Minuten. Für sie gilt ein längeres Frische-Fenster, damit sie
+# zwischen den Updates nicht ständig auf „—" fallen. Navigationswerte bleiben
+# beim kurzen Standard-Fenster (schnelle Reaktion bei Verbindungsabriss).
+_SLOW_STALE = {
+    "engine_temp_c": 60.0,
+    "alternator_v": 60.0,
+    "engine_hours": 60.0,
+    "oil_pressure": 60.0,
+}
+
 
 class LiveData:
     """Hält die aktuellsten Messwerte inkl. Zeitstempel.
@@ -24,6 +36,10 @@ class LiveData:
         self._timestamps: Dict[str, float] = {}
         self._stale_after = stale_after
         self._last_update: Optional[float] = None
+
+    def _ttl(self, key: str) -> float:
+        """Frische-Fenster für einen Schlüssel (langsame Motorwerte länger)."""
+        return _SLOW_STALE.get(key, self._stale_after)
 
     def update(self, values: Dict[str, float], now: Optional[float] = None) -> None:
         """Übernimmt neue Messwerte (überschreibt bestehende Schlüssel)."""
@@ -52,7 +68,7 @@ class LiveData:
             return {
                 key: value
                 for key, value in self._values.items()
-                if now - self._timestamps[key] <= self._stale_after
+                if now - self._timestamps[key] <= self._ttl(key)
             }
 
     def get(self, key: str, now: Optional[float] = None) -> Optional[float]:
@@ -62,7 +78,7 @@ class LiveData:
         with self._lock:
             if key not in self._values:
                 return None
-            if now - self._timestamps[key] > self._stale_after:
+            if now - self._timestamps[key] > self._ttl(key):
                 return None
             return self._values[key]
 
