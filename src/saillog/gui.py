@@ -405,20 +405,21 @@ class Application:
             values=self._logevents,
         )
         add(t("Anlass:"), self._logevent_combo)
-        self._cond_vars["cloud"] = tk.StringVar(value="wolkenlos")
+        # Auswahlwerte: Anzeige übersetzt, gespeichert wird der deutsche Code.
+        self._cond_vars["cloud"] = tk.StringVar(value=t("wolkenlos"))
         add(t("Bewölkung:"), ttk.Combobox(
             parent, textvariable=self._cond_vars["cloud"], width=18,
-            state="readonly", values=CLOUD_COVER_LABELS,
+            state="readonly", values=fields.tr_labels(CLOUD_COVER_LABELS),
         ))
-        self._cond_vars["precip"] = tk.StringVar(value="kein")
+        self._cond_vars["precip"] = tk.StringVar(value=t("kein"))
         add(t("Niederschlag:"), ttk.Combobox(
             parent, textvariable=self._cond_vars["precip"], width=18,
-            state="readonly", values=PRECIPITATION,
+            state="readonly", values=fields.tr_labels(PRECIPITATION),
         ))
-        self._cond_vars["visibility"] = tk.StringVar(value="gut")
+        self._cond_vars["visibility"] = tk.StringVar(value=t("gut"))
         add(t("Sicht:"), ttk.Combobox(
             parent, textvariable=self._cond_vars["visibility"], width=18,
-            state="readonly", values=VISIBILITY_LABELS,
+            state="readonly", values=fields.tr_labels(VISIBILITY_LABELS),
         ))
         self._cond_vars["wave"] = tk.StringVar()
         add(t("Seegang (m):"), ttk.Entry(
@@ -488,10 +489,11 @@ class Application:
                 self._motor_vars[name] = var
         else:
             self._motor_mode = "single"
-            self._cond_vars["engine_mode"] = bind(tk.StringVar(value="automatisch"))
+            self._cond_vars["engine_mode"] = bind(tk.StringVar(value=t("automatisch")))
             ttk.Label(f, text=t("Motor:")).grid(row=row, column=0, sticky="e", padx=(6, 3), pady=2)
             ttk.Combobox(f, textvariable=self._cond_vars["engine_mode"], width=16,
-                         state="readonly", values=["automatisch", "ein", "aus"]).grid(
+                         state="readonly",
+                         values=fields.tr_labels(["automatisch", "ein", "aus"])).grid(
                 row=row, column=1, sticky="w")
         row += 1
 
@@ -499,10 +501,11 @@ class Application:
         if not self._rig.configured:
             # Fallback: klassische Segelfelder (ohne konfigurierte Ausrüstung)
             self._sail_mode = "classic"
-            self._cond_vars["mainsail"] = bind(tk.StringVar(value="Geborgen"))
+            self._cond_vars["mainsail"] = bind(tk.StringVar(value=t("Geborgen")))
             ttk.Label(f, text=t("Großsegel:")).grid(row=row, column=0, sticky="e", padx=(6, 3), pady=2)
             ttk.Combobox(f, textvariable=self._cond_vars["mainsail"], width=16,
-                         state="readonly", values=MAINSAIL_OPTIONS).grid(row=row, column=1, sticky="w")
+                         state="readonly", values=fields.tr_labels(MAINSAIL_OPTIONS)).grid(
+                row=row, column=1, sticky="w")
             self._cond_vars["genoa"] = bind(tk.StringVar(value="0"))
             ttk.Label(f, text=t("Genua %:")).grid(row=row + 1, column=0, sticky="e", padx=(6, 3), pady=2)
             ttk.Spinbox(f, from_=0, to=100, textvariable=self._cond_vars["genoa"],
@@ -530,9 +533,10 @@ class Application:
                              variable=var, showvalue=1).grid(row=rr, column=1, sticky="w")
                     ttk.Label(f, text="%").grid(row=rr, column=2, sticky="w")
                 elif sail.control == rig.CONTROL_SLAB:
-                    var = bind(tk.StringVar(value="nicht gesetzt"))
+                    var = bind(tk.StringVar(value=t("nicht gesetzt")))
                     ttk.Combobox(f, textvariable=var, width=14, state="readonly",
-                                 values=rig.SLAB_STATES).grid(row=rr, column=1, sticky="w")
+                                 values=fields.tr_labels(rig.SLAB_STATES)).grid(
+                        row=rr, column=1, sticky="w")
                 else:
                     var = bind(tk.BooleanVar(value=False))
                     ttk.Checkbutton(f, text=t("gesetzt"), variable=var).grid(
@@ -543,11 +547,15 @@ class Application:
 
     def _sync_conditions(self) -> None:
         v = self._cond_vars
+        # Angezeigtes (übersetztes) Label -> kanonischer deutscher Code
+        cloud = fields.code_from_label(CLOUD_COVER_LABELS, v["cloud"].get())
+        precip = fields.code_from_label(PRECIPITATION, v["precip"].get())
+        vis = fields.code_from_label(VISIBILITY_LABELS, v["visibility"].get())
         cv = {
             "wave_height_m": _parse_float(v["wave"].get()),
-            "cloud_cover": v["cloud"].get() if v["cloud"].get() != "—" else "",
-            "precipitation": v["precip"].get() if v["precip"].get() != "kein" else "",
-            "visibility": v["visibility"].get() if v["visibility"].get() != "—" else "",
+            "cloud_cover": cloud if cloud != "—" else "",
+            "precipitation": precip if precip != "kein" else "",
+            "visibility": vis if vis != "—" else "",
             "logevent": v["logevent"].get().strip(),
             "note": v["note"].get().strip(),
         }
@@ -557,15 +565,19 @@ class Application:
             cv["engine_mode"] = "ein" if any(mstates.values()) else "aus"
             cv["motors_json"] = json.dumps(mstates, ensure_ascii=False)
         else:
-            cv["engine_mode"] = self._cond_vars["engine_mode"].get()
+            cv["engine_mode"] = fields.code_from_label(
+                ["automatisch", "ein", "aus"], self._cond_vars["engine_mode"].get())
             cv["motors_json"] = ""
         mode = getattr(self, "_sail_mode", "classic")
         if mode == "adaptive":
             states: Dict[str, object] = {}
             for sail, var in self._sail_controls:
-                val = var.get()
                 if isinstance(var, tk.BooleanVar):
-                    val = "gesetzt" if val else "nicht gesetzt"
+                    val = "gesetzt" if var.get() else "nicht gesetzt"
+                elif isinstance(var, tk.IntVar):
+                    val = var.get()                                  # Rollsegel: Prozent
+                else:  # SLAB: übersetztes Label -> Code
+                    val = fields.code_from_label(rig.SLAB_STATES, var.get())
                 states[sail.name] = val
             cv["mainsail"] = rig.summarize(states, self._rig)   # Kurzfassung (Tabelle/Bericht)
             cv["genoa_percent"] = None
@@ -577,7 +589,8 @@ class Application:
             cv["spinnaker"] = None
             cv["sails_json"] = ""
         else:  # classic
-            cv["mainsail"] = v["mainsail"].get() if v["mainsail"].get() != "—" else ""
+            main = fields.code_from_label(MAINSAIL_OPTIONS, v["mainsail"].get())
+            cv["mainsail"] = main if main != "—" else ""
             cv["genoa_percent"] = _parse_float(v["genoa"].get())
             cv["spinnaker"] = 1 if v["spinnaker"].get() else 0
             cv["sails_json"] = ""
@@ -2013,19 +2026,19 @@ class _EditEntryDialog:
         r += 1
 
         lab(t("Bewölkung:"), r)
-        self._cloud = tk.StringVar(value=entry.cloud_cover or "—")
+        self._cloud = tk.StringVar(value=fields.label_from_code(entry.cloud_cover or "—"))
         ttk.Combobox(frame, textvariable=self._cloud, width=18, state="readonly",
-                     values=CLOUD_COVER_LABELS).grid(row=r, column=1, sticky="w")
+                     values=fields.tr_labels(CLOUD_COVER_LABELS)).grid(row=r, column=1, sticky="w")
         lab(t("Niederschlag:"), r, 2)
-        self._precip = tk.StringVar(value=entry.precipitation or "kein")
+        self._precip = tk.StringVar(value=fields.label_from_code(entry.precipitation or "kein"))
         ttk.Combobox(frame, textvariable=self._precip, width=18, state="readonly",
-                     values=PRECIPITATION).grid(row=r, column=3, sticky="w")
+                     values=fields.tr_labels(PRECIPITATION)).grid(row=r, column=3, sticky="w")
         r += 1
 
         lab(t("Sicht:"), r)
-        self._visibility = tk.StringVar(value=entry.visibility or "—")
+        self._visibility = tk.StringVar(value=fields.label_from_code(entry.visibility or "—"))
         ttk.Combobox(frame, textvariable=self._visibility, width=18, state="readonly",
-                     values=VISIBILITY_LABELS).grid(row=r, column=1, sticky="w")
+                     values=fields.tr_labels(VISIBILITY_LABELS)).grid(row=r, column=1, sticky="w")
         lab(t("Seegang (m):"), r, 2)
         self._wave = tk.StringVar(value="" if entry.wave_height_m is None else f"{entry.wave_height_m:g}")
         ttk.Entry(frame, textvariable=self._wave, width=10).grid(row=r, column=3, sticky="w")
@@ -2232,9 +2245,10 @@ class _EditEntryDialog:
         else:
             self._motor_mode = "single"
             ttk.Label(frame, text=t("Motor:")).grid(row=row, column=0, sticky="e", padx=4, pady=2)
-            self._engine = tk.StringVar(value=self._ENGINE.get(entry.engine_on, "—"))
+            self._engine = tk.StringVar(
+                value=fields.label_from_code(self._ENGINE.get(entry.engine_on, "—")))
             ttk.Combobox(frame, textvariable=self._engine, width=18, state="readonly",
-                         values=["—", "ein", "aus"]).grid(row=row, column=1, sticky="w")
+                         values=fields.tr_labels(["—", "ein", "aus"])).grid(row=row, column=1, sticky="w")
 
     def _motor_result(self) -> Dict:
         if getattr(self, "_motor_mode", "single") == "multi":
@@ -2242,7 +2256,8 @@ class _EditEntryDialog:
             return {"engine_on": 1 if any(m.values()) else 0,
                     "motors_json": json.dumps(m, ensure_ascii=False)}
         engine_map = {"—": None, "ein": 1, "aus": 0}
-        return {"engine_on": engine_map.get(self._engine.get()), "motors_json": ""}
+        eng = fields.code_from_label(["—", "ein", "aus"], self._engine.get())
+        return {"engine_on": engine_map.get(eng), "motors_json": ""}
 
     @staticmethod
     def _infer_control(value) -> str:
@@ -2282,9 +2297,11 @@ class _EditEntryDialog:
                              variable=var, showvalue=1).grid(row=i, column=1, sticky="w")
                     ttk.Label(box, text="%").grid(row=i, column=2, sticky="w")
                 elif sail.control == rig.CONTROL_SLAB:
-                    var = tk.StringVar(value=init if init in rig.SLAB_STATES else "nicht gesetzt")
+                    code = init if init in rig.SLAB_STATES else "nicht gesetzt"
+                    var = tk.StringVar(value=fields.label_from_code(code))
                     ttk.Combobox(box, textvariable=var, width=14, state="readonly",
-                                 values=rig.SLAB_STATES).grid(row=i, column=1, sticky="w")
+                                 values=fields.tr_labels(rig.SLAB_STATES)).grid(
+                        row=i, column=1, sticky="w")
                 else:
                     var = tk.BooleanVar(value=(init == "gesetzt"))
                     ttk.Checkbutton(box, text=t("gesetzt"), variable=var).grid(
@@ -2313,9 +2330,9 @@ class _EditEntryDialog:
             # klassisch (kein Schiff/keine Ausrüstung, kein sails_json)
             self._sail_mode = "classic"
             ttk.Label(box, text=t("Großsegel:")).grid(row=0, column=0, sticky="e", padx=(6, 3), pady=2)
-            self._mainsail = tk.StringVar(value=entry.mainsail or "—")
+            self._mainsail = tk.StringVar(value=fields.label_from_code(entry.mainsail or "—"))
             ttk.Combobox(box, textvariable=self._mainsail, width=16, state="readonly",
-                         values=MAINSAIL_OPTIONS).grid(row=0, column=1, sticky="w")
+                         values=fields.tr_labels(MAINSAIL_OPTIONS)).grid(row=0, column=1, sticky="w")
             ttk.Label(box, text=t("Genua %:")).grid(row=1, column=0, sticky="e", padx=(6, 3), pady=2)
             self._genoa = tk.StringVar(
                 value="" if entry.genoa_percent is None else f"{entry.genoa_percent:g}")
@@ -2331,9 +2348,12 @@ class _EditEntryDialog:
         if self._sail_mode == "adaptive":
             states: Dict[str, object] = {}
             for sail, var in self._sail_controls:
-                val = var.get()
                 if isinstance(var, tk.BooleanVar):
-                    val = "gesetzt" if val else "nicht gesetzt"
+                    val = "gesetzt" if var.get() else "nicht gesetzt"
+                elif isinstance(var, tk.IntVar):
+                    val = var.get()
+                else:  # SLAB: übersetztes Label -> Code
+                    val = fields.code_from_label(rig.SLAB_STATES, var.get())
                 states[sail.name] = val
             spec = rig.RigSpec(sails=[s for s, _ in self._sail_controls])
             return {
@@ -2344,14 +2364,18 @@ class _EditEntryDialog:
             }
         if self._sail_mode == "motor":
             return {"mainsail": "", "genoa_percent": None, "spinnaker": None, "sails_json": ""}
+        main = fields.code_from_label(MAINSAIL_OPTIONS, self._mainsail.get())
         return {
-            "mainsail": self._mainsail.get() if self._mainsail.get() != "—" else "",
+            "mainsail": main if main != "—" else "",
             "genoa_percent": _parse_float(self._genoa.get()),
             "spinnaker": 1 if self._spinnaker.get() else 0,
             "sails_json": "",
         }
 
     def _on_save(self) -> None:
+        cloud = fields.code_from_label(CLOUD_COVER_LABELS, self._cloud.get())
+        precip = fields.code_from_label(PRECIPITATION, self._precip.get())
+        vis = fields.code_from_label(VISIBILITY_LABELS, self._visibility.get())
         self.result = {
             "timestamp": self._ts.get().strip(),
             "lat": _parse_float(self._lat.get()),
@@ -2362,9 +2386,9 @@ class _EditEntryDialog:
             "tws_kn": _parse_float(self._tws.get()),
             "twd_deg": _parse_float(self._twd.get()),
             "logevent": self._logevent.get().strip(),
-            "cloud_cover": self._cloud.get() if self._cloud.get() != "—" else "",
-            "precipitation": self._precip.get() if self._precip.get() != "kein" else "",
-            "visibility": self._visibility.get() if self._visibility.get() != "—" else "",
+            "cloud_cover": cloud if cloud != "—" else "",
+            "precipitation": precip if precip != "kein" else "",
+            "visibility": vis if vis != "—" else "",
             "wave_height_m": _parse_float(self._wave.get()),
             "location": self._location.get().strip(),
             "crew": self._crew.get().strip(),
@@ -2423,11 +2447,11 @@ class _ManualEntryDialog:
         auto = snapshot.get("engine_rpm")
         auto_hint = ""
         if auto is not None:
-            auto_hint = t(" (erkannt: {state})", state="ein" if auto > 0 else "aus")
-        self._engine = tk.StringVar(value="automatisch")
+            auto_hint = t(" (erkannt: {state})", state=t("ein") if auto > 0 else t("aus"))
+        self._engine = tk.StringVar(value=t("automatisch"))
         ttk.Combobox(
             frame, textvariable=self._engine, width=25, state="readonly",
-            values=["automatisch", "ein", "aus"],
+            values=fields.tr_labels(["automatisch", "ein", "aus"]),
         ).grid(row=row, column=1, pady=3, sticky="w")
         ttk.Label(frame, text=auto_hint, foreground="#888").grid(row=row, column=2, columnspan=2, sticky="w")
         row += 1
@@ -2437,7 +2461,7 @@ class _ManualEntryDialog:
         self._mainsail = tk.StringVar(value="—")
         ttk.Combobox(
             frame, textvariable=self._mainsail, width=25, state="readonly",
-            values=MAINSAIL_OPTIONS,
+            values=fields.tr_labels(MAINSAIL_OPTIONS),
         ).grid(row=row, column=1, pady=3, sticky="w")
         add_label(t("Genua %:"), row, 2)
         self._genoa = tk.StringVar()
@@ -2463,22 +2487,23 @@ class _ManualEntryDialog:
         self._cloud = tk.StringVar(value="—")
         self._cloud_combo = ttk.Combobox(
             frame, textvariable=self._cloud, width=25, state="readonly",
-            values=CLOUD_COVER_LABELS,
+            values=fields.tr_labels(CLOUD_COVER_LABELS),
         )
         self._cloud_combo.grid(row=row, column=1, pady=3, sticky="w")
         self._cloud_hint = ttk.Label(frame, text="", foreground="#888")
         self._cloud_hint.grid(row=row, column=2, columnspan=2, sticky="w")
         self._cloud_combo.bind(
             "<<ComboboxSelected>>",
-            lambda _e: self._cloud_hint.config(text=cloud_hint(self._cloud.get())),
+            lambda _e: self._cloud_hint.config(
+                text=cloud_hint(fields.code_from_label(CLOUD_COVER_LABELS, self._cloud.get()))),
         )
         row += 1
 
         add_label(t("Niederschlag:"), row)
-        self._precip = tk.StringVar(value="kein")
+        self._precip = tk.StringVar(value=t("kein"))
         ttk.Combobox(
             frame, textvariable=self._precip, width=25, state="readonly",
-            values=PRECIPITATION,
+            values=fields.tr_labels(PRECIPITATION),
         ).grid(row=row, column=1, pady=3, sticky="w")
         row += 1
 
@@ -2486,14 +2511,15 @@ class _ManualEntryDialog:
         self._visibility = tk.StringVar(value="—")
         self._vis_combo = ttk.Combobox(
             frame, textvariable=self._visibility, width=25, state="readonly",
-            values=VISIBILITY_LABELS,
+            values=fields.tr_labels(VISIBILITY_LABELS),
         )
         self._vis_combo.grid(row=row, column=1, pady=3, sticky="w")
         self._vis_hint = ttk.Label(frame, text="", foreground="#888")
         self._vis_hint.grid(row=row, column=2, columnspan=2, sticky="w")
         self._vis_combo.bind(
             "<<ComboboxSelected>>",
-            lambda _e: self._vis_hint.config(text=visibility_hint(self._visibility.get())),
+            lambda _e: self._vis_hint.config(
+                text=visibility_hint(fields.code_from_label(VISIBILITY_LABELS, self._visibility.get()))),
         )
         row += 1
 
@@ -2512,19 +2538,24 @@ class _ManualEntryDialog:
 
     def _on_save(self) -> None:
         engine_map = {"automatisch": None, "ein": 1, "aus": 0}
+        eng = fields.code_from_label(["automatisch", "ein", "aus"], self._engine.get())
+        main = fields.code_from_label(MAINSAIL_OPTIONS, self._mainsail.get())
+        cloud = fields.code_from_label(CLOUD_COVER_LABELS, self._cloud.get())
+        precip = fields.code_from_label(PRECIPITATION, self._precip.get())
+        vis = fields.code_from_label(VISIBILITY_LABELS, self._visibility.get())
         genoa = _parse_float(self._genoa.get())
         self.result = {
             "note": self._note.get("1.0", "end").strip(),
             "crew": self._crew.get().strip(),
             "location": self._location.get().strip(),
-            "engine_on": engine_map.get(self._engine.get()),
-            "mainsail": self._mainsail.get() if self._mainsail.get() != "—" else "",
+            "engine_on": engine_map.get(eng),
+            "mainsail": main if main != "—" else "",
             "genoa_percent": genoa,
             "spinnaker": 1 if self._spinnaker.get() else 0,
             "wave_height_m": _parse_float(self._wave.get()),
-            "cloud_cover": self._cloud.get() if self._cloud.get() != "—" else "",
-            "precipitation": self._precip.get() if self._precip.get() != "kein" else "",
-            "visibility": self._visibility.get() if self._visibility.get() != "—" else "",
+            "cloud_cover": cloud if cloud != "—" else "",
+            "precipitation": precip if precip != "kein" else "",
+            "visibility": vis if vis != "—" else "",
         }
         self.top.destroy()
 
@@ -2743,11 +2774,11 @@ class _NewEntryDialog:
         lab(t("Motor:"), r)
         self._engine = tk.StringVar(value="—")
         ttk.Combobox(frame, textvariable=self._engine, width=19, state="readonly",
-                     values=["—", "ein", "aus"]).grid(row=r, column=1, sticky="w")
+                     values=fields.tr_labels(["—", "ein", "aus"])).grid(row=r, column=1, sticky="w")
         lab(t("Großsegel:"), r, 2)
         self._mainsail = tk.StringVar(value="—")
         ttk.Combobox(frame, textvariable=self._mainsail, width=26, state="readonly",
-                     values=MAINSAIL_OPTIONS).grid(row=r, column=3, sticky="w")
+                     values=fields.tr_labels(MAINSAIL_OPTIONS)).grid(row=r, column=3, sticky="w")
         r += 1
 
         lab(t("Genua %:"), r)
@@ -2764,17 +2795,17 @@ class _NewEntryDialog:
         lab(t("Bewölkung:"), r)
         self._cloud = tk.StringVar(value="—")
         ttk.Combobox(frame, textvariable=self._cloud, width=19, state="readonly",
-                     values=CLOUD_COVER_LABELS).grid(row=r, column=1, sticky="w")
+                     values=fields.tr_labels(CLOUD_COVER_LABELS)).grid(row=r, column=1, sticky="w")
         lab(t("Niederschlag:"), r, 2)
-        self._precip = tk.StringVar(value="kein")
+        self._precip = tk.StringVar(value=t("kein"))
         ttk.Combobox(frame, textvariable=self._precip, width=26, state="readonly",
-                     values=PRECIPITATION).grid(row=r, column=3, sticky="w")
+                     values=fields.tr_labels(PRECIPITATION)).grid(row=r, column=3, sticky="w")
         r += 1
 
         lab(t("Sicht:"), r)
         self._visibility = tk.StringVar(value="—")
         ttk.Combobox(frame, textvariable=self._visibility, width=19, state="readonly",
-                     values=VISIBILITY_LABELS).grid(row=r, column=1, sticky="w")
+                     values=fields.tr_labels(VISIBILITY_LABELS)).grid(row=r, column=1, sticky="w")
         lab(t("Seegang (m):"), r, 2)
         self._wave = tk.StringVar()
         ttk.Entry(frame, textvariable=self._wave, width=28).grid(row=r, column=3, sticky="w")
@@ -2804,6 +2835,11 @@ class _NewEntryDialog:
 
     def _on_save(self) -> None:
         engine_map = {"—": None, "ein": 1, "aus": 0}
+        eng = fields.code_from_label(["—", "ein", "aus"], self._engine.get())
+        main = fields.code_from_label(MAINSAIL_OPTIONS, self._mainsail.get())
+        cloud = fields.code_from_label(CLOUD_COVER_LABELS, self._cloud.get())
+        precip = fields.code_from_label(PRECIPITATION, self._precip.get())
+        vis = fields.code_from_label(VISIBILITY_LABELS, self._visibility.get())
         measurements: Dict[str, float] = {}
         for key, var in (("lat", self._lat), ("lon", self._lon), ("sog_kn", self._sog),
                          ("cog_deg", self._cog), ("depth_m", self._depth),
@@ -2819,14 +2855,14 @@ class _NewEntryDialog:
             "logevent": self._logevent.get().strip(),
             "location": self._location.get().strip(),
             "crew": self._crew.get().strip(),
-            "engine_on": engine_map.get(self._engine.get()),
-            "mainsail": self._mainsail.get() if self._mainsail.get() != "—" else "",
+            "engine_on": engine_map.get(eng),
+            "mainsail": main if main != "—" else "",
             "genoa_percent": _parse_float(self._genoa.get()),
             "spinnaker": 1 if self._spinnaker.get() else 0,
             "wave_height_m": _parse_float(self._wave.get()),
-            "cloud_cover": self._cloud.get() if self._cloud.get() != "—" else "",
-            "precipitation": self._precip.get() if self._precip.get() != "kein" else "",
-            "visibility": self._visibility.get() if self._visibility.get() != "—" else "",
+            "cloud_cover": cloud if cloud != "—" else "",
+            "precipitation": precip if precip != "kein" else "",
+            "visibility": vis if vis != "—" else "",
             "note": self._note.get("1.0", "end").strip(),
         }
         self.top.destroy()

@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from saillog.i18n import t
+
 # Bedienelement-Typen
 CONTROL_FIXED = "fixed"      # gesetzt / nicht gesetzt (Checkbox)
 CONTROL_ROLLER = "roller"    # 0–100 % (Schieberegler)
@@ -111,9 +113,11 @@ def summarize(states: dict, spec: RigSpec) -> str:
                 parts.append(f"{sail.name} {pct:g}%")
         else:
             if val and val != "nicht gesetzt":
-                label = sail.name if val == "gesetzt" else f"{sail.name} {val}"
+                # Reff-Stufe („Reff 1" …) für die Anzeige übersetzen; der Segelname
+                # ist ein Eigenname und bleibt unverändert.
+                label = sail.name if val == "gesetzt" else f"{sail.name} {t(val)}"
                 parts.append(label)
     if parts:
         return ", ".join(parts)
     # Segelschiff, aber nichts gesetzt -> „geborgen" (statt leerer Spalte)
-    return "geborgen" if spec.sails else ""
+    return t("geborgen") if spec.sails else ""
