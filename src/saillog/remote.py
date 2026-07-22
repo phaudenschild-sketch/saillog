@@ -29,6 +29,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs
 
 from saillog import rig
+from saillog.i18n import t
 from saillog.fields import (
     CLOUD_COVER_LABELS,
     MAINSAIL_OPTIONS,
@@ -305,14 +306,14 @@ def _manifest() -> str:
 
 
 def _login_page(error: bool = False) -> str:
-    err = "<p class='err'>Falsche PIN.</p>" if error else ""
+    err = f"<p class='err'>{t('Falsche PIN.')}</p>" if error else ""
     return _page(
         "<h1>⛵ SailLog</h1><div class='card'>"
         "<form method='post' action='/login'>" + err +
-        "<label>PIN</label>"
+        f"<label>{t('PIN')}</label>"
         "<input name='pin' type='password' inputmode='numeric' autocomplete='off' autofocus>"
-        "<button type='submit'>Anmelden</button></form></div>"
-        "<p class='muted'>Fern-Erfassung im Bordnetz</p>"
+        f"<button type='submit'>{t('Anmelden')}</button></form></div>"
+        f"<p class='muted'>{t('Fern-Erfassung im Bordnetz')}</p>"
     )
 
 
@@ -331,7 +332,7 @@ def _datalist_input(name: str, values: List[str], selected, list_id: str) -> str
         "<select style='margin-top:6px' "
         "onchange='var i=this.previousElementSibling;"
         "if(this.value){i.value=this.value;}this.selectedIndex=0;'>"
-        f"<option value=''>▾ aus Liste wählen…</option>{opts}</select>"
+        f"<option value=''>▾ {t('aus Liste wählen…')}</option>{opts}</select>"
     )
 
 
@@ -354,9 +355,9 @@ def _motor_fields(rig_info: Optional[Dict], c: Dict) -> str:
                 f"<input type='hidden' name='motorname_{i}' value='{_esc(name)}'>"
                 "<label style='display:inline;font-weight:400'>"
                 f"<input type='checkbox' name='motorval_{i}' value='1' "
-                f"style='width:auto'> {_esc(name)} läuft</label><br>")
-        return f"<div class='full'><label>Motoren</label>{''.join(rows)}</div>"
-    return ("<div><label>Motor</label>"
+                f"style='width:auto'> {t('{name} läuft', name=_esc(name))}</label><br>")
+        return f"<div class='full'><label>{t('Motoren')}</label>{''.join(rows)}</div>"
+    return (f"<div><label>{t('Motor')}</label>"
             f"<select name='engine_mode'>"
             f"{_options(['automatisch','ein','aus'], c.get('engine_mode') or 'automatisch')}"
             "</select></div>")
@@ -372,19 +373,19 @@ def _sail_fields(rig_info: Optional[Dict], c: Dict) -> str:
         spin = " checked" if c.get("spinnaker") else ""
         mainsail_sel = c.get("mainsail") or "—"
         return (
-            "<div><label>Großsegel</label>"
+            f"<div><label>{t('Großsegel')}</label>"
             f"<select name='mainsail'>{_options(MAINSAIL_OPTIONS, mainsail_sel)}</select></div>"
-            "<div><label>Genua %</label>"
+            f"<div><label>{t('Genua %')}</label>"
             f"<input name='genoa' type='number' min='0' max='100' value='{_esc(genoa_val)}'></div>"
             "<div class='full'><label style='display:inline;font-weight:400'>"
             "<input type='checkbox' name='spinnaker' value='1' style='width:auto'" + spin +
-            "> Spinnaker gesetzt</label></div>"
+            f"> {t('Spinnaker gesetzt')}</label></div>"
         )
     if rig_info.get("is_motorboat"):
         motors = ", ".join(rig_info.get("motors") or [])
         extra = f" ({_esc(motors)})" if motors else ""
-        return ("<div class='full'><label>Antrieb</label>"
-                f"<div class='live'>🛥 Motorboot — keine Segel{extra}</div></div>")
+        return (f"<div class='full'><label>{t('Antrieb')}</label>"
+                f"<div class='live'>🛥 {t('Motorboot — keine Segel')}{extra}</div></div>")
     # adaptiv: ein Feld je Segel, Bedienelement nach Reff-Art
     out: List[str] = []
     for i, s in enumerate(rig_info.get("sails") or []):
@@ -403,7 +404,7 @@ def _sail_fields(rig_info: Optional[Dict], c: Dict) -> str:
         else:
             control = ("<label style='display:inline;font-weight:400'>"
                        f"<input type='checkbox' name='sailval_{i}' value='1' "
-                       "style='width:auto'> gesetzt</label>")
+                       f"style='width:auto'> {t('gesetzt')}</label>")
         out.append(f"<div class='full'><label>{_esc(name)}</label>{hidden}{control}</div>")
     return "".join(out)
 
@@ -413,15 +414,15 @@ def _form_page(info: Dict) -> str:
     m = info.get("measurements") or {}
     c = info.get("conditions") or {}
     trip = info.get("trip")
-    trip_line = f"Törn: {_esc(trip)}" if trip else "kein offener Törn"
+    trip_line = t("Törn: {trip}", trip=_esc(trip)) if trip else t("kein offener Törn")
 
     lat, lon = m.get("lat"), m.get("lon")
     pos = (f"{_fmt(lat,5)}, {_fmt(lon,5)}"
-           if lat is not None and lon is not None else "keine Position")
+           if lat is not None and lon is not None else t("keine Position"))
     live = (
         f"<div class='live'>{trip_line} · {pos}<br>"
         f"SOG {_fmt(m.get('sog_kn'))} kn · COG {_fmt(m.get('cog_deg'),0)}° · "
-        f"Wind {_fmt(m.get('tws_kn'))} kn · Tiefe {_fmt(m.get('depth_m'))} m</div>"
+        f"Wind {_fmt(m.get('tws_kn'))} kn · {t('Tiefe')} {_fmt(m.get('depth_m'))} m</div>"
     )
 
     logevents = info.get("logevents") or _LOGEVENTS
@@ -432,44 +433,44 @@ def _form_page(info: Dict) -> str:
     vis_sel = c.get("visibility") or "—"
 
     return _page(
-        "<h1>⛵ Neuer Eintrag</h1>" + live +
+        f"<h1>⛵ {t('Neuer Eintrag')}</h1>" + live +
         "<div class='card'><form method='post' action='/entry'><div class='grid'>"
-        "<div class='full'><label>Anlass</label>"
+        f"<div class='full'><label>{t('Anlass')}</label>"
         + _datalist_input("logevent", logevents,
                           c.get('logevent') or (logevents[0] if logevents else ''),
                           "logevent_list") + "</div>"
-        "<div class='full'><label>Bemerkung</label>"
-        "<textarea name='note' placeholder='z.B. Ankermanöver in der Bucht'></textarea></div>"
+        f"<div class='full'><label>{t('Bemerkung')}</label>"
+        f"<textarea name='note' placeholder='{t('z.B. Ankermanöver in der Bucht')}'></textarea></div>"
         + _motor_fields(info.get("rig"), c) +
-        "<div><label>Seegang (m)</label>"
+        f"<div><label>{t('Seegang (m)')}</label>"
         f"<input name='wave' type='number' step='0.1' min='0' value='{_esc(wave_val)}'></div>"
         + _sail_fields(info.get("rig"), c) +
-        "<div><label>Bewölkung</label>"
+        f"<div><label>{t('Bewölkung')}</label>"
         f"<select name='cloud'>{_options(CLOUD_COVER_LABELS, cloud_sel)}</select></div>"
-        "<div><label>Niederschlag</label>"
+        f"<div><label>{t('Niederschlag')}</label>"
         f"<select name='precip'>{_options(PRECIPITATION, precip_sel)}</select></div>"
-        "<div><label>Sicht</label>"
+        f"<div><label>{t('Sicht')}</label>"
         f"<select name='visibility'>{_options(VISIBILITY_LABELS, vis_sel)}</select></div>"
-        "<div class='full'><button type='submit'>✓ Eintrag speichern</button></div>"
+        f"<div class='full'><button type='submit'>✓ {t('Eintrag speichern')}</button></div>"
         "</div></form></div>"
-        "<p class='muted'>Position, Wind &amp; Tiefe werden automatisch aus dem Bordnetz übernommen.</p>"
+        f"<p class='muted'>{t('Position, Wind &amp; Tiefe werden automatisch aus dem Bordnetz übernommen.')}</p>"
     )
 
 
 def _result_page(result: Optional[Dict], error: Optional[str] = None) -> str:
     if error:
-        inner = ("<div class='card'><p class='err'>Konnte nicht gespeichert werden:</p>"
+        inner = (f"<div class='card'><p class='err'>{t('Konnte nicht gespeichert werden:')}</p>"
                  f"<p>{_esc(error)}</p>"
-                 "<a href='/'><button class='secondary'>Zurück</button></a></div>")
+                 f"<a href='/'><button class='secondary'>{t('Zurück')}</button></a></div>")
         return _page("<h1>⛵ SailLog</h1>" + inner)
     result = result or {}
     lat, lon = result.get("lat"), result.get("lon")
     pos = (f"{_fmt(lat,5)}, {_fmt(lon,5)}"
-           if lat is not None and lon is not None else "ohne Position")
+           if lat is not None and lon is not None else t("ohne Position"))
     inner = (
-        "<div class='card'><p class='ok'>✓ Eintrag gespeichert</p>"
+        f"<div class='card'><p class='ok'>✓ {t('Eintrag gespeichert')}</p>"
         f"<p>{_esc(result.get('time') or '')}<br>{_esc(result.get('logevent') or '')}<br>{pos}</p>"
-        "<a href='/'><button>Nächster Eintrag</button></a></div>"
+        f"<a href='/'><button>{t('Nächster Eintrag')}</button></a></div>"
     )
     return _page("<h1>⛵ SailLog</h1>" + inner)
 
