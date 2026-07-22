@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import time
 import tkinter as tk
 import webbrowser
@@ -13,7 +14,7 @@ from typing import Deque, Dict, List, Optional
 
 from saillog import (
     backup, branding, crewlist, fields, fuel, geo, photos, qrcode, reports,
-    timeutil, tripcon,
+    rig, timeutil, tripcon,
 )
 from saillog.ais import AisDecoder, AisTargets
 from saillog.autolog import AutoLogSettings
@@ -346,19 +347,6 @@ class Application:
             parent, textvariable=self._cond_vars["engine_mode"], width=18,
             state="readonly", values=["automatisch", "ein", "aus"],
         ))
-        self._cond_vars["mainsail"] = tk.StringVar(value="Geborgen")
-        add("Großsegel:", ttk.Combobox(
-            parent, textvariable=self._cond_vars["mainsail"], width=18,
-            state="readonly", values=MAINSAIL_OPTIONS,
-        ))
-        self._cond_vars["genoa"] = tk.StringVar(value="0")
-        add("Genua %:", ttk.Spinbox(
-            parent, from_=0, to=100, textvariable=self._cond_vars["genoa"], width=8,
-        ))
-        self._cond_vars["spinnaker"] = tk.BooleanVar(value=False)
-        add("Spinnaker:", ttk.Checkbutton(
-            parent, text="gesetzt", variable=self._cond_vars["spinnaker"],
-        ))
         self._cond_vars["cloud"] = tk.StringVar(value="wolkenlos")
         add("Bewölkung:", ttk.Combobox(
             parent, textvariable=self._cond_vars["cloud"], width=18,
@@ -383,20 +371,92 @@ class Application:
             parent, textvariable=self._cond_vars["note"], width=20,
         ))
 
-        # Änderungen sofort in den Thread-sicheren Cache übernehmen,
-        # damit auch der Auto-Log-Thread die aktuellen Werte sieht.
+        # Segel/Antrieb: passt sich an die Ausrüstung des aktiven Schiffs an
+        # (Festsegel = an/aus, Rollsegel = 0–100 %, Bindereff = Reff-Stufen;
+        # Motorboot = keine Segel). Wird bei Schiffswechsel neu aufgebaut.
+        self._sail_frame = ttk.LabelFrame(parent, text="Segel / Antrieb")
+        self._sail_frame.grid(row=per_col, column=0, columnspan=4,
+                              sticky="we", pady=(8, 0))
+        self._sail_vars: Dict[str, tk.Variable] = {}
+        self._sail_controls: list = []
+        self._sail_mode = "classic"
+        self._rig = rig.RigSpec()
+
+        # Änderungen der festen Felder sofort in den Cache übernehmen
         for var in self._cond_vars.values():
             var.trace_add("write", lambda *_: self._sync_conditions())
-        self._sync_conditions()
+        self._rebuild_sail_controls()
         self._logbook.conditions_provider = lambda: dict(self._condition_values)
+
+    def _active_rig(self) -> "rig.RigSpec":
+        sid = self._config.active_ship_id
+        items = self._store.ship_equipment(sid) if sid else []
+        return rig.rig_from_equipment(items)
+
+    def _rebuild_sail_controls(self) -> None:
+        """Baut die Segel-/Antriebs-Bedienelemente nach dem aktiven Schiff auf."""
+        for w in self._sail_frame.winfo_children():
+            w.destroy()
+        self._sail_vars = {}
+        self._sail_controls = []
+        self._rig = self._active_rig()
+        f = self._sail_frame
+
+        def bind(var):
+            var.trace_add("write", lambda *_: self._sync_conditions())
+            return var
+
+        if not self._rig.configured:
+            # Fallback: klassische Felder (wie bisher, ohne konfigurierte Ausrüstung)
+            self._sail_mode = "classic"
+            self._cond_vars["mainsail"] = bind(tk.StringVar(value="Geborgen"))
+            ttk.Label(f, text="Großsegel:").grid(row=0, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Combobox(f, textvariable=self._cond_vars["mainsail"], width=16,
+                         state="readonly", values=MAINSAIL_OPTIONS).grid(row=0, column=1, sticky="w")
+            self._cond_vars["genoa"] = bind(tk.StringVar(value="0"))
+            ttk.Label(f, text="Genua %:").grid(row=1, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Spinbox(f, from_=0, to=100, textvariable=self._cond_vars["genoa"],
+                        width=8).grid(row=1, column=1, sticky="w")
+            self._cond_vars["spinnaker"] = bind(tk.BooleanVar(value=False))
+            ttk.Label(f, text="Spinnaker:").grid(row=2, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Checkbutton(f, text="gesetzt", variable=self._cond_vars["spinnaker"]).grid(
+                row=2, column=1, sticky="w")
+            ttk.Label(f, text="(Tipp: unter Stammdaten die Schiffs-Ausrüstung "
+                      "pflegen — dann passt sich die Eingabe an.)",
+                      foreground="#999").grid(row=3, column=0, columnspan=3, sticky="w", padx=6)
+        elif self._rig.is_motorboat:
+            self._sail_mode = "motor"
+            txt = "🛥 Motorboot — keine Segel"
+            if self._rig.motors:
+                txt += "   (" + ", ".join(self._rig.motors) + ")"
+            ttk.Label(f, text=txt, foreground="#555").grid(
+                row=0, column=0, columnspan=3, sticky="w", padx=6, pady=6)
+        else:
+            self._sail_mode = "adaptive"
+            for i, sail in enumerate(self._rig.sails):
+                ttk.Label(f, text=sail.name + ":").grid(
+                    row=i, column=0, sticky="e", padx=(6, 3), pady=2)
+                if sail.control == rig.CONTROL_ROLLER:
+                    var = bind(tk.IntVar(value=0))
+                    tk.Scale(f, from_=0, to=100, orient="horizontal", length=170,
+                             variable=var, showvalue=1).grid(row=i, column=1, sticky="w")
+                    ttk.Label(f, text="%").grid(row=i, column=2, sticky="w")
+                elif sail.control == rig.CONTROL_SLAB:
+                    var = bind(tk.StringVar(value="nicht gesetzt"))
+                    ttk.Combobox(f, textvariable=var, width=14, state="readonly",
+                                 values=rig.SLAB_STATES).grid(row=i, column=1, sticky="w")
+                else:
+                    var = bind(tk.BooleanVar(value=False))
+                    ttk.Checkbutton(f, text="gesetzt", variable=var).grid(
+                        row=i, column=1, sticky="w")
+                self._sail_vars[sail.name] = var
+                self._sail_controls.append((sail, var))
+        self._sync_conditions()
 
     def _sync_conditions(self) -> None:
         v = self._cond_vars
-        self._condition_values = {
+        cv = {
             "engine_mode": v["engine_mode"].get(),
-            "mainsail": v["mainsail"].get() if v["mainsail"].get() != "—" else "",
-            "genoa_percent": _parse_float(v["genoa"].get()),
-            "spinnaker": 1 if v["spinnaker"].get() else 0,
             "wave_height_m": _parse_float(v["wave"].get()),
             "cloud_cover": v["cloud"].get() if v["cloud"].get() != "—" else "",
             "precipitation": v["precip"].get() if v["precip"].get() != "kein" else "",
@@ -404,6 +464,29 @@ class Application:
             "logevent": v["logevent"].get().strip(),
             "note": v["note"].get().strip(),
         }
+        mode = getattr(self, "_sail_mode", "classic")
+        if mode == "adaptive":
+            states: Dict[str, object] = {}
+            for sail, var in self._sail_controls:
+                val = var.get()
+                if isinstance(var, tk.BooleanVar):
+                    val = "gesetzt" if val else "nicht gesetzt"
+                states[sail.name] = val
+            cv["mainsail"] = rig.summarize(states, self._rig)   # Kurzfassung (Tabelle/Bericht)
+            cv["genoa_percent"] = None
+            cv["spinnaker"] = None
+            cv["sails_json"] = json.dumps(states, ensure_ascii=False)
+        elif mode == "motor":
+            cv["mainsail"] = ""
+            cv["genoa_percent"] = None
+            cv["spinnaker"] = None
+            cv["sails_json"] = ""
+        else:  # classic
+            cv["mainsail"] = v["mainsail"].get() if v["mainsail"].get() != "—" else ""
+            cv["genoa_percent"] = _parse_float(v["genoa"].get())
+            cv["spinnaker"] = 1 if v["spinnaker"].get() else 0
+            cv["sails_json"] = ""
+        self._condition_values = cv
 
     def _on_save_entry(self) -> None:
         self._sync_conditions()
@@ -1398,6 +1481,8 @@ class Application:
         factor = self._active_log_correction()
         for src in self._sources:
             src.log_correction = factor
+        # Eingabemaske an die (evtl. geänderte) Ausrüstung des Schiffs anpassen
+        self._rebuild_sail_controls()
 
     def _active_log_correction(self) -> float:
         ship_id = self._config.active_ship_id

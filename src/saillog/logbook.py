@@ -133,6 +133,7 @@ class LogbookService:
             "mainsail": conditions.get("mainsail", ""),
             "genoa_percent": conditions.get("genoa_percent"),
             "spinnaker": conditions.get("spinnaker"),
+            "sails_json": conditions.get("sails_json", ""),
             "wave_height_m": conditions.get("wave_height_m"),
             "cloud_cover": conditions.get("cloud_cover", ""),
             "precipitation": conditions.get("precipitation", ""),

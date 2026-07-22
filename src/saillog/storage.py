@@ -70,9 +70,10 @@ class LogEntry:
     rudder_deg: Optional[float] = None
     # Manuelle / abgeleitete Felder
     engine_on: Optional[int] = None      # 1=Motor läuft, 0=aus, None=unbekannt
-    mainsail: str = ""                   # Voll / Reff 1 / Reff 2 / Geborgen
-    genoa_percent: Optional[float] = None  # 0–100
-    spinnaker: Optional[int] = None      # 1=gesetzt, 0=nicht
+    mainsail: str = ""                   # Voll / Reff 1 / Reff 2 / Geborgen (alt)
+    genoa_percent: Optional[float] = None  # 0–100 (alt)
+    spinnaker: Optional[int] = None      # 1=gesetzt, 0=nicht (alt)
+    sails_json: str = ""                 # flexibler Segelzustand je Schiff (JSON)
     wave_height_m: Optional[float] = None
     cloud_cover: str = ""                # siehe fields.CLOUD_COVER
     precipitation: str = ""              # siehe fields.PRECIPITATION
@@ -98,6 +99,7 @@ class LogEntry:
         mainsail: str = "",
         genoa_percent: Optional[float] = None,
         spinnaker: Optional[int] = None,
+        sails_json: str = "",
         wave_height_m: Optional[float] = None,
         cloud_cover: str = "",
         precipitation: str = "",
@@ -115,6 +117,7 @@ class LogEntry:
             mainsail=mainsail,
             genoa_percent=genoa_percent,
             spinnaker=spinnaker,
+            sails_json=sails_json,
             wave_height_m=wave_height_m,
             cloud_cover=cloud_cover,
             precipitation=precipitation,
@@ -306,6 +309,7 @@ _MIGRATE_LOG = [
     ("mainsail", "TEXT DEFAULT ''"),
     ("genoa_percent", "REAL"),
     ("spinnaker", "INTEGER"),
+    ("sails_json", "TEXT DEFAULT ''"),
     ("wave_height_m", "REAL"),
     ("cloud_cover", "TEXT DEFAULT ''"),
     ("precipitation", "TEXT DEFAULT ''"),
@@ -344,6 +348,7 @@ class LogbookStore:
                 "mainsail TEXT DEFAULT ''",
                 "genoa_percent REAL",
                 "spinnaker INTEGER",
+                "sails_json TEXT DEFAULT ''",
                 "wave_height_m REAL",
                 "cloud_cover TEXT DEFAULT ''",
                 "precipitation TEXT DEFAULT ''",

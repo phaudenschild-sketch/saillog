@@ -51,6 +51,11 @@ Python.
   (Knöpfe „→"/„←"). Bereich **Antrieb** umgesetzt: **Großsegel, Vorsegel**
   (mit Reff-Art) und **Motor** (mit Öldruck-/Drehzahl-Parametern); eigene
   Einträge über „＋ Neu…"
+- 🎚️ **Adaptive Segel-Eingabe**: Die Bedingungsmaske richtet sich nach der
+  Ausrüstung des **aktiven Schiffs** — **Festsegel** an/aus, **Rollsegel** als
+  **0–100 %-Schieberegler**, **Bindereff** als **Reff-Stufen** (Reff 1–3). Ein
+  **Motorboot** (nur Motoren, keine Segel) blendet die Segelfelder aus. Ohne
+  gepflegte Ausrüstung bleibt die klassische Maske (Großsegel/Genua/Spinnaker)
 - 🧾 **Crewliste** (Knopf „Crewliste…"): Bootsangaben (einmal gespeichert) und
   Crew je Törn erfassen und eine **zweisprachige, druckbare Crewliste (DE/EN)**
   fürs Ein-/Ausklarieren erzeugen — öffnet im Browser, dort drucken oder als
