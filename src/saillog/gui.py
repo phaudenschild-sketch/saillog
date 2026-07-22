@@ -848,18 +848,18 @@ class Application:
             self._sources = []
             self._ais_decoders = []
             self._src_status = {}
-            self._connect_btn.config(text="Verbinden")
+            self._connect_btn.config(text=t("Verbinden"))
             self._update_sources_label()
             return
         if not self._source_defs:
-            messagebox.showinfo("Quellen", "Bitte zuerst über 'Quellen…' eine Datenquelle anlegen.")
+            messagebox.showinfo(t("Quellen"), t("Bitte zuerst über 'Quellen…' eine Datenquelle anlegen."))
             return
         self._ais_decoders = []
         for index, definition in enumerate(self._source_defs):
             try:
                 port = int(definition["port"])
             except (ValueError, KeyError, TypeError):
-                messagebox.showerror("Quelle", f"Ungültiger Port bei Quelle {index + 1}.")
+                messagebox.showerror(t("Quelle"), t("Ungültiger Port bei Quelle {n}.", n=index + 1))
                 continue
             source = NmeaSource(
                 host=str(definition["host"]).strip(),
@@ -875,7 +875,7 @@ class Application:
             )
             source.start()
             self._sources.append(source)
-        self._connect_btn.config(text="Trennen")
+        self._connect_btn.config(text=t("Trennen"))
         self._update_sources_label()
 
     def _make_status_cb(self, index: int):
@@ -918,7 +918,7 @@ class Application:
         self._config.save()
         if self._connected:
             messagebox.showinfo(
-                "Quellen", "Geänderte Quellen werden beim nächsten 'Verbinden' aktiv."
+                t("Quellen"), t("Geänderte Quellen werden beim nächsten 'Verbinden' aktiv.")
             )
         self._src_status = {}
         self._update_sources_label()
@@ -5113,24 +5113,24 @@ class _SourcesDialog:
         self.result: Optional[list] = None
         self._defs = [dict(d) for d in defs]
         self.top = tk.Toplevel(parent)
-        self.top.title("Datenquellen")
+        self.top.title(t("Datenquellen"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text="Aktive Quellen (alle werden gleichzeitig gelesen):").grid(
+        ttk.Label(frame, text=t("Aktive Quellen (alle werden gleichzeitig gelesen):")).grid(
             row=0, column=0, columnspan=6, sticky="w"
         )
         self._listbox = tk.Listbox(frame, width=52, height=5)
         self._listbox.grid(row=1, column=0, columnspan=5, pady=6, sticky="w")
-        ttk.Button(frame, text="Entfernen", command=self._on_remove).grid(
+        ttk.Button(frame, text=t("Entfernen"), command=self._on_remove).grid(
             row=1, column=5, sticky="n", padx=4
         )
         self._refresh_list()
 
         # Eingabezeile zum Hinzufügen
-        ttk.Label(frame, text="Protokoll:").grid(row=2, column=0, sticky="e", pady=6)
+        ttk.Label(frame, text=t("Protokoll:")).grid(row=2, column=0, sticky="e", pady=6)
         self._proto = tk.StringVar(value="tcp")
         proto = ttk.Combobox(
             frame, textvariable=self._proto, values=["tcp", "udp", "serial"],
@@ -5138,14 +5138,14 @@ class _SourcesDialog:
         )
         proto.grid(row=2, column=1, sticky="w")
         proto.bind("<<ComboboxSelected>>", lambda _e: self._update_hint())
-        ttk.Label(frame, text="Host / COM:").grid(row=2, column=2, sticky="e")
+        ttk.Label(frame, text=t("Host / COM:")).grid(row=2, column=2, sticky="e")
         self._host = tk.StringVar()
         ttk.Entry(frame, textvariable=self._host, width=16).grid(row=2, column=3, sticky="w")
-        ttk.Label(frame, text="Port / Baud:").grid(row=2, column=4, sticky="e")
+        ttk.Label(frame, text=t("Port / Baud:")).grid(row=2, column=4, sticky="e")
         self._port = tk.StringVar()
         ttk.Entry(frame, textvariable=self._port, width=8).grid(row=2, column=5, sticky="w")
 
-        ttk.Button(frame, text="+ Quelle hinzufügen", command=self._on_add).grid(
+        ttk.Button(frame, text=t("+ Quelle hinzufügen"), command=self._on_add).grid(
             row=3, column=0, columnspan=2, sticky="w", pady=6
         )
         self._hint = ttk.Label(frame, text="", foreground="#888")
@@ -5155,21 +5155,21 @@ class _SourcesDialog:
         # Vorlagen
         tmpl = ttk.Frame(frame)
         tmpl.grid(row=4, column=0, columnspan=6, sticky="w", pady=(4, 0))
-        ttk.Label(tmpl, text="Vorlagen:", foreground="#555").pack(side="left")
-        ttk.Button(tmpl, text="GPS-Maus (USB)", command=self._tmpl_gpsmaus).pack(side="left", padx=3)
+        ttk.Label(tmpl, text=t("Vorlagen:"), foreground="#555").pack(side="left")
+        ttk.Button(tmpl, text=t("GPS-Maus (USB)"), command=self._tmpl_gpsmaus).pack(side="left", padx=3)
         ttk.Button(tmpl, text="B&G (TCP 10110)", command=self._tmpl_bg).pack(side="left", padx=3)
         ttk.Button(tmpl, text="PredictWind DataHub", command=self._tmpl_datahub).pack(side="left", padx=3)
         ttk.Button(tmpl, text="Maretron (COM)", command=self._tmpl_maretron).pack(side="left", padx=3)
-        ttk.Button(tmpl, text="🔍 Ports…", command=self._on_pick_port).pack(side="left", padx=3)
+        ttk.Button(tmpl, text=t("🔍 Ports…"), command=self._on_pick_port).pack(side="left", padx=3)
         self._gofree_btn = ttk.Button(
-            tmpl, text="🔍 GoFree suchen", command=self._on_gofree_search
+            tmpl, text=t("🔍 GoFree suchen"), command=self._on_gofree_search
         )
         self._gofree_btn.pack(side="left", padx=(12, 3))
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=5, column=0, columnspan=6, pady=(12, 0))
-        ttk.Button(buttons, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Übernehmen"), command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _refresh_list(self) -> None:
         self._listbox.delete(0, "end")
@@ -5182,8 +5182,8 @@ class _SourcesDialog:
 
     def _update_hint(self) -> None:
         if self._proto.get() == "serial":
-            self._hint.config(text="seriell: Host = COM-Port (COM13), "
-                                   "Port = Baud (0 = automatisch erkennen)")
+            self._hint.config(text=t("seriell: Host = COM-Port (COM13), "
+                                     "Port = Baud (0 = automatisch erkennen)"))
         else:
             self._hint.config(text="")
 
@@ -5204,11 +5204,11 @@ class _SourcesDialog:
         ports = serialports.gps_first(serialports.available_ports())
         if not ports:
             messagebox.showinfo(
-                "COM-Ports",
-                "Keine seriellen Ports gefunden.\n\n"
-                "• GPS-Maus eingesteckt? Im Windows-Gerätemanager unter\n"
-                "  „Anschlüsse (COM & LPT)“ erscheint sie als COMx.\n"
-                "• Fehlt pyserial? Dann 'pip install pyserial'.")
+                t("COM-Ports"),
+                t("Keine seriellen Ports gefunden.\n\n"
+                  "• GPS-Maus eingesteckt? Im Windows-Gerätemanager unter\n"
+                  "  „Anschlüsse (COM & LPT)“ erscheint sie als COMx.\n"
+                  "• Fehlt pyserial? Dann 'pip install pyserial'."))
             return
         chooser = _PortChooser(self.top, ports)
         self.top.wait_window(chooser.top)
@@ -5241,7 +5241,7 @@ class _SourcesDialog:
         from saillog import discover
 
         self._gofree_btn.config(state="disabled")
-        self._hint.config(text="Suche GoFree-Geräte (bis 6 s) …")
+        self._hint.config(text=t("Suche GoFree-Geräte (bis 6 s) …"))
 
         def work():
             try:
@@ -5260,10 +5260,10 @@ class _SourcesDialog:
         if not devices:
             messagebox.showinfo(
                 "GoFree",
-                "Kein GoFree-Gerät gehört.\n\n"
-                "• Ist am MFD GoFree/Drahtlos aktiv und der Laptop im Plotter-Netz?\n"
-                "• Windows-Firewall für UDP 2052 freigeben und das Netzprofil auf\n"
-                "  'Privat' stellen (Details: find_sources.py --gofree --raw).",
+                t("Kein GoFree-Gerät gehört.\n\n"
+                  "• Ist am MFD GoFree/Drahtlos aktiv und der Laptop im Plotter-Netz?\n"
+                  "• Windows-Firewall für UDP 2052 freigeben und das Netzprofil auf\n"
+                  "  'Privat' stellen (Details: find_sources.py --gofree --raw)."),
             )
             return
 
@@ -5281,9 +5281,9 @@ class _SourcesDialog:
                     existing.add((host, port))
                     added += 1
         self._refresh_list()
-        msg = "Gefunden: " + ", ".join(str(n) for n in names)
-        msg += (f"\n{added} NMEA-Quelle(n) hinzugefügt."
-                if added else "\nQuelle(n) waren bereits vorhanden.")
+        msg = t("Gefunden: ") + ", ".join(str(n) for n in names)
+        msg += (t("\n{count} NMEA-Quelle(n) hinzugefügt.", count=added)
+                if added else t("\nQuelle(n) waren bereits vorhanden."))
         messagebox.showinfo("GoFree", msg)
 
     def _tmpl_bg(self) -> None:
@@ -5319,13 +5319,13 @@ class _PortChooser:
         self.result: Optional[str] = None
         self._devices = [dev for dev, _desc in ports]
         self.top = tk.Toplevel(parent)
-        self.top.title("COM-Port wählen")
+        self.top.title(t("COM-Port wählen"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
-        ttk.Label(frame, text="Gefundene serielle Ports "
-                              "(oben stehen wahrscheinliche GPS-Empfänger):").pack(
+        ttk.Label(frame, text=t("Gefundene serielle Ports "
+                                "(oben stehen wahrscheinliche GPS-Empfänger):")).pack(
             anchor="w")
         self._listbox = tk.Listbox(frame, width=52, height=min(8, max(3, len(ports))))
         for dev, desc in ports:
@@ -5335,8 +5335,8 @@ class _PortChooser:
         self._listbox.bind("<Double-Button-1>", lambda _e: self._on_ok())
         buttons = ttk.Frame(frame)
         buttons.pack()
-        ttk.Button(buttons, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Übernehmen"), command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _on_ok(self) -> None:
         sel = self._listbox.curselection()
@@ -5356,14 +5356,14 @@ class _RawMonitor:
         self._buffer = buffer
         self._paused = False
         self.top = tk.Toplevel(parent)
-        self.top.title("NMEA-Rohdaten")
+        self.top.title(t("NMEA-Rohdaten"))
         self.top.geometry("640x420")
 
         toolbar = ttk.Frame(self.top, padding=6)
         toolbar.pack(fill="x")
-        self._pause_btn = ttk.Button(toolbar, text="Pause", command=self._toggle_pause)
+        self._pause_btn = ttk.Button(toolbar, text=t("Pause"), command=self._toggle_pause)
         self._pause_btn.pack(side="left")
-        ttk.Button(toolbar, text="Leeren", command=self._clear).pack(side="left", padx=6)
+        ttk.Button(toolbar, text=t("Leeren"), command=self._clear).pack(side="left", padx=6)
         self._info = ttk.Label(toolbar, text="")
         self._info.pack(side="right")
 
@@ -5385,7 +5385,7 @@ class _RawMonitor:
 
     def _toggle_pause(self) -> None:
         self._paused = not self._paused
-        self._pause_btn.config(text="Weiter" if self._paused else "Pause")
+        self._pause_btn.config(text=t("Weiter") if self._paused else t("Pause"))
 
     def _clear(self) -> None:
         self._buffer.clear()
@@ -5400,7 +5400,7 @@ class _RawMonitor:
             self._text.insert("1.0", "\n".join(lines))
             self._text.see("end")
             self._text.config(state="disabled")
-            self._info.config(text=f"{len(self._buffer)} Sätze gepuffert")
+            self._info.config(text=t("{count} Sätze gepuffert", count=len(self._buffer)))
         self.top.after(700, self._refresh)
 
     def _close(self) -> None:
