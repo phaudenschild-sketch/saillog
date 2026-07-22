@@ -295,6 +295,14 @@ def _login_page(error: bool = False) -> str:
     )
 
 
+def _datalist_input(name: str, values: List[str], selected, list_id: str) -> str:
+    """Textfeld mit Vorschlagsliste: aus der Liste wählen ODER frei tippen."""
+    opts = "".join(f"<option value='{_esc(v)}'>" for v in values)
+    return (f"<input name='{_esc(name)}' list='{_esc(list_id)}' autocomplete='off' "
+            f"value='{_esc('' if selected is None else selected)}'>"
+            f"<datalist id='{_esc(list_id)}'>{opts}</datalist>")
+
+
 def _options(values: List[str], selected) -> str:
     out = []
     sel = "" if selected is None else str(selected)
@@ -377,7 +385,9 @@ def _form_page(info: Dict) -> str:
         "<h1>⛵ Neuer Eintrag</h1>" + live +
         "<div class='card'><form method='post' action='/entry'><div class='grid'>"
         "<div class='full'><label>Anlass</label>"
-        f"<select name='logevent'>{_options(logevents, c.get('logevent') or (logevents[0] if logevents else ''))}</select></div>"
+        + _datalist_input("logevent", logevents,
+                          c.get('logevent') or (logevents[0] if logevents else ''),
+                          "logevent_list") + "</div>"
         "<div class='full'><label>Bemerkung</label>"
         "<textarea name='note' placeholder='z.B. Ankermanöver in der Bucht'></textarea></div>"
         "<div><label>Motor</label>"
