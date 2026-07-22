@@ -6,6 +6,33 @@ verwenden.
 
 from __future__ import annotations
 
+from saillog.i18n import t
+
+# --- Auswahlwerte: Anzeige übersetzen, Wert kanonisch (deutsch) speichern ----
+# Die gespeicherten Werte (Bewölkung, Niederschlag, Sicht, Segel …) bleiben
+# immer deutsch — das ist der kanonische „Code". Nur die Anzeige wird über
+# ``t()`` übersetzt. So geraten nie gemischte Sprachen in die Datenbank, und
+# es ist keine Migration nötig.
+
+
+def tr_labels(codes):
+    """Übersetzte Anzeige-Labels für eine Auswahlliste (Reihenfolge bleibt)."""
+    return [t(c) for c in codes]
+
+
+def code_from_label(codes, label):
+    """Übersetztes Anzeige-Label -> kanonischer (deutscher) Code."""
+    for c in codes:
+        if t(c) == label:
+            return c
+    return label            # ist bereits ein Code oder unbekannt
+
+
+def label_from_code(code):
+    """Kanonischer (deutscher) Code -> übersetztes Anzeige-Label."""
+    return t(code) if code else code
+
+
 # --- Anlass (Logevent) ------------------------------------------------------
 
 # Standard-Auswahl für den „Anlass" eines Eintrags — angelehnt an TripCon.

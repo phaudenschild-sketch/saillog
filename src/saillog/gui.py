@@ -3641,7 +3641,9 @@ class _PersonEditDialog:
         self._vars: Dict[str, tk.StringVar] = {}
         r = 0
         for attr, label in self._FIELDS:
-            ttk.Label(frame, text=label).grid(row=r, column=0, sticky="e", padx=4, pady=3)
+            # „Name:" hier = Nachname (Kontext „person"), nicht der generische Name
+            lbl = t(label, _ctx="person") if label == "Name:" else t(label)
+            ttk.Label(frame, text=lbl).grid(row=r, column=0, sticky="e", padx=4, pady=3)
             var = tk.StringVar(value=getattr(person, attr) or "")
             ttk.Entry(frame, textvariable=var, width=30).grid(
                 row=r, column=1, columnspan=2, sticky="w", pady=3)
@@ -4002,7 +4004,7 @@ class _ShipEditDialog:
         for i, (attr, label, kind) in enumerate(self._FIELDS):
             r = i % per_col
             base = (i // per_col) * 2
-            ttk.Label(frame, text=label).grid(row=r, column=base, sticky="e", padx=(6, 3), pady=2)
+            ttk.Label(frame, text=t(label)).grid(row=r, column=base, sticky="e", padx=(6, 3), pady=2)
             cur = getattr(ship, attr)
             if kind == "num":
                 text = "" if cur is None else f"{cur:g}"
@@ -4223,7 +4225,7 @@ class _CrewListDialog:
         self._boat_vars: Dict[str, tk.StringVar] = {}
         for i, (key, label) in enumerate(self._BOAT_FIELDS):
             r, c = i % 4, (i // 4) * 2
-            ttk.Label(boat, text=label).grid(row=r, column=c, sticky="e", padx=(8, 3), pady=3)
+            ttk.Label(boat, text=t(label)).grid(row=r, column=c, sticky="e", padx=(8, 3), pady=3)
             var = tk.StringVar(value=str(getattr(config, key, "") or ""))
             ttk.Entry(boat, textvariable=var, width=26).grid(row=r, column=c + 1, sticky="w", pady=3)
             self._boat_vars[key] = var
@@ -4420,7 +4422,8 @@ class _CrewMemberDialog:
         self._vars: Dict[str, tk.StringVar] = {}
         for i, (key, label) in enumerate(self._ROWS):
             r = row0 + i
-            ttk.Label(frame, text=label).grid(row=r, column=0, sticky="e", padx=4, pady=3)
+            lbl = t(label, _ctx="person") if label == "Name:" else t(label)
+            ttk.Label(frame, text=lbl).grid(row=r, column=0, sticky="e", padx=4, pady=3)
             if key == "position":
                 var = tk.StringVar(value=getattr(member, key) or "Crew")
                 ttk.Combobox(frame, textvariable=var, width=26, state="readonly",
