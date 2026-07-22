@@ -342,11 +342,6 @@ class Application:
             values=self._logevents,
         )
         add("Anlass:", self._logevent_combo)
-        self._cond_vars["engine_mode"] = tk.StringVar(value="automatisch")
-        add("Motor:", ttk.Combobox(
-            parent, textvariable=self._cond_vars["engine_mode"], width=18,
-            state="readonly", values=["automatisch", "ein", "aus"],
-        ))
         self._cond_vars["cloud"] = tk.StringVar(value="wolkenlos")
         add("Bewölkung:", ttk.Combobox(
             parent, textvariable=self._cond_vars["cloud"], width=18,
@@ -404,11 +399,12 @@ class Application:
         return rig.rig_from_equipment(items)
 
     def _rebuild_sail_controls(self) -> None:
-        """Baut die Segel-/Antriebs-Bedienelemente nach dem aktiven Schiff auf."""
+        """Baut die Antriebs-Bedienelemente (Motor(en) + Segel) nach dem Schiff auf."""
         for w in self._sail_frame.winfo_children():
             w.destroy()
         self._sail_vars = {}
         self._sail_controls = []
+        self._motor_vars = {}
         self._rig = self._active_rig()
         f = self._sail_frame
 
@@ -416,49 +412,68 @@ class Application:
             var.trace_add("write", lambda *_: self._sync_conditions())
             return var
 
+        # --- Motor(en) ---
+        row = 0
+        if len(self._rig.motors) >= 2:
+            self._motor_mode = "multi"
+            ttk.Label(f, text="Motoren:").grid(row=row, column=0, sticky="ne", padx=(6, 3), pady=2)
+            mbox = ttk.Frame(f)
+            mbox.grid(row=row, column=1, columnspan=2, sticky="w")
+            for name in self._rig.motors:
+                var = bind(tk.BooleanVar(value=False))
+                ttk.Checkbutton(mbox, text=name + " läuft", variable=var).pack(anchor="w")
+                self._motor_vars[name] = var
+        else:
+            self._motor_mode = "single"
+            self._cond_vars["engine_mode"] = bind(tk.StringVar(value="automatisch"))
+            ttk.Label(f, text="Motor:").grid(row=row, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Combobox(f, textvariable=self._cond_vars["engine_mode"], width=16,
+                         state="readonly", values=["automatisch", "ein", "aus"]).grid(
+                row=row, column=1, sticky="w")
+        row += 1
+
+        # --- Segel ---
         if not self._rig.configured:
-            # Fallback: klassische Felder (wie bisher, ohne konfigurierte Ausrüstung)
+            # Fallback: klassische Segelfelder (ohne konfigurierte Ausrüstung)
             self._sail_mode = "classic"
             self._cond_vars["mainsail"] = bind(tk.StringVar(value="Geborgen"))
-            ttk.Label(f, text="Großsegel:").grid(row=0, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Label(f, text="Großsegel:").grid(row=row, column=0, sticky="e", padx=(6, 3), pady=2)
             ttk.Combobox(f, textvariable=self._cond_vars["mainsail"], width=16,
-                         state="readonly", values=MAINSAIL_OPTIONS).grid(row=0, column=1, sticky="w")
+                         state="readonly", values=MAINSAIL_OPTIONS).grid(row=row, column=1, sticky="w")
             self._cond_vars["genoa"] = bind(tk.StringVar(value="0"))
-            ttk.Label(f, text="Genua %:").grid(row=1, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Label(f, text="Genua %:").grid(row=row + 1, column=0, sticky="e", padx=(6, 3), pady=2)
             ttk.Spinbox(f, from_=0, to=100, textvariable=self._cond_vars["genoa"],
-                        width=8).grid(row=1, column=1, sticky="w")
+                        width=8).grid(row=row + 1, column=1, sticky="w")
             self._cond_vars["spinnaker"] = bind(tk.BooleanVar(value=False))
-            ttk.Label(f, text="Spinnaker:").grid(row=2, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Label(f, text="Spinnaker:").grid(row=row + 2, column=0, sticky="e", padx=(6, 3), pady=2)
             ttk.Checkbutton(f, text="gesetzt", variable=self._cond_vars["spinnaker"]).grid(
-                row=2, column=1, sticky="w")
+                row=row + 2, column=1, sticky="w")
             ttk.Label(f, text="(Tipp: unter Stammdaten die Schiffs-Ausrüstung "
                       "pflegen — dann passt sich die Eingabe an.)",
-                      foreground="#999").grid(row=3, column=0, columnspan=3, sticky="w", padx=6)
+                      foreground="#999").grid(row=row + 3, column=0, columnspan=3, sticky="w", padx=6)
         elif self._rig.is_motorboat:
             self._sail_mode = "motor"
-            txt = "🛥 Motorboot — keine Segel"
-            if self._rig.motors:
-                txt += "   (" + ", ".join(self._rig.motors) + ")"
-            ttk.Label(f, text=txt, foreground="#555").grid(
-                row=0, column=0, columnspan=3, sticky="w", padx=6, pady=6)
+            ttk.Label(f, text="🛥 Motorboot — keine Segel", foreground="#555").grid(
+                row=row, column=0, columnspan=3, sticky="w", padx=6, pady=(2, 6))
         else:
             self._sail_mode = "adaptive"
             for i, sail in enumerate(self._rig.sails):
+                rr = row + i
                 ttk.Label(f, text=sail.name + ":").grid(
-                    row=i, column=0, sticky="e", padx=(6, 3), pady=2)
+                    row=rr, column=0, sticky="e", padx=(6, 3), pady=2)
                 if sail.control == rig.CONTROL_ROLLER:
                     var = bind(tk.IntVar(value=0))
                     tk.Scale(f, from_=0, to=100, orient="horizontal", length=170,
-                             variable=var, showvalue=1).grid(row=i, column=1, sticky="w")
-                    ttk.Label(f, text="%").grid(row=i, column=2, sticky="w")
+                             variable=var, showvalue=1).grid(row=rr, column=1, sticky="w")
+                    ttk.Label(f, text="%").grid(row=rr, column=2, sticky="w")
                 elif sail.control == rig.CONTROL_SLAB:
                     var = bind(tk.StringVar(value="nicht gesetzt"))
                     ttk.Combobox(f, textvariable=var, width=14, state="readonly",
-                                 values=rig.SLAB_STATES).grid(row=i, column=1, sticky="w")
+                                 values=rig.SLAB_STATES).grid(row=rr, column=1, sticky="w")
                 else:
                     var = bind(tk.BooleanVar(value=False))
                     ttk.Checkbutton(f, text="gesetzt", variable=var).grid(
-                        row=i, column=1, sticky="w")
+                        row=rr, column=1, sticky="w")
                 self._sail_vars[sail.name] = var
                 self._sail_controls.append((sail, var))
         self._sync_conditions()
@@ -466,7 +481,6 @@ class Application:
     def _sync_conditions(self) -> None:
         v = self._cond_vars
         cv = {
-            "engine_mode": v["engine_mode"].get(),
             "wave_height_m": _parse_float(v["wave"].get()),
             "cloud_cover": v["cloud"].get() if v["cloud"].get() != "—" else "",
             "precipitation": v["precip"].get() if v["precip"].get() != "kein" else "",
@@ -474,6 +488,14 @@ class Application:
             "logevent": v["logevent"].get().strip(),
             "note": v["note"].get().strip(),
         }
+        # Motor(en)
+        if getattr(self, "_motor_mode", "single") == "multi":
+            mstates = {name: (1 if var.get() else 0) for name, var in self._motor_vars.items()}
+            cv["engine_mode"] = "ein" if any(mstates.values()) else "aus"
+            cv["motors_json"] = json.dumps(mstates, ensure_ascii=False)
+        else:
+            cv["engine_mode"] = self._cond_vars["engine_mode"].get()
+            cv["motors_json"] = ""
         mode = getattr(self, "_sail_mode", "classic")
         if mode == "adaptive":
             states: Dict[str, object] = {}
