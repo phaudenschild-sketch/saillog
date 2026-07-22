@@ -1574,7 +1574,7 @@ class Application:
         trips = self._store.all_trips(newest_first=True)
         dialog = _NewEntryDialog(
             self._root, offset, trips, self._logbook.current_trip_id,
-            self._live.snapshot(),
+            self._live.snapshot(), logevents=self._logevents,
         )
         self._root.wait_window(dialog.top)
         if dialog.result is None:
@@ -2594,9 +2594,11 @@ class _NewEntryDialog:
 
     def __init__(self, parent: tk.Tk, offset: float, trips: List[Trip],
                  current_trip_id: Optional[int],
-                 snapshot: Optional[Dict[str, float]] = None) -> None:
+                 snapshot: Optional[Dict[str, float]] = None,
+                 logevents: Optional[List[str]] = None) -> None:
         self.result: Optional[Dict] = None
         self._offset = offset
+        self._logevents = logevents or fields.DEFAULT_LOGEVENTS
         self.top = tk.Toplevel(parent)
         self.top.title("Neuer Eintrag (manuell)")
         self.top.transient(parent)
