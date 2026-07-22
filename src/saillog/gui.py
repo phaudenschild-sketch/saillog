@@ -393,6 +393,16 @@ class Application:
         items = self._store.ship_equipment(sid) if sid else []
         return rig.rig_from_equipment(items)
 
+    def _entry_rig(self, entry) -> "rig.RigSpec":
+        """Rig für einen Eintrag: Schiff seines Törns, sonst aktives Schiff."""
+        sid = None
+        if getattr(entry, "trip_id", None):
+            trip = self._store.get_trip(entry.trip_id)
+            sid = trip.ship_id if trip else None
+        sid = sid or self._config.active_ship_id
+        items = self._store.ship_equipment(sid) if sid else []
+        return rig.rig_from_equipment(items)
+
     def _rebuild_sail_controls(self) -> None:
         """Baut die Segel-/Antriebs-Bedienelemente nach dem aktiven Schiff auf."""
         for w in self._sail_frame.winfo_children():
@@ -1703,6 +1713,7 @@ class Application:
             store=self._store, capture=self._plotter_jpeg,
             max_px=int(self._config.photo_max_px or 1600),
             logevents=self._logevents,
+            rig_spec=self._entry_rig(entry),
         )
         self._root.wait_window(dialog.top)
         if dialog.result is not None:
@@ -1797,9 +1808,13 @@ class _EditEntryDialog:
 
     def __init__(self, parent: tk.Tk, entry, ts_display: str = "",
                  store=None, capture=None, max_px: int = 1600,
-                 logevents: Optional[List[str]] = None) -> None:
+                 logevents: Optional[List[str]] = None,
+                 rig_spec: "Optional[rig.RigSpec]" = None) -> None:
         self.result: Optional[Dict] = None
         self._logevents = logevents or fields.DEFAULT_LOGEVENTS
+        self._rig = rig_spec
+        self._sail_mode = "classic"
+        self._sail_controls: list = []
         self._store = store
         self._entry_id = entry.id
         self._capture = capture
@@ -1900,20 +1915,9 @@ class _EditEntryDialog:
         self._engine = tk.StringVar(value=self._ENGINE.get(entry.engine_on, "—"))
         ttk.Combobox(frame, textvariable=self._engine, width=18, state="readonly",
                      values=["—", "ein", "aus"]).grid(row=r, column=1, sticky="w")
-        lab("Großsegel:", r, 2)
-        self._mainsail = tk.StringVar(value=entry.mainsail or "—")
-        ttk.Combobox(frame, textvariable=self._mainsail, width=18, state="readonly",
-                     values=MAINSAIL_OPTIONS).grid(row=r, column=3, sticky="w")
         r += 1
-
-        lab("Genua %:", r)
-        self._genoa = tk.StringVar(value="" if entry.genoa_percent is None else f"{entry.genoa_percent:g}")
-        ttk.Spinbox(frame, from_=0, to=100, textvariable=self._genoa, width=8).grid(
-            row=r, column=1, sticky="w")
-        lab("Spinnaker:", r, 2)
-        self._spinnaker = tk.BooleanVar(value=bool(entry.spinnaker))
-        ttk.Checkbutton(frame, text="gesetzt", variable=self._spinnaker).grid(
-            row=r, column=3, sticky="w")
+        # Segel/Antrieb adaptiv (nach Ausrüstung des Schiffs), aus sails_json vorbelegt
+        self._build_edit_sails(frame, r, entry)
         r += 1
 
         lab("Bewölkung:", r)
@@ -2112,6 +2116,113 @@ class _EditEntryDialog:
             return
         webbrowser.open(Path(path).as_uri())
 
+    @staticmethod
+    def _infer_control(value) -> str:
+        try:
+            float(value)
+            return rig.CONTROL_ROLLER
+        except (TypeError, ValueError):
+            pass
+        if str(value) in ("Reff 1", "Reff 2", "Reff 3"):
+            return rig.CONTROL_SLAB
+        return rig.CONTROL_FIXED
+
+    def _build_edit_sails(self, frame, row, entry) -> None:
+        box = ttk.LabelFrame(frame, text="Segel / Antrieb")
+        box.grid(row=row, column=0, columnspan=4, sticky="we", pady=(2, 4))
+        spec = self._rig
+        try:
+            saved = json.loads(entry.sails_json) if entry.sails_json else {}
+        except Exception:  # noqa: BLE001
+            saved = {}
+        if not isinstance(saved, dict):
+            saved = {}
+
+        def build_adaptive(sails):
+            self._sail_mode = "adaptive"
+            for i, sail in enumerate(sails):
+                ttk.Label(box, text=sail.name + ":").grid(
+                    row=i, column=0, sticky="e", padx=(6, 3), pady=2)
+                init = saved.get(sail.name)
+                if sail.control == rig.CONTROL_ROLLER:
+                    try:
+                        start = int(float(init))
+                    except (TypeError, ValueError):
+                        start = 0
+                    var = tk.IntVar(value=start)
+                    tk.Scale(box, from_=0, to=100, orient="horizontal", length=170,
+                             variable=var, showvalue=1).grid(row=i, column=1, sticky="w")
+                    ttk.Label(box, text="%").grid(row=i, column=2, sticky="w")
+                elif sail.control == rig.CONTROL_SLAB:
+                    var = tk.StringVar(value=init if init in rig.SLAB_STATES else "nicht gesetzt")
+                    ttk.Combobox(box, textvariable=var, width=14, state="readonly",
+                                 values=rig.SLAB_STATES).grid(row=i, column=1, sticky="w")
+                else:
+                    var = tk.BooleanVar(value=(init == "gesetzt"))
+                    ttk.Checkbutton(box, text="gesetzt", variable=var).grid(
+                        row=i, column=1, sticky="w")
+                self._sail_controls.append((sail, var))
+
+        if saved:
+            # Segel aus dem Rig, plus gespeicherte Namen, die (noch) nicht im Rig sind
+            sails = list(spec.sails) if spec is not None else []
+            known = {s.name for s in sails}
+            for name in saved:
+                if name not in known:
+                    sails.append(rig.SailControl(name=name, category="",
+                                                 control=self._infer_control(saved[name])))
+            build_adaptive(sails)
+        elif spec is not None and spec.is_motorboat:
+            self._sail_mode = "motor"
+            txt = "🛥 Motorboot — keine Segel"
+            if spec.motors:
+                txt += "   (" + ", ".join(spec.motors) + ")"
+            ttk.Label(box, text=txt, foreground="#555").grid(
+                row=0, column=0, columnspan=3, sticky="w", padx=6, pady=4)
+        elif spec is not None and spec.configured:
+            build_adaptive(list(spec.sails))
+        else:
+            # klassisch (kein Schiff/keine Ausrüstung, kein sails_json)
+            self._sail_mode = "classic"
+            ttk.Label(box, text="Großsegel:").grid(row=0, column=0, sticky="e", padx=(6, 3), pady=2)
+            self._mainsail = tk.StringVar(value=entry.mainsail or "—")
+            ttk.Combobox(box, textvariable=self._mainsail, width=16, state="readonly",
+                         values=MAINSAIL_OPTIONS).grid(row=0, column=1, sticky="w")
+            ttk.Label(box, text="Genua %:").grid(row=1, column=0, sticky="e", padx=(6, 3), pady=2)
+            self._genoa = tk.StringVar(
+                value="" if entry.genoa_percent is None else f"{entry.genoa_percent:g}")
+            ttk.Spinbox(box, from_=0, to=100, textvariable=self._genoa, width=8).grid(
+                row=1, column=1, sticky="w")
+            ttk.Label(box, text="Spinnaker:").grid(row=2, column=0, sticky="e", padx=(6, 3), pady=2)
+            self._spinnaker = tk.BooleanVar(value=bool(entry.spinnaker))
+            ttk.Checkbutton(box, text="gesetzt", variable=self._spinnaker).grid(
+                row=2, column=1, sticky="w")
+
+    def _sail_result(self) -> Dict:
+        """Segel-Felder fürs Speichern (adaptiv -> sails_json + Kurzfassung)."""
+        if self._sail_mode == "adaptive":
+            states: Dict[str, object] = {}
+            for sail, var in self._sail_controls:
+                val = var.get()
+                if isinstance(var, tk.BooleanVar):
+                    val = "gesetzt" if val else "nicht gesetzt"
+                states[sail.name] = val
+            spec = rig.RigSpec(sails=[s for s, _ in self._sail_controls])
+            return {
+                "mainsail": rig.summarize(states, spec),
+                "genoa_percent": None,
+                "spinnaker": None,
+                "sails_json": json.dumps(states, ensure_ascii=False),
+            }
+        if self._sail_mode == "motor":
+            return {"mainsail": "", "genoa_percent": None, "spinnaker": None, "sails_json": ""}
+        return {
+            "mainsail": self._mainsail.get() if self._mainsail.get() != "—" else "",
+            "genoa_percent": _parse_float(self._genoa.get()),
+            "spinnaker": 1 if self._spinnaker.get() else 0,
+            "sails_json": "",
+        }
+
     def _on_save(self) -> None:
         engine_map = {"—": None, "ein": 1, "aus": 0}
         self.result = {
@@ -2125,9 +2236,6 @@ class _EditEntryDialog:
             "twd_deg": _parse_float(self._twd.get()),
             "logevent": self._logevent.get().strip(),
             "engine_on": engine_map.get(self._engine.get()),
-            "mainsail": self._mainsail.get() if self._mainsail.get() != "—" else "",
-            "genoa_percent": _parse_float(self._genoa.get()),
-            "spinnaker": 1 if self._spinnaker.get() else 0,
             "cloud_cover": self._cloud.get() if self._cloud.get() != "—" else "",
             "precipitation": self._precip.get() if self._precip.get() != "kein" else "",
             "visibility": self._visibility.get() if self._visibility.get() != "—" else "",
@@ -2136,6 +2244,7 @@ class _EditEntryDialog:
             "crew": self._crew.get().strip(),
             "note": self._note.get("1.0", "end").strip(),
         }
+        self.result.update(self._sail_result())
         self.top.destroy()
 
 
