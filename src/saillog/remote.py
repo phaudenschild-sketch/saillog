@@ -121,6 +121,16 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_bytes(_manifest().encode("utf-8"), "application/manifest+json")
             return
         if not self._authed():
+            # Auto-Login per QR-Code: Adresse enthält ?pin=… -> anmelden und auf
+            # die saubere Adresse (ohne PIN) umleiten.
+            query = self.path.split("?", 1)[1] if "?" in self.path else ""
+            given = (parse_qs(query).get("pin", [""])[0] or "").strip()
+            pin = self.server.saillog_pin              # type: ignore[attr-defined]
+            if given and pin and hmac.compare_digest(given, pin):
+                token = secrets.token_urlsafe(16)
+                self.server.saillog_tokens.add(token)  # type: ignore[attr-defined]
+                self._redirect("/", cookie=f"{_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax")
+                return
             self._send_html(_login_page())
             return
         if path == "/":

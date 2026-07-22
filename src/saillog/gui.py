@@ -3092,12 +3092,13 @@ class _RemoteDialog:
         addr.grid(row=2, column=0, sticky="w", padx=8, pady=2)
         ttk.Label(box, text="3. Mit der PIN anmelden.").grid(
             row=3, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 2))
-        # QR-Code der Adresse — am Handy scannen zum Öffnen
+        # QR-Code inkl. PIN (?pin=…) — Scannen öffnet die Seite UND meldet an
         self._qr_canvas = tk.Canvas(box, highlightthickness=0, bg="white")
         self._qr_canvas.grid(row=0, column=2, rowspan=4, padx=(6, 10), pady=8)
-        ttk.Label(box, text="↑ scannen zum Öffnen", foreground="#777").grid(
+        ttk.Label(box, text="↑ scannen = direkt angemeldet", foreground="#777").grid(
             row=4, column=2, pady=(0, 6))
-        self._draw_qr(url)
+        qr_url = url + (f"?pin={config.remote_pin}" if config.remote_pin else "")
+        self._draw_qr(qr_url)
 
         ttk.Label(frame, text="Port:").grid(row=3, column=0, sticky="e", padx=4, pady=3)
         self._port = tk.StringVar(value=str(port))

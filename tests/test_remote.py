@@ -114,6 +114,16 @@ class RemoteServerTest(unittest.TestCase):
         self._post(op, "/entry", {"logevent": "Manöver"})
         self.assertEqual(len(self.submitted), 0)
 
+    def test_qr_pin_auto_login(self):
+        # Scan der Adresse mit ?pin=… meldet direkt an (Formular statt Login)
+        _, html = self._get(self._opener(), "/?pin=1234")
+        self.assertIn("Neuer Eintrag", html)
+        self.assertNotIn("Anmelden", html)
+        # falsche PIN im Link -> Login
+        _, html2 = self._get(self._opener(), "/?pin=9999")
+        self.assertIn("Anmelden", html2)
+        self.assertNotIn("Neuer Eintrag", html2)
+
 
 class RemoteAdaptiveTest(unittest.TestCase):
     def setUp(self):
