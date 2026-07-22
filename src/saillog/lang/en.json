@@ -617,5 +617,18 @@
   "Länge über alles:": "Length overall:",
   "Funktion:": "Role:",
   "Staatsangehörigkeit:": "Nationality:",
-  "Reisepass-Nr.:": "Passport no.:"
+  "Reisepass-Nr.:": "Passport no.:",
+
+  "SailLog — AIS-Karte": "SailLog — AIS map",
+  "AIS-Ziele:": "AIS targets:",
+  "AIS-Ziele": "AIS targets",
+  "Logbuch:": "Logbook:",
+  "Törn-Track": "Trip track",
+  "COG (Kurs)": "COG (course)",
+  "Heading (Bug)": "Heading (bow)",
+  "Doppelklick öffnet ": "Double-click opens ",
+  "VesselFinder (Schiffsseite direkt)": "VesselFinder (ship page directly)",
+  "Segel:": "Sails:",
+  "Bilder:": "Images:",
+  "COG-Korrektur aktiv: Feed liefert ganze Grad statt Zehntel.": "COG correction active: feed delivers whole degrees instead of tenths."
 }

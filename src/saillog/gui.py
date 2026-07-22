@@ -704,7 +704,7 @@ class Application:
     def _ais_info(self) -> str:
         """Hinweistext für die Karte (z.B. aktive COG-Korrektur)."""
         if any(getattr(d, "cog_mode", "") == "whole" for d in self._ais_decoders):
-            return "COG-Korrektur aktiv: Feed liefert ganze Grad statt Zehntel."
+            return t("COG-Korrektur aktiv: Feed liefert ganze Grad statt Zehntel.")
         return ""
 
     def _on_open_map(self) -> None:

@@ -41,7 +41,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 (von BaseHTTPRequestHandler vorgegeben)
         path = self.path.split("?", 1)[0]
         if path in ("/", "/index.html"):
-            self._send(_PAGE.encode("utf-8"), "text/html; charset=utf-8")
+            self._send(_render_page().encode("utf-8"), "text/html; charset=utf-8")
         elif path == "/data.json":
             data = self.server.saillog_data()  # type: ignore[attr-defined]
             self._send(json.dumps(data).encode("utf-8"), "application/json",
@@ -397,3 +397,35 @@ setInterval(refresh, 4000);
 </body>
 </html>
 """
+
+
+def _render_page() -> str:
+    """Übersetzt die statischen deutschen Oberflächentexte der Kartenseite in
+    die aktive Sprache: Ebenen-Auswahl (Layer-Control), Legende und die
+    Popup-Beschriftungen. Alles andere (JS, Daten) bleibt unverändert."""
+    from saillog.i18n import current_language, t
+    p = _PAGE.replace('<html lang="de">', f'<html lang="{current_language()}">')
+    reps = [
+        ("SailLog — AIS-Karte", t("SailLog — AIS-Karte")),
+        ('AIS-Ziele: <span id="cnt">', t("AIS-Ziele:") + ' <span id="cnt">'),
+        ('px">Logbuch:', 'px">' + t("Logbuch:")),
+        ("</span> Auto", "</span> " + t("Auto")),
+        ("</span> Manuell", "</span> " + t("Manuell")),
+        ("</span> Import", "</span> " + t("Import")),
+        ("'Logbuch': entriesLayer", "'" + t("Logbuch") + "': entriesLayer"),
+        ("'Törn-Track': trackLayer", "'" + t("Törn-Track") + "': trackLayer"),
+        ("'AIS-Ziele': shipLayer", "'" + t("AIS-Ziele") + "': shipLayer"),
+        ("<br>COG (Kurs) ", "<br>" + t("COG (Kurs)") + " "),
+        ("<br>Heading (Bug) ", "<br>" + t("Heading (Bug)") + " "),
+        ("Doppelklick öffnet ", t("Doppelklick öffnet ")),
+        ("VesselFinder (Schiffsseite direkt)", t("VesselFinder (Schiffsseite direkt)")),
+        ("'<br>Anlass: '", "'<br>" + t("Anlass:") + " '"),
+        ("'Tiefe ' + e.depth", "'" + t("Tiefe") + " ' + e.depth"),
+        ("'<br>Wind wahr '", "'<br>" + t("Wind wahr") + " '"),
+        ("'<br>Motor: '", "'<br>" + t("Motor:") + " '"),
+        ("'<br>Segel: '", "'<br>" + t("Segel:") + " '"),
+        ("' Bilder: '", "' " + t("Bilder:") + " '"),
+    ]
+    for de, en in reps:
+        p = p.replace(de, en)
+    return p
