@@ -20,6 +20,10 @@ _SLOW_STALE = {
     "alternator_v": 60.0,
     "engine_hours": 60.0,
     "oil_pressure": 60.0,
+    # Tankfüllstand ändert sich kaum und wird oft nur selten gesendet — länger
+    # frisch halten, damit ein Logeintrag den letzten Wert noch mitschreibt.
+    "fuel_pct": 60.0,
+    "fuel_l": 60.0,
 }
 
 

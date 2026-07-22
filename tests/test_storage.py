@@ -35,6 +35,25 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(entry.sog_kn, 5.2)
         self.assertEqual(entry.depth_m, 12.0)
 
+    def test_gust_and_fuel_are_logged_but_not_displayed(self):
+        # Böe und Tankstand werden mitgeschrieben (und persistiert), erscheinen
+        # aber nicht in der Live-Maske (FIELD_LABELS).
+        from saillog import nmea
+        entry = LogEntry.from_snapshot(
+            timestamp="2026-07-05T09:00:00Z",
+            entry_type="auto",
+            measurements={"gust_kn": 10.4, "fuel_pct": 17.9, "fuel_l": 150.0},
+        )
+        entry_id = self.store.add(entry)
+        loaded = self.store.get(entry_id)
+        self.assertAlmostEqual(loaded.gust_kn, 10.4)
+        self.assertAlmostEqual(loaded.fuel_pct, 17.9)
+        self.assertAlmostEqual(loaded.fuel_l, 150.0)
+        shown = {key for key, _label, _unit in nmea.FIELD_LABELS}
+        self.assertNotIn("gust_kn", shown)
+        self.assertNotIn("fuel_pct", shown)
+        self.assertNotIn("fuel_l", shown)
+
     def test_ordering_newest_first(self):
         self.store.add(self._sample("2026-07-05T09:00:00Z", note="alt"))
         self.store.add(self._sample("2026-07-05T10:00:00Z", note="neu"))

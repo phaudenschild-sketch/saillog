@@ -124,6 +124,20 @@ class ParserTest(unittest.TestCase):
         r = self.parser.parse("$IIXDR,C,25.75,C,ENV_OUTSIDE_T")
         self.assertAlmostEqual(r[nmea.AIR_TEMP], 25.75)
 
+    def test_xdr_gust_from_predictwind(self):
+        # PredictWind-Hub: Böe als „GUST" in m/s (nur geloggt)
+        r = self.parser.parse("$DHXDR,X,2.02,m/s,TWS,X,-0.21,rad,TWA,X,5.35,m/s,GUST*59")
+        self.assertAlmostEqual(r[nmea.GUST], 5.35 * 1.943844, places=3)
+        # Wind/Kurs-Kennungen aus DHXDR dürfen echte Werte nicht überschreiben
+        self.assertNotIn(nmea.TWS, r)
+        self.assertNotIn(nmea.HDG_TRUE, r)
+
+    def test_xdr_fuel_level(self):
+        # PredictWind-Hub: Tankfüllstand in % und Litern (nur geloggt)
+        r = self.parser.parse("$IIXDR,E,17.9,P,FUEL#0,V,150.0,l,FUEL#0*5A")
+        self.assertAlmostEqual(r[nmea.FUEL_PCT], 17.9)
+        self.assertAlmostEqual(r[nmea.FUEL_L], 150.0)
+
     def test_unknown_sentence(self):
         self.assertEqual(self.parser.parse("$GPGSA,A,3,04,05,,09"), {})
 

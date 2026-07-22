@@ -34,6 +34,9 @@ MEASUREMENT_COLUMNS = [
     "heel_deg",
     "trim_deg",
     "rudder_deg",
+    "gust_kn",       # Böe (nur geloggt, nicht in der Live-Maske)
+    "fuel_pct",      # Tankfüllstand % (nur geloggt)
+    "fuel_l",        # Tankinhalt Liter (nur geloggt)
 ]
 
 
@@ -68,6 +71,9 @@ class LogEntry:
     heel_deg: Optional[float] = None
     trim_deg: Optional[float] = None
     rudder_deg: Optional[float] = None
+    gust_kn: Optional[float] = None       # Böe (nur geloggt, keine Anzeige)
+    fuel_pct: Optional[float] = None      # Tankfüllstand % (nur geloggt)
+    fuel_l: Optional[float] = None        # Tankinhalt Liter (nur geloggt)
     # Manuelle / abgeleitete Felder
     engine_on: Optional[int] = None      # 1=Motor läuft, 0=aus, None=unbekannt
     mainsail: str = ""                   # Voll / Reff 1 / Reff 2 / Geborgen (alt)

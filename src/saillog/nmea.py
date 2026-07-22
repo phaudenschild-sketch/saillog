@@ -45,6 +45,9 @@ BARO = "baro_mbar"           # Luftdruck (mbar)
 HEEL = "heel_deg"            # Krängung (Grad, + = Steuerbord)
 TRIM = "trim_deg"            # Trimm/Längsneigung (Grad)
 RUDDER = "rudder_deg"        # Ruderlage (Grad)
+GUST = "gust_kn"             # Böe / Spitzenwind (Knoten) — nur geloggt
+FUEL_PCT = "fuel_pct"        # Tankfüllstand Treibstoff (%) — nur geloggt
+FUEL_L = "fuel_l"            # Tankinhalt Treibstoff (Liter) — nur geloggt
 UTC_TIME = "utc_time"       # Uhrzeit UTC als "hhmmss"
 
 # Reihenfolge & Anzeigenamen für die GUI
@@ -340,6 +343,19 @@ def _xdr(f):
         units = (groups[i + 2] or "").upper()
         tid = (groups[i + 3] or "").upper()
         if value is None:
+            continue
+        # Böe/Spitzenwind und Tankfüllstand kommen kennungsabhängig (nicht über
+        # den Typ) — z.B. PredictWind-Hub: „…,X,5.35,m/s,GUST" bzw.
+        # „…,E,17.9,P,FUEL#0,V,150.0,l,FUEL#0". Werden nur geloggt, nicht angezeigt.
+        if "GUST" in tid:
+            unit = "M" if units in ("M/S", "MS") else units
+            result[GUST] = _speed_to_knots(value, unit)
+            continue
+        if "FUEL" in tid:
+            if units == "P":                 # Prozent
+                result[FUEL_PCT] = value
+            elif units in ("L", "M3"):        # Liter (bzw. m³ -> Liter)
+                result[FUEL_L] = value * 1000.0 if units == "M3" else value
             continue
         if ttype == "C":  # Temperatur
             if "AIR" in tid or "OUTSIDE" in tid:   # ENV_OUTAIR_T / ENV_OUTSIDE_T
