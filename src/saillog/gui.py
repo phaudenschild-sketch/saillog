@@ -95,12 +95,12 @@ class Application:
 
         root.title("SailLog — Segel-Logbuch")
         branding.set_window_icon(root)
-        root.geometry("1180x640")
         root.minsize(1000, 560)
 
         self._build_ui()
         self._refresh_trips()
         self._refresh_logbook()
+        self._fit_window()
         self._schedule_live_update()
         self._maybe_start_photo_watcher()
         self._autostart_logging()
@@ -108,6 +108,26 @@ class Application:
         self._maybe_start_remote()
 
         root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _save_img_source(self) -> None:
+        val = self._entry_img_src.get()
+        if val != self._config.entry_image_source:
+            self._config.entry_image_source = val
+            self._config.save()
+
+    def _fit_window(self) -> None:
+        """Fenster so groß, dass alles (inkl. untere Knopfzeile) sichtbar ist —
+        aber nie größer als der Bildschirm."""
+        r = self._root
+        r.update_idletasks()
+        req_w = max(1180, r.winfo_reqwidth())
+        req_h = r.winfo_reqheight()
+        scr_w, scr_h = r.winfo_screenwidth(), r.winfo_screenheight()
+        w = min(req_w, int(scr_w * 0.96))
+        h = min(req_h + 8, int(scr_h * 0.92))
+        x = max(0, (scr_w - w) // 2)
+        y = max(0, (scr_h - h) // 4)
+        r.geometry(f"{w}x{h}+{x}+{y}")
 
     # --- UI-Aufbau ----------------------------------------------------------
 
@@ -232,11 +252,14 @@ class Application:
         entry_grp = ttk.Frame(controls)
         entry_grp.grid(row=0, column=3, padx=8)
         ttk.Label(entry_grp, text="Bild:").pack(side="left")
-        self._entry_img_src = tk.StringVar(value="kein Bild")
+        self._entry_img_src = tk.StringVar(
+            value=self._config.entry_image_source or "kein Bild")
         ttk.Combobox(
             entry_grp, textvariable=self._entry_img_src, width=17, state="readonly",
             values=["kein Bild", "Plotter-Screenshot", "Bild von Festplatte…"],
         ).pack(side="left", padx=(2, 6))
+        # gewählte Bildquelle merken (beim nächsten Start vorbelegen)
+        self._entry_img_src.trace_add("write", lambda *_: self._save_img_source())
         ttk.Button(
             entry_grp, text="✎ Eintrag speichern", command=self._on_save_entry
         ).pack(side="left")
@@ -293,7 +316,7 @@ class Application:
         self._tree.bind("<Double-1>", lambda _e: self._on_edit_entry())
 
         bottom = ttk.Frame(self._root)
-        bottom.pack(fill="x", **pad)
+        bottom.pack(side="bottom", fill="x", **pad)
         ttk.Button(bottom, text="➕ Neuer Eintrag…", command=self._on_new_entry).pack(
             side="left", padx=(0, 8)
         )

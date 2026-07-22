@@ -92,6 +92,9 @@ class Config:
     # Anlass-Auswahl (Logevent); None = Standardliste (fields.DEFAULT_LOGEVENTS)
     logevents: Optional[list] = None
 
+    # Zuletzt gewählte Bildquelle für neue Einträge (beim Start wiederherstellen)
+    entry_image_source: str = "kein Bild"
+
     # Aktives Schiff (Stammdaten); dessen Loggeber-Korrektur wirkt auf STW/Log
     active_ship_id: Optional[int] = None
 
