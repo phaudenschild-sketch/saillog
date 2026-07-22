@@ -317,11 +317,22 @@ def _login_page(error: bool = False) -> str:
 
 
 def _datalist_input(name: str, values: List[str], selected, list_id: str) -> str:
-    """Textfeld mit Vorschlagsliste: aus der Liste wählen ODER frei tippen."""
-    opts = "".join(f"<option value='{_esc(v)}'>" for v in values)
-    return (f"<input name='{_esc(name)}' list='{_esc(list_id)}' autocomplete='off' "
-            f"value='{_esc('' if selected is None else selected)}'>"
-            f"<datalist id='{_esc(list_id)}'>{opts}</datalist>")
+    """Anlass: editierbares Textfeld + echtes Auswahl-Dropdown darunter.
+
+    Das Textfeld ist der tatsächliche Wert (frei tippen, z. B. „Ankern vor
+    Insel XY"). Das Dropdown rollt am Handy zuverlässig aus; eine Auswahl
+    füllt das Textfeld (das man danach weiter bearbeiten kann). Robuster als
+    <datalist>, das auf vielen Handy-Browsern nicht aufklappt.
+    """
+    sel = "" if selected is None else str(selected)
+    opts = "".join(f"<option>{_esc(v)}</option>" for v in values)
+    return (
+        f"<input name='{_esc(name)}' value='{_esc(sel)}' autocomplete='off'>"
+        "<select style='margin-top:6px' "
+        "onchange='var i=this.previousElementSibling;"
+        "if(this.value){i.value=this.value;}this.selectedIndex=0;'>"
+        f"<option value=''>▾ aus Liste wählen…</option>{opts}</select>"
+    )
 
 
 def _options(values: List[str], selected) -> str:
