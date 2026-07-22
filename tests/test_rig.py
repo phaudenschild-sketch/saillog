@@ -53,8 +53,10 @@ class RigTest(unittest.TestCase):
         s = rig.summarize({"Groß": "Reff 1", "Genua": 60}, spec)
         self.assertIn("Groß Reff 1", s)
         self.assertIn("Genua 60%", s)
-        # nichts gesetzt -> leer
-        self.assertEqual(rig.summarize({"Groß": "nicht gesetzt", "Genua": 0}, spec), "")
+        # nichts gesetzt (Segelschiff) -> „geborgen"
+        self.assertEqual(rig.summarize({"Groß": "nicht gesetzt", "Genua": 0}, spec), "geborgen")
+        # ohne Segel (Motorboot) -> leer
+        self.assertEqual(rig.summarize({}, rig.rig_from_equipment([])), "")
 
 
 if __name__ == "__main__":

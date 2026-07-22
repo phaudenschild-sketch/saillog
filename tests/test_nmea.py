@@ -114,6 +114,16 @@ class ParserTest(unittest.TestCase):
         result = self.parser.parse("$IIXDR,C,18.4,C,ENV_WATER_T")
         self.assertAlmostEqual(result[nmea.WATER_TEMP], 18.4)
 
+    def test_pmarout_heel_trim(self):
+        # Maretron-Lage: $PMAROUT,ATT,krängung,trimm,heading
+        r = self.parser.parse("$PMAROUT,ATT,0.4,-0.8,111.2,,,,,")
+        self.assertAlmostEqual(r[nmea.HEEL], 0.4)
+        self.assertAlmostEqual(r[nmea.TRIM], -0.8)
+
+    def test_xdr_air_temp_outside(self):
+        r = self.parser.parse("$IIXDR,C,25.75,C,ENV_OUTSIDE_T")
+        self.assertAlmostEqual(r[nmea.AIR_TEMP], 25.75)
+
     def test_unknown_sentence(self):
         self.assertEqual(self.parser.parse("$GPGSA,A,3,04,05,,09"), {})
 

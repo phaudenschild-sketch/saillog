@@ -113,4 +113,7 @@ def summarize(states: dict, spec: RigSpec) -> str:
             if val and val != "nicht gesetzt":
                 label = sail.name if val == "gesetzt" else f"{sail.name} {val}"
                 parts.append(label)
-    return ", ".join(parts)
+    if parts:
+        return ", ".join(parts)
+    # Segelschiff, aber nichts gesetzt -> „geborgen" (statt leerer Spalte)
+    return "geborgen" if spec.sails else ""

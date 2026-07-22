@@ -342,7 +342,7 @@ def _xdr(f):
         if value is None:
             continue
         if ttype == "C":  # Temperatur
-            if "AIR" in tid:
+            if "AIR" in tid or "OUTSIDE" in tid:   # ENV_OUTAIR_T / ENV_OUTSIDE_T
                 result[AIR_TEMP] = value
             elif any(k in tid for k in _ENGINE_HINTS):
                 result[ENGINE_TEMP] = value
@@ -398,6 +398,22 @@ def _pmarepd(f):
     return result
 
 
+def _pmarout(f):
+    # Maretron proprietär: $PMAROUT,ATT,krängung,trimm,heading,…
+    # (Lage aus der Maretron-IMU; manche Boote liefern die Krängung nur so,
+    # ohne XDR …ROLL.)
+    if len(f) < 4 or (f[1] or "").upper() != "ATT":
+        return {}
+    result = {}
+    heel = _to_float(f[2])
+    trim = _to_float(f[3]) if len(f) > 3 else None
+    if heel is not None:
+        result[HEEL] = heel
+    if trim is not None:
+        result[TRIM] = trim
+    return result
+
+
 _HANDLERS = {
     "RMC": _rmc,
     "GGA": _gga,
@@ -419,6 +435,7 @@ _HANDLERS = {
     "RPM": _rpm,
     "XDR": _xdr,
     "EPD": _pmarepd,   # Maretron $PMAREPD (Motorparameter)
+    "OUT": _pmarout,   # Maretron $PMAROUT,ATT (Krängung/Trimm)
 }
 
 
