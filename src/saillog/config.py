@@ -129,6 +129,9 @@ class Config:
     timezone_mode: str = "system"
     timezone_offset_hours: float = 0.0
 
+    # Sprache der Oberfläche (Sprachcode, z.B. "de", "en"); "de" = Original
+    language: str = "de"
+
     def photo_folder_list(self) -> list:
         """Effektive Liste der überwachten Foto-Ordner.
 
