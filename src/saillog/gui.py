@@ -479,17 +479,17 @@ class Application:
         row = 0
         if len(self._rig.motors) >= 2:
             self._motor_mode = "multi"
-            ttk.Label(f, text="Motoren:").grid(row=row, column=0, sticky="ne", padx=(6, 3), pady=2)
+            ttk.Label(f, text=t("Motoren:")).grid(row=row, column=0, sticky="ne", padx=(6, 3), pady=2)
             mbox = ttk.Frame(f)
             mbox.grid(row=row, column=1, columnspan=2, sticky="w")
             for name in self._rig.motors:
                 var = bind(tk.BooleanVar(value=False))
-                ttk.Checkbutton(mbox, text=name + " läuft", variable=var).pack(anchor="w")
+                ttk.Checkbutton(mbox, text=t("{name} läuft", name=name), variable=var).pack(anchor="w")
                 self._motor_vars[name] = var
         else:
             self._motor_mode = "single"
             self._cond_vars["engine_mode"] = bind(tk.StringVar(value="automatisch"))
-            ttk.Label(f, text="Motor:").grid(row=row, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Label(f, text=t("Motor:")).grid(row=row, column=0, sticky="e", padx=(6, 3), pady=2)
             ttk.Combobox(f, textvariable=self._cond_vars["engine_mode"], width=16,
                          state="readonly", values=["automatisch", "ein", "aus"]).grid(
                 row=row, column=1, sticky="w")
@@ -500,23 +500,23 @@ class Application:
             # Fallback: klassische Segelfelder (ohne konfigurierte Ausrüstung)
             self._sail_mode = "classic"
             self._cond_vars["mainsail"] = bind(tk.StringVar(value="Geborgen"))
-            ttk.Label(f, text="Großsegel:").grid(row=row, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Label(f, text=t("Großsegel:")).grid(row=row, column=0, sticky="e", padx=(6, 3), pady=2)
             ttk.Combobox(f, textvariable=self._cond_vars["mainsail"], width=16,
                          state="readonly", values=MAINSAIL_OPTIONS).grid(row=row, column=1, sticky="w")
             self._cond_vars["genoa"] = bind(tk.StringVar(value="0"))
-            ttk.Label(f, text="Genua %:").grid(row=row + 1, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Label(f, text=t("Genua %:")).grid(row=row + 1, column=0, sticky="e", padx=(6, 3), pady=2)
             ttk.Spinbox(f, from_=0, to=100, textvariable=self._cond_vars["genoa"],
                         width=8).grid(row=row + 1, column=1, sticky="w")
             self._cond_vars["spinnaker"] = bind(tk.BooleanVar(value=False))
-            ttk.Label(f, text="Spinnaker:").grid(row=row + 2, column=0, sticky="e", padx=(6, 3), pady=2)
-            ttk.Checkbutton(f, text="gesetzt", variable=self._cond_vars["spinnaker"]).grid(
+            ttk.Label(f, text=t("Spinnaker:")).grid(row=row + 2, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Checkbutton(f, text=t("gesetzt"), variable=self._cond_vars["spinnaker"]).grid(
                 row=row + 2, column=1, sticky="w")
-            ttk.Label(f, text="(Tipp: unter Stammdaten die Schiffs-Ausrüstung "
-                      "pflegen — dann passt sich die Eingabe an.)",
+            ttk.Label(f, text=t("(Tipp: unter Stammdaten die Schiffs-Ausrüstung "
+                      "pflegen — dann passt sich die Eingabe an.)"),
                       foreground="#999").grid(row=row + 3, column=0, columnspan=3, sticky="w", padx=6)
         elif self._rig.is_motorboat:
             self._sail_mode = "motor"
-            ttk.Label(f, text="🛥 Motorboot — keine Segel", foreground="#555").grid(
+            ttk.Label(f, text=t("🛥 Motorboot — keine Segel"), foreground="#555").grid(
                 row=row, column=0, columnspan=3, sticky="w", padx=6, pady=(2, 6))
         else:
             self._sail_mode = "adaptive"
@@ -535,7 +535,7 @@ class Application:
                                  values=rig.SLAB_STATES).grid(row=rr, column=1, sticky="w")
                 else:
                     var = bind(tk.BooleanVar(value=False))
-                    ttk.Checkbutton(f, text="gesetzt", variable=var).grid(
+                    ttk.Checkbutton(f, text=t("gesetzt"), variable=var).grid(
                         row=rr, column=1, sticky="w")
                 self._sail_vars[sail.name] = var
                 self._sail_controls.append((sail, var))
@@ -595,9 +595,9 @@ class Application:
         source = self._entry_img_src.get()
         if source == "Bild von Festplatte…":
             path = filedialog.askopenfilename(
-                title="Bild für den Eintrag wählen",
-                filetypes=[("Bilder", "*.jpg *.jpeg *.png *.bmp *.gif *.tif *.tiff *.webp"),
-                           ("Alle Dateien", "*.*")],
+                title=t("Bild für den Eintrag wählen"),
+                filetypes=[(t("Bilder"), "*.jpg *.jpeg *.png *.bmp *.gif *.tif *.tiff *.webp"),
+                           (t("Alle Dateien"), "*.*")],
             )
             if path:
                 self._attach_image_async(entry.id, disk_path=path)
@@ -646,13 +646,13 @@ class Application:
             self._refresh_logbook()
         elif kind == "Plotter":
             messagebox.showerror(
-                "Plotter-Screenshot",
-                "Kein Screenshot erhalten.\n\n"
-                "• adb-Pfad/Gerät prüfen (Menü Extras → Plotter-Screenshot…)\n"
-                "• Tablet per USB/WLAN gekoppelt und 'immer erlauben' bestätigt?",
+                t("Plotter-Screenshot"),
+                t("Kein Screenshot erhalten.\n\n"
+                  "• adb-Pfad/Gerät prüfen (Menü Extras → Plotter-Screenshot…)\n"
+                  "• Tablet per USB/WLAN gekoppelt und 'immer erlauben' bestätigt?"),
             )
         else:
-            messagebox.showwarning("Bild", "Datei-Bild konnte nicht angehängt werden.")
+            messagebox.showwarning(t("Bild"), t("Datei-Bild konnte nicht angehängt werden."))
 
     def _on_plotter_entry(self) -> None:
         """Sofort: Plotter-Screenshot holen und als Logbuch-Eintrag ablegen."""
@@ -669,10 +669,10 @@ class Application:
     def _plotter_entry_done(self, jpeg, conditions) -> None:
         if not jpeg:
             messagebox.showerror(
-                "Plotter-Screenshot",
-                "Kein Screenshot erhalten.\n\n"
-                "• adb-Pfad/Gerät prüfen (Menü Extras → Plotter-Screenshot…)\n"
-                "• Tablet gekoppelt und 'immer erlauben' bestätigt?",
+                t("Plotter-Screenshot"),
+                t("Kein Screenshot erhalten.\n\n"
+                  "• adb-Pfad/Gerät prüfen (Menü Extras → Plotter-Screenshot…)\n"
+                  "• Tablet gekoppelt und 'immer erlauben' bestätigt?"),
             )
             return
         entry = self._logbook.record_photo(
@@ -740,7 +740,7 @@ class Application:
             except OSError as exc:
                 self._map_server = None
                 messagebox.showerror(
-                    title, f"Kartenserver konnte nicht starten:\n{exc}"
+                    title, t("Kartenserver konnte nicht starten:\n{error}", error=exc)
                 )
                 return
         webbrowser.open(self._map_server.url)
@@ -963,23 +963,23 @@ class Application:
         lat, lon = snapshot.get("lat"), snapshot.get("lon")
         if last is not None and lat is not None and lon is not None:
             dist += geo.haversine_nm(last[0], last[1], lat, lon)
-        self._trip_dist_label.config(text=f"Strecke Törn: {dist:.1f} NM")
+        self._trip_dist_label.config(text=t("Strecke Törn: {dist} NM", dist=f"{dist:.1f}"))
 
     # --- Auto-Logging -------------------------------------------------------
 
     def _on_toggle_auto(self) -> None:
         if self._logbook.auto_running:
             self._logbook.stop_auto()
-            self._auto_btn.config(text="Auto-Logging starten")
+            self._auto_btn.config(text=t("Auto-Logging starten"))
             return
         self._logbook.start_auto(self._autolog_settings, on_entry=self._on_auto_entry)
-        self._auto_btn.config(text="Auto-Logging stoppen")
+        self._auto_btn.config(text=t("Auto-Logging stoppen"))
 
     def _autostart_logging(self) -> None:
         """AutoLogging direkt beim Programmstart mitstarten (per Knopf stoppbar)."""
         if not self._logbook.auto_running:
             self._logbook.start_auto(self._autolog_settings, on_entry=self._on_auto_entry)
-            self._auto_btn.config(text="Auto-Logging stoppen")
+            self._auto_btn.config(text=t("Auto-Logging stoppen"))
 
     # --- Fern-Erfassung (Handy/Tablet im Bordnetz) -------------------------
 
@@ -1063,9 +1063,9 @@ class Application:
             server.start()
         except OSError as exc:
             messagebox.showwarning(
-                "Fern-Erfassung",
-                f"Der Handy-Zugang konnte nicht gestartet werden (Port "
-                f"{self._config.remote_port} belegt?).\n\n{exc}",
+                t("Fern-Erfassung"),
+                t("Der Handy-Zugang konnte nicht gestartet werden (Port "
+                  "{port} belegt?).\n\n{error}", port=self._config.remote_port, error=exc),
             )
             return
         self._remote_server = server
@@ -1188,7 +1188,7 @@ class Application:
             backup.prune_backups(folder, int(self._config.backup_keep or 5))
             return str(path)
         except Exception as exc:  # noqa: BLE001
-            messagebox.showerror("Backup", f"Backup fehlgeschlagen:\n{exc}")
+            messagebox.showerror(t("Backup"), t("Backup fehlgeschlagen:\n{error}", error=exc))
             return None
 
     def _on_auto_entry(self, entry) -> None:
@@ -1265,7 +1265,7 @@ class Application:
         trip = self._store.get_trip(tid) if tid else None
         if trip is None:
             messagebox.showinfo(
-                "Törn bearbeiten", "Bitte oben zuerst einen Törn auswählen.")
+                t("Törn bearbeiten"), t("Bitte oben zuerst einen Törn auswählen."))
             return
         dialog = _TripEditDialog(self._root, trip, self._tz_offset(),
                                  ships=self._store.all_ships())
@@ -1491,8 +1491,8 @@ class Application:
     def _on_import_tripcon(self) -> None:
         """Liest ein TripCon-Backup (.tcdb) ein — mit Vorschau und Bestätigung."""
         path = filedialog.askopenfilename(
-            title="TripCon-Sicherung wählen",
-            filetypes=[("TripCon-Backup", "*.tcdb"), ("Alle Dateien", "*.*")],
+            title=t("TripCon-Sicherung wählen"),
+            filetypes=[(t("TripCon-Backup"), "*.tcdb"), (t("Alle Dateien"), "*.*")],
         )
         if not path:
             return
@@ -1517,23 +1517,27 @@ class Application:
         integ = str(info.get("integrity", "?"))
         if integ not in ("ok", "?"):
             if not messagebox.askyesno(
-                "TripCon-Import",
-                f"Achtung: Die Datei meldet Integritätsprobleme:\n{integ}\n\n"
-                "Trotzdem versuchen, so viel wie möglich zu importieren?"):
+                t("TripCon-Import"),
+                t("Achtung: Die Datei meldet Integritätsprobleme:\n{integ}\n\n"
+                  "Trotzdem versuchen, so viel wie möglich zu importieren?", integ=integ)):
                 return
-        msg = (
-            f"Datei: {Path(path).name}\n\n"
-            f"Integrität: {integ}\n"
-            f"Törns: {info.get('trips')}\n"
-            f"Log-Einträge: {info.get('log_entries')}\n"
-            f"Plotter-Bilder: {info.get('plotter_images')}\n"
-            f"Schiffe: {info.get('ships')} · Personen: {info.get('persons')}\n"
-            f"Zeitraum: {info.get('date_from', '')} – {info.get('date_to', '')}\n\n"
+        msg = t(
+            "Datei: {name}\n\n"
+            "Integrität: {integ}\n"
+            "Törns: {trips}\n"
+            "Log-Einträge: {log_entries}\n"
+            "Plotter-Bilder: {plotter_images}\n"
+            "Schiffe: {ships} · Personen: {persons}\n"
+            "Zeitraum: {date_from} – {date_to}\n\n"
             "Jetzt in saillog importieren?\n"
             "(Ein früherer TripCon-Import wird dabei ersetzt; eigene Einträge "
-            "bleiben unberührt.)"
+            "bleiben unberührt.)",
+            name=Path(path).name, integ=integ, trips=info.get('trips'),
+            log_entries=info.get('log_entries'), plotter_images=info.get('plotter_images'),
+            ships=info.get('ships'), persons=info.get('persons'),
+            date_from=info.get('date_from', ''), date_to=info.get('date_to', ''),
         )
-        if not messagebox.askyesno("TripCon-Import", msg):
+        if not messagebox.askyesno(t("TripCon-Import"), msg):
             return
         import threading
         threading.Thread(
@@ -1559,18 +1563,22 @@ class Application:
         self._refresh_trips()
         self._refresh_logbook()
         messagebox.showinfo(
-            "TripCon-Import",
-            "Import abgeschlossen.\n\n"
-            f"Einträge: {r['entries']}\n"
-            f"Bilder: {r['images']} (+{r.get('trip_images', 0)} törnweit, "
-            f"Methode: {r['image_method']})\n"
-            f"Schiffe: {r['ships_created']} neu, {r['ships_matched']} erkannt\n"
-            f"Personen: {r['persons_created']} neu, {r['persons_matched']} erkannt",
+            t("TripCon-Import"),
+            t("Import abgeschlossen.\n\n"
+              "Einträge: {entries}\n"
+              "Bilder: {images} (+{trip_images} törnweit, "
+              "Methode: {method})\n"
+              "Schiffe: {ships_created} neu, {ships_matched} erkannt\n"
+              "Personen: {persons_created} neu, {persons_matched} erkannt",
+              entries=r['entries'], images=r['images'],
+              trip_images=r.get('trip_images', 0), method=r['image_method'],
+              ships_created=r['ships_created'], ships_matched=r['ships_matched'],
+              persons_created=r['persons_created'], persons_matched=r['persons_matched']),
         )
 
     def _tripcon_failed(self, exc: Exception) -> None:
         messagebox.showerror(
-            "TripCon-Import", f"Import fehlgeschlagen:\n{exc}")
+            t("TripCon-Import"), t("Import fehlgeschlagen:\n{error}", error=exc))
 
     # --- Stammdaten ---------------------------------------------------------
 
@@ -1700,7 +1708,7 @@ class Application:
             self._tree.delete(item)
         trip_id = self._logbook.current_trip_id
         offset = self._tz_offset()
-        self._tree.heading("time", text=f"Zeit ({timeutil.label(self._config.timezone_mode, self._config.timezone_offset_hours)})")
+        self._tree.heading("time", text=t("Zeit ({tz})", tz=timeutil.label(self._config.timezone_mode, self._config.timezone_offset_hours)))
         positions = []  # (lat, lon) der Log-Einträge — für die Strecke
         show_track = bool(getattr(self, "_show_track", None) and self._show_track.get())
         rows = self._store.all(limit=20000, newest_first=True, trip_id=trip_id,
@@ -1755,14 +1763,14 @@ class Application:
         self._trip_last_pos = positions[-1] if positions else None
 
         total = self._store.count(trip_id=trip_id)
-        scope = "im Törn" if trip_id else "gesamt"
-        self._count_label.config(text=f"{total} Einträge ({scope})")
+        scope = t("im Törn") if trip_id else t("gesamt")
+        self._count_label.config(text=t("{total} Einträge ({scope})", total=total, scope=scope))
 
     def _on_delete_entry(self) -> None:
         selection = self._tree.selection()
         if not selection:
             return
-        if not messagebox.askyesno("Löschen", "Ausgewählte Einträge löschen?"):
+        if not messagebox.askyesno(t("Löschen"), t("Ausgewählte Einträge löschen?")):
             return
         for iid in selection:
             self._store.delete(int(iid))
@@ -1774,7 +1782,7 @@ class Application:
             return
         data = self._store.get_image(int(selection[0]))
         if not data:
-            messagebox.showinfo("Bild", "Zu diesem Eintrag ist kein Bild gespeichert.")
+            messagebox.showinfo(t("Bild"), t("Zu diesem Eintrag ist kein Bild gespeichert."))
             return
         import tempfile
         try:
@@ -1826,7 +1834,7 @@ class Application:
         if not path:
             return
         count = self._store.export_csv(path, trip_id=self._logbook.current_trip_id)
-        messagebox.showinfo("Export", f"{count} Einträge nach CSV exportiert.")
+        messagebox.showinfo(t("Export"), t("{count} Einträge nach CSV exportiert.", count=count))
 
     def _on_export_gpx(self) -> None:
         path = filedialog.asksaveasfilename(
@@ -1836,7 +1844,7 @@ class Application:
         if not path:
             return
         count = self._store.export_gpx(path, trip_id=self._logbook.current_trip_id)
-        messagebox.showinfo("Export", f"{count} Positionspunkte nach GPX exportiert.")
+        messagebox.showinfo(t("Export"), t("{count} Positionspunkte nach GPX exportiert.", count=count))
 
     # --- Schließen ----------------------------------------------------------
 
@@ -2375,7 +2383,7 @@ class _ManualEntryDialog:
         self.result: Optional[Dict] = None
         self._logevents = logevents or fields.DEFAULT_LOGEVENTS
         self.top = tk.Toplevel(parent)
-        self.top.title("Manueller Eintrag")
+        self.top.title(t("Manueller Eintrag"))
         self.top.transient(parent)
         self.top.grab_set()
 
@@ -2384,14 +2392,14 @@ class _ManualEntryDialog:
 
         parts = []
         if "lat" in snapshot and "lon" in snapshot:
-            parts.append(f"Pos {snapshot['lat']:.4f}, {snapshot['lon']:.4f}")
+            parts.append(t("Pos {lat}, {lon}", lat=f"{snapshot['lat']:.4f}", lon=f"{snapshot['lon']:.4f}"))
         if "sog_kn" in snapshot:
-            parts.append(f"SOG {snapshot['sog_kn']:.1f}kn")
+            parts.append(t("SOG {sog}kn", sog=f"{snapshot['sog_kn']:.1f}"))
         if "aws_kn" in snapshot:
-            parts.append(f"Wind {snapshot['aws_kn']:.0f}kn")
+            parts.append(t("Wind {wind}kn", wind=f"{snapshot['aws_kn']:.0f}"))
         if snapshot.get("engine_rpm") is not None:
-            parts.append(f"Motor {snapshot['engine_rpm']:.0f} U/min")
-        info = " · ".join(parts) if parts else "Keine Live-Messwerte (nur Text wird gespeichert)."
+            parts.append(t("Motor {rpm} U/min", rpm=f"{snapshot['engine_rpm']:.0f}"))
+        info = " · ".join(parts) if parts else t("Keine Live-Messwerte (nur Text wird gespeichert).")
         ttk.Label(frame, text=info, foreground="#555").grid(
             row=0, column=0, columnspan=4, sticky="w", pady=(0, 10)
         )
@@ -2402,20 +2410,20 @@ class _ManualEntryDialog:
             ttk.Label(frame, text=text).grid(row=r, column=c, sticky="e", padx=4, pady=3)
 
         # Ort / Crew
-        add_label("Ort / Hafen:", row)
+        add_label(t("Ort / Hafen:"), row)
         self._location = tk.StringVar()
         ttk.Entry(frame, textvariable=self._location, width=28).grid(row=row, column=1, pady=3, sticky="w")
-        add_label("Crew:", row, 2)
+        add_label(t("Crew:"), row, 2)
         self._crew = tk.StringVar()
         ttk.Entry(frame, textvariable=self._crew, width=22).grid(row=row, column=3, pady=3, sticky="w")
         row += 1
 
         # Motor
-        add_label("Motor:", row)
+        add_label(t("Motor:"), row)
         auto = snapshot.get("engine_rpm")
         auto_hint = ""
         if auto is not None:
-            auto_hint = f" (erkannt: {'ein' if auto > 0 else 'aus'})"
+            auto_hint = t(" (erkannt: {state})", state="ein" if auto > 0 else "aus")
         self._engine = tk.StringVar(value="automatisch")
         ttk.Combobox(
             frame, textvariable=self._engine, width=25, state="readonly",
@@ -2425,33 +2433,33 @@ class _ManualEntryDialog:
         row += 1
 
         # Großsegel / Genua / Spinnaker
-        add_label("Großsegel:", row)
+        add_label(t("Großsegel:"), row)
         self._mainsail = tk.StringVar(value="—")
         ttk.Combobox(
             frame, textvariable=self._mainsail, width=25, state="readonly",
             values=MAINSAIL_OPTIONS,
         ).grid(row=row, column=1, pady=3, sticky="w")
-        add_label("Genua %:", row, 2)
+        add_label(t("Genua %:"), row, 2)
         self._genoa = tk.StringVar()
         ttk.Spinbox(frame, from_=0, to=100, textvariable=self._genoa, width=8).grid(
             row=row, column=3, pady=3, sticky="w"
         )
         row += 1
 
-        add_label("Spinnaker:", row)
+        add_label(t("Spinnaker:"), row)
         self._spinnaker = tk.BooleanVar(value=False)
-        ttk.Checkbutton(frame, text="gesetzt", variable=self._spinnaker).grid(
+        ttk.Checkbutton(frame, text=t("gesetzt"), variable=self._spinnaker).grid(
             row=row, column=1, sticky="w", pady=3
         )
         row += 1
 
         # Wetter
-        add_label("Wellenhöhe (m):", row)
+        add_label(t("Wellenhöhe (m):"), row)
         self._wave = tk.StringVar()
         ttk.Entry(frame, textvariable=self._wave, width=10).grid(row=row, column=1, pady=3, sticky="w")
         row += 1
 
-        add_label("Bewölkung:", row)
+        add_label(t("Bewölkung:"), row)
         self._cloud = tk.StringVar(value="—")
         self._cloud_combo = ttk.Combobox(
             frame, textvariable=self._cloud, width=25, state="readonly",
@@ -2466,7 +2474,7 @@ class _ManualEntryDialog:
         )
         row += 1
 
-        add_label("Niederschlag:", row)
+        add_label(t("Niederschlag:"), row)
         self._precip = tk.StringVar(value="kein")
         ttk.Combobox(
             frame, textvariable=self._precip, width=25, state="readonly",
@@ -2474,7 +2482,7 @@ class _ManualEntryDialog:
         ).grid(row=row, column=1, pady=3, sticky="w")
         row += 1
 
-        add_label("Sicht:", row)
+        add_label(t("Sicht:"), row)
         self._visibility = tk.StringVar(value="—")
         self._vis_combo = ttk.Combobox(
             frame, textvariable=self._visibility, width=25, state="readonly",
@@ -2490,15 +2498,15 @@ class _ManualEntryDialog:
         row += 1
 
         # Notiz
-        ttk.Label(frame, text="Notiz:").grid(row=row, column=0, sticky="ne", padx=4, pady=3)
+        ttk.Label(frame, text=t("Notiz:")).grid(row=row, column=0, sticky="ne", padx=4, pady=3)
         self._note = tk.Text(frame, width=52, height=5)
         self._note.grid(row=row, column=1, columnspan=3, pady=3, sticky="w")
         row += 1
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=row, column=0, columnspan=4, pady=(10, 0))
-        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Speichern"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
         self._note.focus_set()
 
@@ -2534,7 +2542,7 @@ class _TripEditDialog:
         self.result: Optional[Dict] = None
         self._offset = offset
         self.top = tk.Toplevel(parent)
-        self.top.title(f"Törn bearbeiten (#{trip.id})")
+        self.top.title(t("Törn bearbeiten (#{id})", id=trip.id))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -2543,20 +2551,20 @@ class _TripEditDialog:
         self._vars: Dict[str, tk.StringVar] = {}
         # (Schlüssel, Beschriftung, Vorgabewert) — Zeiten in lokaler Anzeige
         rows = [
-            ("name", "Törn-Name:", trip.name or ""),
-            ("start_location", "Startort:", trip.start_location or ""),
-            ("start_dz", "Start (lokal):", timeutil.to_display(trip.start_dz, offset)),
-            ("end_location", "Zielort:", trip.end_location or ""),
-            ("end_dz", "Ende (lokal):", timeutil.to_display(trip.end_dz, offset)),
-            ("start_water_l", "Wasser Start (l):", _fmt_opt(trip.start_water_l)),
-            ("start_diesel_l", "Diesel Start (l):", _fmt_opt(trip.start_diesel_l)),
-            ("start_engine_hours", "Motorstd. Start:", _fmt_opt(trip.start_engine_hours)),
-            ("start_log_nm", "Log Start (Nm):", _fmt_opt(trip.start_log_nm)),
-            ("end_water_l", "Wasser Ende (l):", _fmt_opt(trip.end_water_l)),
-            ("end_diesel_l", "Diesel Ende (l):", _fmt_opt(trip.end_diesel_l)),
-            ("end_engine_hours", "Motorstd. Ende:", _fmt_opt(trip.end_engine_hours)),
-            ("end_log_nm", "Log Ende (Nm):", _fmt_opt(trip.end_log_nm)),
-            ("distance_nm", "Seemeilen (manuell):", _fmt_opt(trip.distance_nm)),
+            ("name", t("Törn-Name:"), trip.name or ""),
+            ("start_location", t("Startort:"), trip.start_location or ""),
+            ("start_dz", t("Start (lokal):"), timeutil.to_display(trip.start_dz, offset)),
+            ("end_location", t("Zielort:"), trip.end_location or ""),
+            ("end_dz", t("Ende (lokal):"), timeutil.to_display(trip.end_dz, offset)),
+            ("start_water_l", t("Wasser Start (l):"), _fmt_opt(trip.start_water_l)),
+            ("start_diesel_l", t("Diesel Start (l):"), _fmt_opt(trip.start_diesel_l)),
+            ("start_engine_hours", t("Motorstd. Start:"), _fmt_opt(trip.start_engine_hours)),
+            ("start_log_nm", t("Log Start (Nm):"), _fmt_opt(trip.start_log_nm)),
+            ("end_water_l", t("Wasser Ende (l):"), _fmt_opt(trip.end_water_l)),
+            ("end_diesel_l", t("Diesel Ende (l):"), _fmt_opt(trip.end_diesel_l)),
+            ("end_engine_hours", t("Motorstd. Ende:"), _fmt_opt(trip.end_engine_hours)),
+            ("end_log_nm", t("Log Ende (Nm):"), _fmt_opt(trip.end_log_nm)),
+            ("distance_nm", t("Seemeilen (manuell):"), _fmt_opt(trip.distance_nm)),
         ]
         for i, (key, label, default) in enumerate(rows):
             ttk.Label(frame, text=label).grid(row=i, column=0, sticky="e", padx=4, pady=3)
@@ -2568,7 +2576,7 @@ class _TripEditDialog:
         r = len(rows)
         # Schiff des Törns (fest eintragbar — für den Meilennachweis, wenn
         # Törns auf verschiedenen Schiffen gefahren wurden)
-        ttk.Label(frame, text="Schiff:").grid(row=r, column=0, sticky="e", padx=4, pady=3)
+        ttk.Label(frame, text=t("Schiff:")).grid(row=r, column=0, sticky="e", padx=4, pady=3)
         self._ship_choices: Dict[str, Optional[int]] = {"— (aktives Schiff)": None}
         for s in (ships or []):
             self._ship_choices[f"#{s.id} {s.name or '(ohne Name)'}"] = s.id
@@ -2581,26 +2589,26 @@ class _TripEditDialog:
             row=r, column=1, pady=3, sticky="w")
         r += 1
 
-        ttk.Label(frame, text="Notiz:").grid(row=r, column=0, sticky="ne", padx=4, pady=3)
+        ttk.Label(frame, text=t("Notiz:")).grid(row=r, column=0, sticky="ne", padx=4, pady=3)
         self._note = tk.Text(frame, width=40, height=4)
         self._note.insert("1.0", trip.note or "")
         self._note.grid(row=r, column=1, pady=3, sticky="w")
         r += 1
 
-        ttk.Label(frame, text="(Zeiten in der eingestellten Zeitzone, "
-                              "Format JJJJ-MM-TT HH:MM)", foreground="#888").grid(
+        ttk.Label(frame, text=t("(Zeiten in der eingestellten Zeitzone, "
+                              "Format JJJJ-MM-TT HH:MM)"), foreground="#888").grid(
             row=r, column=0, columnspan=2, sticky="w", pady=(2, 0))
         r += 1
-        ttk.Label(frame, text="Seemeilen (manuell): leer = aus GPS-Spur berechnen; "
-                              "gesetzt = überschreibt den Meilennachweis.",
+        ttk.Label(frame, text=t("Seemeilen (manuell): leer = aus GPS-Spur berechnen; "
+                              "gesetzt = überschreibt den Meilennachweis."),
                   foreground="#888").grid(
             row=r, column=0, columnspan=2, sticky="w", pady=(0, 6))
         r += 1
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=r, column=0, columnspan=2, pady=(6, 0))
-        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Speichern"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _on_save(self) -> None:
         v = self._vars
@@ -2830,29 +2838,29 @@ class _LogMapDialog:
     def __init__(self, parent: tk.Tk) -> None:
         self.result: Optional[set] = None
         self.top = tk.Toplevel(parent)
-        self.top.title("Logbuch-Karte")
+        self.top.title(t("Logbuch-Karte"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text="Karte ohne AIS — welche Einträge sollen angezeigt "
-                              "werden?").grid(row=0, column=0, sticky="w", pady=(0, 8))
+        ttk.Label(frame, text=t("Karte ohne AIS — welche Einträge sollen angezeigt "
+                              "werden?")).grid(row=0, column=0, sticky="w", pady=(0, 8))
         self._auto = tk.BooleanVar(value=True)
         self._manual = tk.BooleanVar(value=True)
         self._tripcon = tk.BooleanVar(value=True)
-        ttk.Checkbutton(frame, text="Autolog-Einträge", variable=self._auto).grid(
+        ttk.Checkbutton(frame, text=t("Autolog-Einträge"), variable=self._auto).grid(
             row=1, column=0, sticky="w")
-        ttk.Checkbutton(frame, text="Manuelle Einträge", variable=self._manual).grid(
+        ttk.Checkbutton(frame, text=t("Manuelle Einträge"), variable=self._manual).grid(
             row=2, column=0, sticky="w")
-        ttk.Checkbutton(frame, text="Importierte Einträge (TripCon)",
+        ttk.Checkbutton(frame, text=t("Importierte Einträge (TripCon)"),
                         variable=self._tripcon).grid(row=3, column=0, sticky="w")
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=4, column=0, pady=(12, 0), sticky="w")
-        ttk.Button(buttons, text="Karte öffnen", command=self._on_ok).pack(
+        ttk.Button(buttons, text=t("Karte öffnen"), command=self._on_ok).pack(
             side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(
             side="left", padx=4)
 
     def _on_ok(self) -> None:
@@ -2864,8 +2872,8 @@ class _LogMapDialog:
         if self._tripcon.get():
             types.add("tripcon")
         if not types:
-            messagebox.showinfo("Logbuch-Karte", "Bitte mindestens einen Eintragstyp "
-                                                 "auswählen.")
+            messagebox.showinfo(t("Logbuch-Karte"), t("Bitte mindestens einen Eintragstyp "
+                                                 "auswählen."))
             return
         self.result = types
         self.top.destroy()
@@ -2896,22 +2904,22 @@ class _AutoLogDialog:
     def __init__(self, parent, settings: AutoLogSettings) -> None:
         self.result: Optional[AutoLogSettings] = None
         self.top = tk.Toplevel(parent)
-        self.top.title("AutoLog-Auslöser")
+        self.top.title(t("AutoLog-Auslöser"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
         self._enabled = tk.BooleanVar(value=settings.enabled)
-        ttk.Checkbutton(frame, text="AutoLog aktivieren", variable=self._enabled).grid(
+        ttk.Checkbutton(frame, text=t("AutoLog aktivieren"), variable=self._enabled).grid(
             row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
 
-        box = ttk.LabelFrame(frame, text="Logbucheintrag auslösen:")
+        box = ttk.LabelFrame(frame, text=t("Logbucheintrag auslösen:"))
         box.grid(row=1, column=0, columnspan=3, sticky="we")
         r = 0
 
         self._interval_on = tk.BooleanVar(value=settings.interval_enabled)
-        ttk.Checkbutton(box, text="zu jeder", variable=self._interval_on).grid(
+        ttk.Checkbutton(box, text=t("zu jeder"), variable=self._interval_on).grid(
             row=r, column=0, sticky="w", padx=6, pady=3)
         self._interval = tk.StringVar(value=self._interval_label(settings.interval_seconds))
         ttk.Combobox(box, textvariable=self._interval, width=14, state="readonly",
@@ -2920,7 +2928,7 @@ class _AutoLogDialog:
         r += 1
 
         self._sog_on = tk.BooleanVar(value=settings.sog_enabled)
-        ttk.Checkbutton(box, text="wenn Fahrt über Grund ≥ (1–100)",
+        ttk.Checkbutton(box, text=t("wenn Fahrt über Grund ≥ (1–100)"),
                         variable=self._sog_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
         self._sog = tk.StringVar(value=f"{settings.sog_threshold:g}")
         ttk.Entry(box, textvariable=self._sog, width=8).grid(row=r, column=1, sticky="w")
@@ -2928,7 +2936,7 @@ class _AutoLogDialog:
         r += 1
 
         self._stw_on = tk.BooleanVar(value=settings.stw_enabled)
-        ttk.Checkbutton(box, text="wenn Fahrt durchs Wasser ≥ (1–100)",
+        ttk.Checkbutton(box, text=t("wenn Fahrt durchs Wasser ≥ (1–100)"),
                         variable=self._stw_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
         self._stw = tk.StringVar(value=f"{settings.stw_threshold:g}")
         ttk.Entry(box, textvariable=self._stw, width=8).grid(row=r, column=1, sticky="w")
@@ -2936,20 +2944,20 @@ class _AutoLogDialog:
         r += 1
 
         self._course_on = tk.BooleanVar(value=settings.course_enabled)
-        ttk.Checkbutton(box, text="wenn Kurswechsel ≥ (20–170)",
+        ttk.Checkbutton(box, text=t("wenn Kurswechsel ≥ (20–170)"),
                         variable=self._course_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
         self._course = tk.StringVar(value=f"{settings.course_threshold:g}")
         ttk.Entry(box, textvariable=self._course, width=8).grid(row=r, column=1, sticky="w")
         ttk.Label(box, text="°").grid(row=r, column=2, sticky="w")
         r += 1
-        ttk.Label(box, text="   Mittelwertbildung über").grid(row=r, column=0, sticky="w", padx=6)
+        ttk.Label(box, text=t("   Mittelwertbildung über")).grid(row=r, column=0, sticky="w", padx=6)
         self._avg = tk.StringVar(value=f"{int(settings.course_avg_seconds)} s")
         ttk.Combobox(box, textvariable=self._avg, width=8, state="readonly",
                      values=self._AVG).grid(row=r, column=1, sticky="w")
         r += 1
 
         self._depth_on = tk.BooleanVar(value=settings.depth_enabled)
-        ttk.Checkbutton(box, text="wenn Wassertiefe ≤ (0,5–25)",
+        ttk.Checkbutton(box, text=t("wenn Wassertiefe ≤ (0,5–25)"),
                         variable=self._depth_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
         self._depth = tk.StringVar(value=f"{settings.depth_threshold:g}")
         ttk.Entry(box, textvariable=self._depth, width=8).grid(row=r, column=1, sticky="w")
@@ -2957,7 +2965,7 @@ class _AutoLogDialog:
         r += 1
 
         self._decel_on = tk.BooleanVar(value=settings.decel_enabled)
-        ttk.Checkbutton(box, text="bei abrupter Fahrtreduzierung",
+        ttk.Checkbutton(box, text=t("bei abrupter Fahrtreduzierung"),
                         variable=self._decel_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
         self._decel = tk.StringVar(value=f"{settings.decel_threshold:g} kn/s")
         ttk.Combobox(box, textvariable=self._decel, width=8, state="readonly",
@@ -2965,7 +2973,7 @@ class _AutoLogDialog:
         r += 1
 
         self._dist_on = tk.BooleanVar(value=settings.distance_enabled)
-        ttk.Checkbutton(box, text="wenn Entfernung zum letzten Eintrag ≥ (0,1–2)",
+        ttk.Checkbutton(box, text=t("wenn Entfernung zum letzten Eintrag ≥ (0,1–2)"),
                         variable=self._dist_on).grid(row=r, column=0, sticky="w", padx=6, pady=3)
         self._dist = tk.StringVar(value=f"{settings.distance_threshold:g}")
         ttk.Entry(box, textvariable=self._dist, width=8).grid(row=r, column=1, sticky="w")
@@ -2973,18 +2981,18 @@ class _AutoLogDialog:
         r += 1
 
         # Trackaufzeichnung (dichte Kartenspur, getrennt von den Log-Einträgen)
-        tbox = ttk.LabelFrame(frame, text="Trackaufzeichnung (nur Karte):")
+        tbox = ttk.LabelFrame(frame, text=t("Trackaufzeichnung (nur Karte):"))
         tbox.grid(row=2, column=0, columnspan=3, sticky="we", pady=(8, 0))
         self._track_on = tk.BooleanVar(value=settings.track_enabled)
-        ttk.Checkbutton(tbox, text="dichte Positionsspur aufzeichnen",
+        ttk.Checkbutton(tbox, text=t("dichte Positionsspur aufzeichnen"),
                         variable=self._track_on).grid(
             row=0, column=0, columnspan=3, sticky="w", padx=6, pady=3)
-        ttk.Label(tbox, text="   bei Kurswechsel ≥").grid(row=1, column=0, sticky="w", padx=6)
+        ttk.Label(tbox, text=t("   bei Kurswechsel ≥")).grid(row=1, column=0, sticky="w", padx=6)
         self._track_course = tk.StringVar(value=f"{settings.track_course_threshold:g}")
         ttk.Entry(tbox, textvariable=self._track_course, width=8).grid(
             row=1, column=1, sticky="w")
         ttk.Label(tbox, text="°").grid(row=1, column=2, sticky="w")
-        ttk.Label(tbox, text="   sonst spätestens alle").grid(row=2, column=0, sticky="w", padx=6)
+        ttk.Label(tbox, text=t("   sonst spätestens alle")).grid(row=2, column=0, sticky="w", padx=6)
         self._track_iv = tk.StringVar(
             value=self._track_iv_label(settings.track_interval_seconds))
         ttk.Combobox(tbox, textvariable=self._track_iv, width=8, state="readonly",
@@ -2992,15 +3000,15 @@ class _AutoLogDialog:
             row=2, column=1, sticky="w")
 
         ttk.Label(frame, foreground="#777", wraplength=420,
-                  text="Der Auslösegrund wird als Anlass im Eintrag gespeichert. Reine "
+                  text=t("Der Auslösegrund wird als Anlass im Eintrag gespeichert. Reine "
                        "Track-Punkte (nur Zeit + Position) bilden die dichte Kartenspur "
-                       "und sind in der Liste ausblendbar.").grid(
+                       "und sind in der Liste ausblendbar.")).grid(
             row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         btns = ttk.Frame(frame)
         btns.grid(row=4, column=0, columnspan=3, pady=(10, 0))
-        ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
-        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Übernehmen"), command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _interval_label(self, seconds: int) -> str:
         for label, sec in self._INTERVALS:
@@ -3058,14 +3066,14 @@ class _LogeventsDialog:
     def __init__(self, parent, logevents: List[str]) -> None:
         self.result: Optional[List[str]] = None
         self.top = tk.Toplevel(parent)
-        self.top.title("Anlass-Liste bearbeiten")
+        self.top.title(t("Anlass-Liste bearbeiten"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=14)
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text="Ein Anlass pro Zeile. Reihenfolge = Auswahl-"
-                  "Reihenfolge; der erste ist der Standard.",
+        ttk.Label(frame, text=t("Ein Anlass pro Zeile. Reihenfolge = Auswahl-"
+                  "Reihenfolge; der erste ist der Standard."),
                   foreground="#333").pack(anchor="w", pady=(0, 8))
         self._text = tk.Text(frame, width=34, height=16)
         self._text.pack(fill="both", expand=True)
@@ -3073,10 +3081,10 @@ class _LogeventsDialog:
 
         buttons = ttk.Frame(frame)
         buttons.pack(fill="x", pady=(12, 0))
-        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Standard wiederherstellen",
+        ttk.Button(buttons, text=t("Speichern"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Standard wiederherstellen"),
                    command=self._on_default).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _on_default(self) -> None:
         self._text.delete("1.0", "end")
@@ -3086,7 +3094,7 @@ class _LogeventsDialog:
         raw = self._text.get("1.0", "end")
         items = [ln.strip() for ln in raw.splitlines() if ln.strip()]
         if not items:
-            messagebox.showwarning("Anlass-Liste", "Bitte mindestens einen Anlass angeben.")
+            messagebox.showwarning(t("Anlass-Liste"), t("Bitte mindestens einen Anlass angeben."))
             return
         # Duplikate entfernen, Reihenfolge erhalten
         seen, uniq = set(), []
@@ -3104,7 +3112,7 @@ class _RemoteDialog:
     def __init__(self, parent, config, server, lan_ip: str) -> None:
         self.result: Optional[Dict] = None
         self.top = tk.Toplevel(parent)
-        self.top.title("Fern-Erfassung (Handy/Tablet)")
+        self.top.title(t("Fern-Erfassung (Handy/Tablet)"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=14)
@@ -3114,62 +3122,62 @@ class _RemoteDialog:
         port = int(config.remote_port or 8770)
         url = f"http://{lan_ip}:{port}/"
 
-        ttk.Label(frame, text="Logbuch-Einträge vom Handy/Tablet im Bordnetz erfassen.",
+        ttk.Label(frame, text=t("Logbuch-Einträge vom Handy/Tablet im Bordnetz erfassen."),
                   foreground="#333").grid(row=0, column=0, columnspan=2, sticky="w",
                                           pady=(0, 8))
 
         self._enabled = tk.BooleanVar(value=config.remote_enabled)
-        ttk.Checkbutton(frame, text="Fern-Erfassung aktiv (beim Start automatisch)",
+        ttk.Checkbutton(frame, text=t("Fern-Erfassung aktiv (beim Start automatisch)"),
                         variable=self._enabled).grid(row=1, column=0, columnspan=2,
                                                      sticky="w", pady=2)
 
         # Zugangsdaten prominent anzeigen
-        box = ttk.LabelFrame(frame, text="So verbindest du dich")
+        box = ttk.LabelFrame(frame, text=t("So verbindest du dich"))
         box.grid(row=2, column=0, columnspan=2, sticky="we", pady=(8, 8))
-        ttk.Label(box, text="1. Handy/Tablet ins selbe WLAN wie der Laptop.").grid(
+        ttk.Label(box, text=t("1. Handy/Tablet ins selbe WLAN wie der Laptop.")).grid(
             row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 2))
-        ttk.Label(box, text="2. Im Browser diese Adresse öffnen:").grid(
+        ttk.Label(box, text=t("2. Im Browser diese Adresse öffnen:")).grid(
             row=1, column=0, columnspan=2, sticky="w", padx=8, pady=2)
         addr = ttk.Entry(box, width=30, font=("TkDefaultFont", 11, "bold"))
         addr.insert(0, url)
         addr.configure(state="readonly")
         addr.grid(row=2, column=0, sticky="w", padx=8, pady=2)
-        ttk.Label(box, text="3. Mit der PIN anmelden.").grid(
+        ttk.Label(box, text=t("3. Mit der PIN anmelden.")).grid(
             row=3, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 2))
         # QR-Code inkl. PIN (?pin=…) — Scannen öffnet die Seite UND meldet an
         self._qr_canvas = tk.Canvas(box, highlightthickness=0, bg="white")
         self._qr_canvas.grid(row=0, column=2, rowspan=4, padx=(6, 10), pady=8)
-        ttk.Label(box, text="↑ scannen = direkt angemeldet", foreground="#777").grid(
+        ttk.Label(box, text=t("↑ scannen = direkt angemeldet"), foreground="#777").grid(
             row=4, column=2, pady=(0, 6))
         qr_url = url + (f"?pin={config.remote_pin}" if config.remote_pin else "")
         self._draw_qr(qr_url)
 
-        ttk.Label(frame, text="Port:").grid(row=3, column=0, sticky="e", padx=4, pady=3)
+        ttk.Label(frame, text=t("Port:")).grid(row=3, column=0, sticky="e", padx=4, pady=3)
         self._port = tk.StringVar(value=str(port))
         ttk.Entry(frame, textvariable=self._port, width=10).grid(
             row=3, column=1, sticky="w")
-        ttk.Label(frame, text="PIN:").grid(row=4, column=0, sticky="e", padx=4, pady=3)
+        ttk.Label(frame, text=t("PIN:")).grid(row=4, column=0, sticky="e", padx=4, pady=3)
         self._pin = tk.StringVar(value=config.remote_pin or "")
         pinrow = ttk.Frame(frame)
         pinrow.grid(row=4, column=1, sticky="w")
         ttk.Entry(pinrow, textvariable=self._pin, width=10).pack(side="left")
-        ttk.Button(pinrow, text="Neue PIN", command=self._new_pin).pack(side="left", padx=6)
+        ttk.Button(pinrow, text=t("Neue PIN"), command=self._new_pin).pack(side="left", padx=6)
 
-        status = "läuft" if running else "aus"
-        ttk.Label(frame, text=f"Status: {status}", foreground="#555").grid(
+        status = t("läuft") if running else t("aus")
+        ttk.Label(frame, text=t("Status: {status}", status=status), foreground="#555").grid(
             row=5, column=0, columnspan=2, sticky="w", pady=(6, 0))
         ttk.Label(frame,
-                  text="Tipp: Seite am Handy „zum Home-Bildschirm hinzufügen“ —\n"
-                       "dann startet sie wie eine App.",
+                  text=t("Tipp: Seite am Handy „zum Home-Bildschirm hinzufügen“ —\n"
+                       "dann startet sie wie eine App."),
                   foreground="#777").grid(row=6, column=0, columnspan=2, sticky="w",
                                           pady=(2, 0))
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=7, column=0, columnspan=2, pady=(12, 0))
-        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Im Browser öffnen",
+        ttk.Button(buttons, text=t("Speichern"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Im Browser öffnen"),
                    command=lambda: webbrowser.open(url)).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _draw_qr(self, url: str) -> None:
         """Zeichnet den QR-Code der Adresse auf den Canvas (Standardbibliothek)."""
@@ -3196,13 +3204,13 @@ class _RemoteDialog:
     def _on_save(self) -> None:
         pin = (self._pin.get() or "").strip()
         if self._enabled.get() and not pin:
-            messagebox.showwarning("Fern-Erfassung",
-                                   "Bitte eine PIN vergeben (oder „Neue PIN“).")
+            messagebox.showwarning(t("Fern-Erfassung"),
+                                   t("Bitte eine PIN vergeben (oder „Neue PIN“)."))
             return
         try:
             port = int(self._port.get())
         except ValueError:
-            messagebox.showwarning("Fern-Erfassung", "Ungültiger Port.")
+            messagebox.showwarning(t("Fern-Erfassung"), t("Ungültiger Port."))
             return
         self.result = {"enabled": self._enabled.get(), "port": port, "pin": pin}
         self.top.destroy()
@@ -3214,7 +3222,7 @@ class _PhotoDialog:
     def __init__(self, parent, config) -> None:
         self.result: Optional[Dict] = None
         self.top = tk.Toplevel(parent)
-        self.top.title("Foto-Import")
+        self.top.title(t("Foto-Import"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -3222,19 +3230,19 @@ class _PhotoDialog:
 
         ttk.Label(
             frame, wraplength=470, foreground="#555",
-            text="Bilder in einen der überwachten Ordner legen → saillog erzeugt "
+            text=t("Bilder in einen der überwachten Ordner legen → saillog erzeugt "
                  "automatisch einen Logbuch-Eintrag mit dem (verkleinerten) Bild und "
                  "den aktuellen NMEA-Daten. Verarbeitete Originale wandern in den "
                  "Unterordner „verarbeitet\". Mehrere Ordner sind möglich — z.B. wenn "
                  "PhotoSync je Gerät (Handy A, Handy B …) einen eigenen Unterordner "
-                 "anlegt.",
+                 "anlegt."),
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
 
         self._enabled = tk.BooleanVar(value=config.photo_import_enabled)
-        ttk.Checkbutton(frame, text="Foto-Import aktivieren", variable=self._enabled).grid(
+        ttk.Checkbutton(frame, text=t("Foto-Import aktivieren"), variable=self._enabled).grid(
             row=1, column=0, columnspan=3, sticky="w", pady=2)
 
-        ttk.Label(frame, text="Überwachte Ordner:").grid(
+        ttk.Label(frame, text=t("Überwachte Ordner:")).grid(
             row=2, column=0, columnspan=3, sticky="w", pady=(6, 2))
         self._listbox = tk.Listbox(frame, width=52, height=4)
         for folder in config.photo_folder_list():
@@ -3242,46 +3250,46 @@ class _PhotoDialog:
         self._listbox.grid(row=3, column=0, columnspan=2, sticky="w")
         side = ttk.Frame(frame)
         side.grid(row=3, column=2, sticky="n", padx=4)
-        ttk.Button(side, text="+ Ordner…", command=self._add).pack(fill="x", pady=(0, 2))
-        ttk.Button(side, text="Entfernen", command=self._remove).pack(fill="x")
+        ttk.Button(side, text=t("+ Ordner…"), command=self._add).pack(fill="x", pady=(0, 2))
+        ttk.Button(side, text=t("Entfernen"), command=self._remove).pack(fill="x")
 
         self._recursive = tk.BooleanVar(value=bool(getattr(config, "photo_recursive", False)))
         ttk.Checkbutton(
             frame, variable=self._recursive,
-            text="Unterordner einbeziehen (z.B. auf den PhotoSync-Hauptordner zeigen — "
-                 "erfasst automatisch jedes Geräte-Unterverzeichnis)",
+            text=t("Unterordner einbeziehen (z.B. auf den PhotoSync-Hauptordner zeigen — "
+                 "erfasst automatisch jedes Geräte-Unterverzeichnis)"),
         ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
         # Bündelung: mehrere kurz nacheinander eintreffende Fotos = ein Eintrag
         grp = ttk.Frame(frame)
         grp.grid(row=5, column=0, columnspan=3, sticky="w", pady=(6, 0))
-        ttk.Label(grp, text="Fotos bündeln, wenn sie innerhalb von").pack(side="left")
+        ttk.Label(grp, text=t("Fotos bündeln, wenn sie innerhalb von")).pack(side="left")
         self._group_seconds = tk.StringVar(
             value=str(int(getattr(config, "photo_group_seconds", 90) or 0)))
         ttk.Spinbox(grp, from_=0, to=3600, width=5,
                     textvariable=self._group_seconds).pack(side="left", padx=4)
-        ttk.Label(grp, text="Sekunden eintreffen (0 = jedes Foto einzeln)").pack(side="left")
+        ttk.Label(grp, text=t("Sekunden eintreffen (0 = jedes Foto einzeln)")).pack(side="left")
 
         ttk.Label(
             frame, foreground="#777", wraplength=470,
-            text=f"Bilder werden auf max. {int(config.photo_max_px or 1600)} px "
-                 "verkleinert und als JPEG gespeichert.",
+            text=t("Bilder werden auf max. {px} px "
+                 "verkleinert und als JPEG gespeichert.", px=int(config.photo_max_px or 1600)),
         ).grid(row=6, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         if not photos.available():
             ttk.Label(
                 frame, foreground="#b25000", wraplength=470,
-                text="Hinweis: Für den Foto-Import wird Pillow benötigt — "
-                     "installieren mit:  pip install pillow",
+                text=t("Hinweis: Für den Foto-Import wird Pillow benötigt — "
+                     "installieren mit:  pip install pillow"),
             ).grid(row=7, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
         btns = ttk.Frame(frame)
         btns.grid(row=8, column=0, columnspan=3, pady=(12, 0))
-        ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
-        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Übernehmen"), command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _add(self) -> None:
-        directory = filedialog.askdirectory(title="Foto-Import-Ordner hinzufügen")
+        directory = filedialog.askdirectory(title=t("Foto-Import-Ordner hinzufügen"))
         if directory and directory not in self._listbox.get(0, "end"):
             self._listbox.insert("end", directory)
 
@@ -3310,7 +3318,7 @@ class _PlotterDialog:
     def __init__(self, parent, config) -> None:
         self.result: Optional[Dict] = None
         self.top = tk.Toplevel(parent)
-        self.top.title("Plotter-Screenshot (ADB)")
+        self.top.title(t("Plotter-Screenshot (ADB)"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -3318,37 +3326,37 @@ class _PlotterDialog:
 
         ttk.Label(
             frame, wraplength=480, foreground="#555",
-            text="Holt den Bildschirm des Android-Tablets (Orca-/Plotter-Anzeige) per "
+            text=t("Holt den Bildschirm des Android-Tablets (Orca-/Plotter-Anzeige) per "
                  "adb ins Logbuch. Voraussetzung: adb installiert und Tablet gekoppelt "
-                 "(Entwickleroptionen → USB-/Drahtlos-Debugging, 'immer erlauben').",
+                 "(Entwickleroptionen → USB-/Drahtlos-Debugging, 'immer erlauben')."),
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
 
-        ttk.Label(frame, text="adb-Pfad:").grid(row=1, column=0, sticky="e", padx=(0, 4), pady=4)
+        ttk.Label(frame, text=t("adb-Pfad:")).grid(row=1, column=0, sticky="e", padx=(0, 4), pady=4)
         self._adb = tk.StringVar(value=config.plotter_adb_path or "adb")
         ttk.Entry(frame, textvariable=self._adb, width=44).grid(row=1, column=1, sticky="w")
-        ttk.Button(frame, text="Wählen…", command=self._choose).grid(row=1, column=2, padx=4)
+        ttk.Button(frame, text=t("Wählen…"), command=self._choose).grid(row=1, column=2, padx=4)
 
-        ttk.Label(frame, text="Gerät (Serial / IP:Port):").grid(
+        ttk.Label(frame, text=t("Gerät (Serial / IP:Port):")).grid(
             row=2, column=0, sticky="e", padx=(0, 4), pady=4)
         self._serial = tk.StringVar(value=config.plotter_adb_serial)
         ttk.Entry(frame, textvariable=self._serial, width=30).grid(row=2, column=1, sticky="w")
-        ttk.Button(frame, text="Geräte suchen", command=self._find).grid(row=2, column=2, padx=4)
+        ttk.Button(frame, text=t("Geräte suchen"), command=self._find).grid(row=2, column=2, padx=4)
         ttk.Label(frame, foreground="#777",
-                  text="USB: leer lassen (ein Gerät). WLAN: <Tablet-IP>:5555 eintragen.").grid(
+                  text=t("USB: leer lassen (ein Gerät). WLAN: <Tablet-IP>:5555 eintragen.")).grid(
             row=3, column=1, columnspan=2, sticky="w")
 
         # WLAN-ADB-Steuerung
         wlan = ttk.Frame(frame)
         wlan.grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 2))
-        ttk.Label(wlan, text="WLAN:", foreground="#555").pack(side="left")
-        ttk.Button(wlan, text="Per USB für WLAN aktivieren",
+        ttk.Label(wlan, text=t("WLAN:"), foreground="#555").pack(side="left")
+        ttk.Button(wlan, text=t("Per USB für WLAN aktivieren"),
                    command=self._wlan_prepare).pack(side="left", padx=3)
-        ttk.Button(wlan, text="Drahtlos verbinden",
+        ttk.Button(wlan, text=t("Drahtlos verbinden"),
                    command=self._wlan_connect).pack(side="left", padx=3)
 
         self._autolog = tk.BooleanVar(value=config.plotter_autolog)
         ttk.Checkbutton(
-            frame, text="Bei jedem Auto-Eintrag einen Plotter-Screenshot mitspeichern",
+            frame, text=t("Bei jedem Auto-Eintrag einen Plotter-Screenshot mitspeichern"),
             variable=self._autolog,
         ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 2))
 
@@ -3357,14 +3365,14 @@ class _PlotterDialog:
 
         btns = ttk.Frame(frame)
         btns.grid(row=7, column=0, columnspan=3, pady=(12, 0))
-        ttk.Button(btns, text="Test", command=self._test).pack(side="left", padx=4)
-        ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
-        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Test"), command=self._test).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Übernehmen"), command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _choose(self) -> None:
         path = filedialog.askopenfilename(
-            title="adb(.exe) wählen",
-            filetypes=[("adb", "adb.exe adb"), ("Alle Dateien", "*.*")],
+            title=t("adb(.exe) wählen"),
+            filetypes=[("adb", "adb.exe adb"), (t("Alle Dateien"), "*.*")],
         )
         if path:
             self._adb.set(path)
@@ -3375,25 +3383,25 @@ class _PlotterDialog:
         online = [s for s, st in devs if st == "device"]
         if not devs:
             self._status.config(
-                text="Keine Geräte / adb nicht gefunden. Pfad prüfen und Tablet koppeln.",
+                text=t("Keine Geräte / adb nicht gefunden. Pfad prüfen und Tablet koppeln."),
                 foreground="#b25000")
             return
         if len(online) == 1:
             self._serial.set(online[0])
         self._status.config(
-            text="Gefunden: " + ", ".join(f"{s} [{st}]" for s, st in devs),
+            text=t("Gefunden: {list}", list=", ".join(f"{s} [{st}]" for s, st in devs)),
             foreground="#227722")
 
     def _wlan_prepare(self) -> None:
         """Per USB: tcpip aktivieren, Tablet-IP holen, WLAN-Adresse setzen + verbinden."""
         from saillog import android_screencap as scr
         adb = self._adb.get().strip() or "adb"
-        self._status.config(text="Aktiviere WLAN-ADB über USB …", foreground="#555")
+        self._status.config(text=t("Aktiviere WLAN-ADB über USB …"), foreground="#555")
         self.top.update_idletasks()
         ok, msg = scr.enable_tcpip(adb)
         if not ok:
             self._status.config(
-                text=f"tcpip fehlgeschlagen: {msg}\nIst das Tablet per USB verbunden?",
+                text=t("tcpip fehlgeschlagen: {msg}\nIst das Tablet per USB verbunden?", msg=msg),
                 foreground="#b25000")
             return
         ip = scr.wlan_ip(adb)
@@ -3402,16 +3410,16 @@ class _PlotterDialog:
         address = f"{ip}:5555" if ip else self._serial.get().strip()
         if ":" not in address:
             self._status.config(
-                text="WLAN-ADB aktiv, aber Tablet-IP nicht gefunden. Bitte "
+                text=t("WLAN-ADB aktiv, aber Tablet-IP nicht gefunden. Bitte "
                      "<Tablet-IP>:5555 im Feld 'Gerät' eintragen und 'Drahtlos "
-                     "verbinden'.",
+                     "verbinden'."),
                 foreground="#b25000")
             return
         self._serial.set(address)
         cok, cmsg = scr.connect(address, adb)
         self._status.config(
-            text=(f"WLAN-ADB aktiv, verbunden mit {address}. USB kann jetzt ab."
-                  if cok else f"tcpip ok, aber connect fehlte: {cmsg}"),
+            text=(t("WLAN-ADB aktiv, verbunden mit {address}. USB kann jetzt ab.", address=address)
+                  if cok else t("tcpip ok, aber connect fehlte: {msg}", msg=cmsg)),
             foreground="#227722" if cok else "#b25000")
 
     def _wlan_connect(self) -> None:
@@ -3419,28 +3427,28 @@ class _PlotterDialog:
         address = self._serial.get().strip()
         if ":" not in address:
             self._status.config(
-                text="Bitte erst <Tablet-IP>:5555 im Feld 'Gerät' eintragen.",
+                text=t("Bitte erst <Tablet-IP>:5555 im Feld 'Gerät' eintragen."),
                 foreground="#b25000")
             return
         ok, msg = scr.connect(address, self._adb.get().strip() or "adb")
-        self._status.config(text=msg or "(keine Antwort)",
+        self._status.config(text=msg or t("(keine Antwort)"),
                             foreground="#227722" if ok else "#b25000")
 
     def _test(self) -> None:
         from saillog import android_screencap
-        self._status.config(text="Teste Screenshot …", foreground="#555")
+        self._status.config(text=t("Teste Screenshot …"), foreground="#555")
         self.top.update_idletasks()
         png = android_screencap.capture_png(
             self._adb.get().strip() or "adb", self._serial.get().strip())
         if png:
             self._status.config(
-                text=f"OK — Screenshot erhalten ({len(png) // 1024} kB).",
+                text=t("OK — Screenshot erhalten ({kb} kB).", kb=len(png) // 1024),
                 foreground="#227722")
         else:
             self._status.config(
-                text="Kein Screenshot. adb-Pfad/Gerät prüfen; Tablet gekoppelt und "
+                text=t("Kein Screenshot. adb-Pfad/Gerät prüfen; Tablet gekoppelt und "
                      "'immer erlauben' bestätigt? (Ein schwarzes Bild = App sperrt "
-                     "Screenshots.)",
+                     "Screenshots.)"),
                 foreground="#b25000")
 
     def _on_ok(self) -> None:
@@ -3459,7 +3467,7 @@ class _BackupDialog:
         self._config = config
         self._make_backup = make_backup
         self.top = tk.Toplevel(parent)
-        self.top.title("Backup")
+        self.top.title(t("Backup"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -3467,22 +3475,22 @@ class _BackupDialog:
 
         ttk.Label(
             frame, wraplength=470, foreground="#555",
-            text="Sichert die Logbuch-Datenbank (inkl. Fotos) und die Einstellungen "
-                 "als ZIP — eine Datei zum Kopieren, z.B. auf einen USB-Stick.",
+            text=t("Sichert die Logbuch-Datenbank (inkl. Fotos) und die Einstellungen "
+                 "als ZIP — eine Datei zum Kopieren, z.B. auf einen USB-Stick."),
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
 
-        ttk.Label(frame, text="Zielordner:").grid(row=1, column=0, sticky="e", padx=(0, 4), pady=4)
+        ttk.Label(frame, text=t("Zielordner:")).grid(row=1, column=0, sticky="e", padx=(0, 4), pady=4)
         self._folder = tk.StringVar(value=config.backup_folder)
         ttk.Entry(frame, textvariable=self._folder, width=44).grid(row=1, column=1, sticky="w")
-        ttk.Button(frame, text="Wählen…", command=self._choose).grid(row=1, column=2, padx=4)
+        ttk.Button(frame, text=t("Wählen…"), command=self._choose).grid(row=1, column=2, padx=4)
 
         self._auto = tk.BooleanVar(value=config.backup_on_close)
-        ttk.Checkbutton(frame, text="beim Beenden automatisch sichern",
+        ttk.Checkbutton(frame, text=t("beim Beenden automatisch sichern"),
                         variable=self._auto).grid(row=2, column=0, columnspan=2, sticky="w", pady=2)
 
         keeprow = ttk.Frame(frame)
         keeprow.grid(row=3, column=0, columnspan=3, sticky="w", pady=2)
-        ttk.Label(keeprow, text="letzte behalten:").pack(side="left")
+        ttk.Label(keeprow, text=t("letzte behalten:")).pack(side="left")
         self._keep = tk.StringVar(value=str(int(config.backup_keep or 5)))
         ttk.Spinbox(keeprow, from_=1, to=99, textvariable=self._keep, width=5).pack(
             side="left", padx=4)
@@ -3493,12 +3501,12 @@ class _BackupDialog:
 
         btns = ttk.Frame(frame)
         btns.grid(row=5, column=0, columnspan=3, pady=(12, 0))
-        ttk.Button(btns, text="Jetzt sichern", command=self._on_now).pack(side="left", padx=4)
-        ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
-        ttk.Button(btns, text="Schließen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Jetzt sichern"), command=self._on_now).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Übernehmen"), command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Schließen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _choose(self) -> None:
-        directory = filedialog.askdirectory(title="Backup-Zielordner")
+        directory = filedialog.askdirectory(title=t("Backup-Zielordner"))
         if directory:
             self._folder.set(directory)
             self._refresh_status()
@@ -3506,7 +3514,7 @@ class _BackupDialog:
     def _refresh_status(self) -> None:
         folder = self._folder.get().strip()
         n = len(backup.list_backups(folder)) if folder else 0
-        self._status.config(text=f"{n} Backup(s) im Zielordner." if folder else "")
+        self._status.config(text=t("{n} Backup(s) im Zielordner.", n=n) if folder else "")
 
     def _save(self) -> None:
         self._config.backup_folder = self._folder.get().strip()
@@ -3520,7 +3528,7 @@ class _BackupDialog:
     def _on_now(self) -> None:
         folder = self._folder.get().strip()
         if not folder:
-            messagebox.showinfo("Backup", "Bitte zuerst einen Zielordner wählen.")
+            messagebox.showinfo(t("Backup"), t("Bitte zuerst einen Zielordner wählen."))
             return
         self._save()
         path = self._make_backup(folder)
@@ -3528,7 +3536,7 @@ class _BackupDialog:
             import os
             n = len(backup.list_backups(folder))
             self._status.config(
-                text=f"Gesichert: {os.path.basename(path)}  ({n} Backup(s))")
+                text=t("Gesichert: {file}  ({n} Backup(s))", file=os.path.basename(path), n=n))
 
     def _on_ok(self) -> None:
         self._save()
@@ -3541,14 +3549,14 @@ class _PersonManagerDialog:
     def __init__(self, parent, store) -> None:
         self._store = store
         self.top = tk.Toplevel(parent)
-        self.top.title("Personen verwalten")
+        self.top.title(t("Personen verwalten"))
         self.top.transient(parent)
         self.top.grab_set()
         self.top.geometry("420x360")
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text="Gespeicherte Personen:").pack(anchor="w")
+        ttk.Label(frame, text=t("Gespeicherte Personen:")).pack(anchor="w")
         list_row = ttk.Frame(frame)
         list_row.pack(fill="both", expand=True, pady=6)
         self._list = tk.Listbox(list_row, height=12)
@@ -3560,10 +3568,10 @@ class _PersonManagerDialog:
 
         btns = ttk.Frame(frame)
         btns.pack(fill="x")
-        ttk.Button(btns, text="Neu…", command=self._on_new).pack(side="left")
-        ttk.Button(btns, text="Ändern…", command=self._on_edit).pack(side="left", padx=4)
-        ttk.Button(btns, text="Löschen", command=self._on_delete).pack(side="left")
-        ttk.Button(btns, text="Schließen", command=self.top.destroy).pack(side="right")
+        ttk.Button(btns, text=t("Neu…"), command=self._on_new).pack(side="left")
+        ttk.Button(btns, text=t("Ändern…"), command=self._on_edit).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Löschen"), command=self._on_delete).pack(side="left")
+        ttk.Button(btns, text=t("Schließen"), command=self.top.destroy).pack(side="right")
 
         self._persons = []
         self._refresh()
@@ -3599,7 +3607,7 @@ class _PersonManagerDialog:
         if person is None:
             return
         name = f"{person.last_name}, {person.first_name}".strip(", ")
-        if messagebox.askyesno("Löschen", f'Person „{name}" löschen?'):
+        if messagebox.askyesno(t("Löschen"), t('Person „{name}" löschen?', name=name)):
             self._store.delete_person(person.id)
             self._refresh()
 
@@ -3624,7 +3632,7 @@ class _PersonEditDialog:
         self._person = person
         self._photo_action = None   # None=unverändert, ("set", jpeg), ("remove",)
         self.top = tk.Toplevel(parent)
-        self.top.title("Personendaten erfassen")
+        self.top.title(t("Personendaten erfassen"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -3641,7 +3649,7 @@ class _PersonEditDialog:
             r += 1
 
         # PLZ / Stadt in einer Zeile
-        ttk.Label(frame, text="PLZ / Stadt:").grid(row=r, column=0, sticky="e", padx=4, pady=3)
+        ttk.Label(frame, text=t("PLZ / Stadt:")).grid(row=r, column=0, sticky="e", padx=4, pady=3)
         self._vars["zip_code"] = tk.StringVar(value=person.zip_code or "")
         ttk.Entry(frame, textvariable=self._vars["zip_code"], width=8).grid(
             row=r, column=1, sticky="w", pady=3)
@@ -3651,22 +3659,22 @@ class _PersonEditDialog:
         r += 1
 
         # Foto
-        photo = ttk.LabelFrame(frame, text="Foto")
+        photo = ttk.LabelFrame(frame, text=t("Foto"))
         photo.grid(row=0, column=3, rowspan=6, padx=(16, 0), sticky="n")
         self._photo_status = ttk.Label(photo, text="", foreground="#555")
         self._photo_status.pack(padx=8, pady=(8, 4))
-        ttk.Button(photo, text="Hinzufügen…", command=self._on_add_photo).pack(fill="x", padx=8, pady=2)
-        ttk.Button(photo, text="Ansehen", command=self._on_view_photo).pack(fill="x", padx=8, pady=2)
-        ttk.Button(photo, text="Entfernen", command=self._on_remove_photo).pack(fill="x", padx=8, pady=2)
+        ttk.Button(photo, text=t("Hinzufügen…"), command=self._on_add_photo).pack(fill="x", padx=8, pady=2)
+        ttk.Button(photo, text=t("Ansehen"), command=self._on_view_photo).pack(fill="x", padx=8, pady=2)
+        ttk.Button(photo, text=t("Entfernen"), command=self._on_remove_photo).pack(fill="x", padx=8, pady=2)
         if not photos.available():
-            ttk.Label(photo, text="(Foto braucht Pillow)", foreground="#b25000",
+            ttk.Label(photo, text=t("(Foto braucht Pillow)"), foreground="#b25000",
                       wraplength=120).pack(padx=8, pady=(4, 8))
         self._update_photo_status()
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=r, column=0, columnspan=4, pady=(12, 0))
-        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Speichern"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _has_photo(self) -> bool:
         if self._photo_action is not None:
@@ -3676,19 +3684,19 @@ class _PersonEditDialog:
 
     def _update_photo_status(self) -> None:
         self._photo_status.config(
-            text="✓ Foto vorhanden" if self._has_photo() else "(kein Foto)")
+            text=t("✓ Foto vorhanden") if self._has_photo() else t("(kein Foto)"))
 
     def _on_add_photo(self) -> None:
         path = filedialog.askopenfilename(
-            title="Personenfoto wählen",
-            filetypes=[("Bilder", "*.jpg *.jpeg *.png *.bmp *.gif"), ("Alle", "*.*")])
+            title=t("Personenfoto wählen"),
+            filetypes=[(t("Bilder"), "*.jpg *.jpeg *.png *.bmp *.gif"), (t("Alle"), "*.*")])
         if not path:
             return
         jpeg = photos.resize_to_jpeg(path, max_px=400)
         if not jpeg:
             messagebox.showerror(
-                "Foto", "Konnte das Bild nicht verarbeiten.\nBraucht Pillow "
-                        "(pip install pillow) und ein lesbares Bildformat.")
+                t("Foto"), t("Konnte das Bild nicht verarbeiten.\nBraucht Pillow "
+                        "(pip install pillow) und ein lesbares Bildformat."))
             return
         self._photo_action = ("set", jpeg)
         self._update_photo_status()
@@ -3704,7 +3712,7 @@ class _PersonEditDialog:
         elif self._person.id is not None:
             data = self._store.get_person_photo(self._person.id)
         if not data:
-            messagebox.showinfo("Foto", "Kein Foto vorhanden.")
+            messagebox.showinfo(t("Foto"), t("Kein Foto vorhanden."))
             return
         import os
         import tempfile
@@ -3738,28 +3746,28 @@ class _ShipManagerDialog:
         self._store = store
         self._config = config
         self.top = tk.Toplevel(parent)
-        self.top.title("Schiffe verwalten")
+        self.top.title(t("Schiffe verwalten"))
         self.top.transient(parent)
         self.top.grab_set()
         self.top.geometry("560x440")
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
-        sel = ttk.LabelFrame(frame, text="Auswahl (aktives Schiff)")
+        sel = ttk.LabelFrame(frame, text=t("Auswahl (aktives Schiff)"))
         sel.pack(fill="x")
         self._combo_var = tk.StringVar()
         self._combo = ttk.Combobox(sel, textvariable=self._combo_var, width=30,
                                    state="readonly")
         self._combo.grid(row=0, column=0, padx=6, pady=6, sticky="w")
         self._combo.bind("<<ComboboxSelected>>", lambda _e: self._on_select())
-        ttk.Button(sel, text="Neu…", command=self._on_new).grid(row=0, column=1, padx=3)
-        ttk.Button(sel, text="Ändern…", command=self._on_edit).grid(row=0, column=2, padx=3)
-        ttk.Button(sel, text="Löschen", command=self._on_delete).grid(row=0, column=3, padx=3)
+        ttk.Button(sel, text=t("Neu…"), command=self._on_new).grid(row=0, column=1, padx=3)
+        ttk.Button(sel, text=t("Ändern…"), command=self._on_edit).grid(row=0, column=2, padx=3)
+        ttk.Button(sel, text=t("Löschen"), command=self._on_delete).grid(row=0, column=3, padx=3)
 
         self._summary = tk.Text(frame, height=15, wrap="word", state="disabled",
                                 font=("TkDefaultFont", 9))
         self._summary.pack(fill="both", expand=True, pady=8)
-        ttk.Button(frame, text="Schließen", command=self.top.destroy).pack(side="right")
+        ttk.Button(frame, text=t("Schließen"), command=self.top.destroy).pack(side="right")
 
         self._ships = []
         self._refresh()
@@ -3851,7 +3859,7 @@ class _ShipManagerDialog:
         s = self._selected()
         if s is None:
             return
-        if messagebox.askyesno("Löschen", f'Schiff „{s.name}" löschen?'):
+        if messagebox.askyesno(t("Löschen"), t('Schiff „{name}" löschen?', name=s.name)):
             self._store.delete_ship(s.id)
             if self._config.active_ship_id == s.id:
                 self._config.active_ship_id = None
@@ -3865,19 +3873,19 @@ class _MotorParamDialog:
     def __init__(self, parent) -> None:
         self.result: Optional[EquipmentParam] = None
         self.top = tk.Toplevel(parent)
-        self.top.title("Motor hinzufügen")
+        self.top.title(t("Motor hinzufügen"))
         self.top.transient(parent)
         self.top.grab_set()
         f = ttk.Frame(self.top, padding=14)
         f.pack(fill="both", expand=True)
 
-        ttk.Label(f, text="Bezeichnung").grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(f, text=t("Bezeichnung")).grid(row=0, column=0, columnspan=2, sticky="w")
         self._name = tk.StringVar()
         ttk.Entry(f, textvariable=self._name, width=32).grid(
             row=1, column=0, columnspan=4, sticky="we", pady=(0, 8))
 
-        ttk.Label(f, text="Öldruck  maximal").grid(row=2, column=0, sticky="w")
-        ttk.Label(f, text="Schrittweite").grid(row=2, column=2, sticky="w", padx=(10, 0))
+        ttk.Label(f, text=t("Öldruck  maximal")).grid(row=2, column=0, sticky="w")
+        ttk.Label(f, text=t("Schrittweite")).grid(row=2, column=2, sticky="w", padx=(10, 0))
         self._oil_max = tk.StringVar(value="2")
         self._oil_step = tk.StringVar(value="0.1")
         ttk.Entry(f, textvariable=self._oil_max, width=8).grid(row=3, column=0, sticky="w")
@@ -3885,24 +3893,24 @@ class _MotorParamDialog:
         ttk.Entry(f, textvariable=self._oil_step, width=8).grid(row=3, column=2, sticky="w", padx=(10, 0))
         ttk.Label(f, text="Bar").grid(row=3, column=3, sticky="w")
 
-        ttk.Label(f, text="Drehzahl  maximal").grid(row=4, column=0, sticky="w", pady=(8, 0))
-        ttk.Label(f, text="Schrittweite").grid(row=4, column=2, sticky="w", padx=(10, 0), pady=(8, 0))
+        ttk.Label(f, text=t("Drehzahl  maximal")).grid(row=4, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(f, text=t("Schrittweite")).grid(row=4, column=2, sticky="w", padx=(10, 0), pady=(8, 0))
         self._rpm_max = tk.StringVar(value="6000")
         self._rpm_step = tk.StringVar(value="100")
         ttk.Entry(f, textvariable=self._rpm_max, width=8).grid(row=5, column=0, sticky="w")
-        ttk.Label(f, text="U/min").grid(row=5, column=1, sticky="w")
+        ttk.Label(f, text=t("U/min")).grid(row=5, column=1, sticky="w")
         ttk.Entry(f, textvariable=self._rpm_step, width=8).grid(row=5, column=2, sticky="w", padx=(10, 0))
-        ttk.Label(f, text="U/min").grid(row=5, column=3, sticky="w")
+        ttk.Label(f, text=t("U/min")).grid(row=5, column=3, sticky="w")
 
         btns = ttk.Frame(f)
         btns.grid(row=6, column=0, columnspan=4, pady=(14, 0))
-        ttk.Button(btns, text="Speichern", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Speichern"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _on_save(self) -> None:
         name = self._name.get().strip()
         if not name:
-            messagebox.showwarning("Motor", "Bitte eine Bezeichnung angeben.")
+            messagebox.showwarning(t("Motor"), t("Bitte eine Bezeichnung angeben."))
             return
         self.result = EquipmentParam(category="motor", name=name, attrs={
             "oil_max": _parse_float(self._oil_max.get()),
@@ -3920,30 +3928,30 @@ class _SailParamDialog:
         self.result: Optional[EquipmentParam] = None
         self._category = category
         self.top = tk.Toplevel(parent)
-        self.top.title(f"{category_label} hinzufügen")
+        self.top.title(t("{category} hinzufügen", category=category_label))
         self.top.transient(parent)
         self.top.grab_set()
         f = ttk.Frame(self.top, padding=14)
         f.pack(fill="both", expand=True)
 
-        ttk.Label(f, text="Bezeichnung").grid(row=0, column=0, sticky="w")
+        ttk.Label(f, text=t("Bezeichnung")).grid(row=0, column=0, sticky="w")
         self._name = tk.StringVar()
         ttk.Entry(f, textvariable=self._name, width=28).grid(
             row=1, column=0, sticky="we", pady=(0, 8))
-        ttk.Label(f, text="Art des Reffs").grid(row=2, column=0, sticky="w")
+        ttk.Label(f, text=t("Art des Reffs")).grid(row=2, column=0, sticky="w")
         self._reef = tk.StringVar(value=REEF_TYPES[0])
         ttk.Combobox(f, textvariable=self._reef, state="readonly", width=20,
                      values=REEF_TYPES).grid(row=3, column=0, sticky="w")
 
         btns = ttk.Frame(f)
         btns.grid(row=4, column=0, pady=(14, 0))
-        ttk.Button(btns, text="Speichern", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Speichern"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _on_save(self) -> None:
         name = self._name.get().strip()
         if not name:
-            messagebox.showwarning("Segel", "Bitte eine Bezeichnung angeben.")
+            messagebox.showwarning(t("Segel"), t("Bitte eine Bezeichnung angeben."))
             return
         self.result = EquipmentParam(category=self._category, name=name,
                                      attrs={"reef": self._reef.get()})
@@ -3983,7 +3991,7 @@ class _ShipEditDialog:
         self._ship = ship
         self._photo_action = None
         self.top = tk.Toplevel(parent)
-        self.top.title("Schiff bearbeiten")
+        self.top.title(t("Schiff bearbeiten"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -4006,15 +4014,15 @@ class _ShipEditDialog:
             self._vars[attr] = var
 
         # Foto rechts
-        photo = ttk.LabelFrame(frame, text="Schiffsfoto")
+        photo = ttk.LabelFrame(frame, text=t("Schiffsfoto"))
         photo.grid(row=0, column=4, rowspan=6, padx=(16, 0), sticky="n")
         self._photo_status = ttk.Label(photo, text="", foreground="#555")
         self._photo_status.pack(padx=8, pady=(8, 4))
-        ttk.Button(photo, text="Hinzufügen…", command=self._on_add_photo).pack(fill="x", padx=8, pady=2)
-        ttk.Button(photo, text="Ansehen", command=self._on_view_photo).pack(fill="x", padx=8, pady=2)
-        ttk.Button(photo, text="Entfernen", command=self._on_remove_photo).pack(fill="x", padx=8, pady=2)
+        ttk.Button(photo, text=t("Hinzufügen…"), command=self._on_add_photo).pack(fill="x", padx=8, pady=2)
+        ttk.Button(photo, text=t("Ansehen"), command=self._on_view_photo).pack(fill="x", padx=8, pady=2)
+        ttk.Button(photo, text=t("Entfernen"), command=self._on_remove_photo).pack(fill="x", padx=8, pady=2)
         if not photos.available():
-            ttk.Label(photo, text="(Foto braucht Pillow)", foreground="#b25000",
+            ttk.Label(photo, text=t("(Foto braucht Pillow)"), foreground="#b25000",
                       wraplength=120).pack(padx=8, pady=(4, 8))
         self._update_photo_status()
 
@@ -4027,25 +4035,25 @@ class _ShipEditDialog:
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=per_col + 1, column=0, columnspan=5, pady=(12, 0))
-        ttk.Button(buttons, text="Speichern", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Speichern"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     # --- Ausrüstung -------------------------------------------------------
     def _build_equipment(self, frame, row) -> None:
-        box = ttk.LabelFrame(frame, text="Ausrüstung — Antrieb")
+        box = ttk.LabelFrame(frame, text=t("Ausrüstung — Antrieb"))
         box.grid(row=row, column=0, columnspan=5, sticky="we", pady=(12, 0))
-        ttk.Label(box, text="Antrieb:").grid(row=0, column=0, sticky="e", padx=6, pady=4)
+        ttk.Label(box, text=t("Antrieb:")).grid(row=0, column=0, sticky="e", padx=6, pady=4)
         self._equip_cat = tk.StringVar(value=EQUIP_CATEGORIES["mainsail"])
         cat = ttk.Combobox(box, textvariable=self._equip_cat, state="readonly",
                            width=14, values=list(EQUIP_CATEGORIES.values()))
         cat.grid(row=0, column=1, sticky="w")
         cat.bind("<<ComboboxSelected>>", lambda _e: self._refresh_equip())
-        ttk.Button(box, text="＋ Neu…", command=self._on_add_param).grid(
+        ttk.Button(box, text=t("＋ Neu…"), command=self._on_add_param).grid(
             row=0, column=2, padx=6, sticky="w")
 
-        ttk.Label(box, text="Parameter-Datenbank", foreground="#555").grid(
+        ttk.Label(box, text=t("Parameter-Datenbank"), foreground="#555").grid(
             row=1, column=0, columnspan=2, pady=(4, 0))
-        ttk.Label(box, text="dieses Schiff", foreground="#555").grid(
+        ttk.Label(box, text=t("dieses Schiff"), foreground="#555").grid(
             row=1, column=3, columnspan=2, pady=(4, 0))
         self._db_list = tk.Listbox(box, width=28, height=6, exportselection=False)
         self._db_list.grid(row=2, column=0, columnspan=2, padx=6, pady=(0, 8), sticky="we")
@@ -4116,18 +4124,18 @@ class _ShipEditDialog:
 
     def _update_photo_status(self) -> None:
         self._photo_status.config(
-            text="✓ Foto vorhanden" if self._has_photo() else "(kein Foto)")
+            text=t("✓ Foto vorhanden") if self._has_photo() else t("(kein Foto)"))
 
     def _on_add_photo(self) -> None:
         path = filedialog.askopenfilename(
-            title="Schiffsfoto wählen",
-            filetypes=[("Bilder", "*.jpg *.jpeg *.png *.bmp *.gif"), ("Alle", "*.*")])
+            title=t("Schiffsfoto wählen"),
+            filetypes=[(t("Bilder"), "*.jpg *.jpeg *.png *.bmp *.gif"), (t("Alle"), "*.*")])
         if not path:
             return
         jpeg = photos.resize_to_jpeg(path, max_px=800)
         if not jpeg:
             messagebox.showerror(
-                "Foto", "Konnte das Bild nicht verarbeiten (braucht Pillow).")
+                t("Foto"), t("Konnte das Bild nicht verarbeiten (braucht Pillow)."))
             return
         self._photo_action = ("set", jpeg)
         self._update_photo_status()
@@ -4143,7 +4151,7 @@ class _ShipEditDialog:
         elif self._ship.id is not None:
             data = self._store.get_ship_photo(self._ship.id)
         if not data:
-            messagebox.showinfo("Foto", "Kein Foto vorhanden.")
+            messagebox.showinfo(t("Foto"), t("Kein Foto vorhanden."))
             return
         import os
         import tempfile
@@ -4202,7 +4210,7 @@ class _CrewListDialog:
         self._trip = trip
         self._trip_id = trip.id if trip else None
         self.top = tk.Toplevel(parent)
-        self.top.title("Crewliste" + (f" — Törn #{trip.id}" if trip else ""))
+        self.top.title(t("Crewliste") + (t(" — Törn #{id}", id=trip.id) if trip else ""))
         self.top.transient(parent)
         self.top.grab_set()
         self.top.geometry("740x580")
@@ -4210,7 +4218,7 @@ class _CrewListDialog:
         frame.pack(fill="both", expand=True)
 
         # Bootsangaben (aus der Konfiguration vorbelegt, werden gespeichert)
-        boat = ttk.LabelFrame(frame, text="Bootsangaben (werden gespeichert)")
+        boat = ttk.LabelFrame(frame, text=t("Bootsangaben (werden gespeichert)"))
         boat.pack(fill="x")
         self._boat_vars: Dict[str, tk.StringVar] = {}
         for i, (key, label) in enumerate(self._BOAT_FIELDS):
@@ -4223,28 +4231,28 @@ class _CrewListDialog:
         # Ort/Datum für den Ausdruck
         pd = ttk.Frame(frame)
         pd.pack(fill="x", pady=(8, 0))
-        ttk.Label(pd, text="Ort (Ausklarierung):").pack(side="left", padx=(4, 3))
+        ttk.Label(pd, text=t("Ort (Ausklarierung):")).pack(side="left", padx=(4, 3))
         # Zuletzt gespeicherten Ort/Datum bevorzugen, sonst Törn-Ort / heute.
         default_place = getattr(config, "clearance_place", "") or ""
         if not default_place and trip:
             default_place = trip.end_location or trip.start_location or ""
         self._place = tk.StringVar(value=default_place)
         ttk.Entry(pd, textvariable=self._place, width=22).pack(side="left")
-        ttk.Label(pd, text="Datum:").pack(side="left", padx=(12, 3))
+        ttk.Label(pd, text=t("Datum:")).pack(side="left", padx=(12, 3))
         default_date = getattr(config, "clearance_date", "") or \
             datetime.date.today().strftime("%d.%m.%Y")
         self._date = tk.StringVar(value=default_date)
         ttk.Entry(pd, textvariable=self._date, width=12).pack(side="left")
 
         # Crew-Tabelle
-        title = "Crew" if trip else "Crew (kein Törn gewählt — allgemeine Liste)"
+        title = t("Crew") if trip else t("Crew (kein Törn gewählt — allgemeine Liste)")
         crew = ttk.LabelFrame(frame, text=title)
         crew.pack(fill="both", expand=True, pady=(8, 0))
         cols = ("pos", "name", "first", "birth", "place", "nat", "pass")
         headers = {
-            "pos": "Funktion", "name": "Name", "first": "Vorname",
-            "birth": "Geburtsdatum", "place": "Geburtsort",
-            "nat": "Staatsang.", "pass": "Pass-Nr.",
+            "pos": t("Funktion"), "name": t("Name"), "first": t("Vorname"),
+            "birth": t("Geburtsdatum"), "place": t("Geburtsort"),
+            "nat": t("Staatsang."), "pass": t("Pass-Nr."),
         }
         widths = {"pos": 70, "name": 110, "first": 100, "birth": 90,
                   "place": 100, "nat": 90, "pass": 100}
@@ -4260,17 +4268,17 @@ class _CrewListDialog:
 
         cbtn = ttk.Frame(frame)
         cbtn.pack(fill="x", pady=(6, 0))
-        ttk.Button(cbtn, text="Person hinzufügen…", command=self._on_add).pack(side="left")
-        ttk.Button(cbtn, text="Bearbeiten…", command=self._on_edit).pack(side="left", padx=4)
-        ttk.Button(cbtn, text="Entfernen", command=self._on_remove).pack(side="left")
+        ttk.Button(cbtn, text=t("Person hinzufügen…"), command=self._on_add).pack(side="left")
+        ttk.Button(cbtn, text=t("Bearbeiten…"), command=self._on_edit).pack(side="left", padx=4)
+        ttk.Button(cbtn, text=t("Entfernen"), command=self._on_remove).pack(side="left")
 
         bottom = ttk.Frame(frame)
         bottom.pack(fill="x", pady=(10, 0))
-        ttk.Button(bottom, text="Crewliste drucken…", command=self._on_print).pack(side="left")
-        ttk.Button(bottom, text="Speichern & schließen", command=self._on_close).pack(
+        ttk.Button(bottom, text=t("Crewliste drucken…"), command=self._on_print).pack(side="left")
+        ttk.Button(bottom, text=t("Speichern & schließen"), command=self._on_close).pack(
             side="right"
         )
-        ttk.Button(bottom, text="Schließen", command=self.top.destroy).pack(
+        ttk.Button(bottom, text=t("Schließen"), command=self.top.destroy).pack(
             side="right", padx=4
         )
 
@@ -4335,7 +4343,7 @@ class _CrewListDialog:
         cid = self._selected_id()
         if cid is None:
             return
-        if messagebox.askyesno("Entfernen", "Person aus der Crewliste entfernen?"):
+        if messagebox.askyesno(t("Entfernen"), t("Person aus der Crewliste entfernen?")):
             self._store.delete_crew(cid)
             self._refresh()
 
@@ -4360,7 +4368,7 @@ class _CrewListDialog:
         try:
             path.write_text(html, encoding="utf-8")
         except OSError as exc:  # noqa: BLE001
-            messagebox.showerror("Crewliste", f"Konnte Datei nicht schreiben:\n{exc}")
+            messagebox.showerror(t("Crewliste"), t("Konnte Datei nicht schreiben:\n{error}", error=exc))
             return
         webbrowser.open(path.as_uri())
 
@@ -4387,7 +4395,7 @@ class _CrewMemberDialog:
         self._member = member
         self._persons = list(persons or [])
         self.top = tk.Toplevel(parent)
-        self.top.title("Crew-Mitglied")
+        self.top.title(t("Crew-Mitglied"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -4396,7 +4404,7 @@ class _CrewMemberDialog:
         row0 = 0
         # Auswahl aus gespeicherten Personen (falls vorhanden)
         if self._persons:
-            ttk.Label(frame, text="Gespeicherte Person:").grid(
+            ttk.Label(frame, text=t("Gespeicherte Person:")).grid(
                 row=0, column=0, sticky="e", padx=4, pady=(0, 6)
             )
             self._pick = tk.StringVar(value="— neu —")
@@ -4424,8 +4432,8 @@ class _CrewMemberDialog:
 
         btns = ttk.Frame(frame)
         btns.grid(row=row0 + len(self._ROWS), column=0, columnspan=2, pady=(10, 0))
-        ttk.Button(btns, text="Übernehmen", command=self._on_ok).pack(side="left", padx=4)
-        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Übernehmen"), command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _on_pick(self) -> None:
         """Füllt die Felder aus einer gespeicherten Person (Funktion bleibt)."""
@@ -4685,7 +4693,7 @@ class _TripStartDialog:
     def __init__(self, parent: tk.Tk, snapshot: Optional[Dict[str, float]] = None) -> None:
         self.result: Optional[Dict] = None
         self.top = tk.Toplevel(parent)
-        self.top.title("Neuen Törn beginnen")
+        self.top.title(t("Neuen Törn beginnen"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -4693,12 +4701,12 @@ class _TripStartDialog:
 
         self._vars: Dict[str, tk.StringVar] = {}
         rows = [
-            ("name", "Törn-Name:", ""),
-            ("start_location", "Startort:", ""),
-            ("start_water_l", "Wasser (Liter):", ""),
-            ("start_diesel_l", "Diesel (Liter):", ""),
-            ("start_engine_hours", "Motorenstunden:", _fmt_live(snapshot, "engine_hours")),
-            ("start_log_nm", "Log-Stand (Nm):", _fmt_live(snapshot, "log_total_nm")),
+            ("name", t("Törn-Name:"), ""),
+            ("start_location", t("Startort:"), ""),
+            ("start_water_l", t("Wasser (Liter):"), ""),
+            ("start_diesel_l", t("Diesel (Liter):"), ""),
+            ("start_engine_hours", t("Motorenstunden:"), _fmt_live(snapshot, "engine_hours")),
+            ("start_log_nm", t("Log-Stand (Nm):"), _fmt_live(snapshot, "log_total_nm")),
         ]
         for i, (key, label, default) in enumerate(rows):
             ttk.Label(frame, text=label).grid(row=i, column=0, sticky="e", padx=4, pady=4)
@@ -4707,13 +4715,13 @@ class _TripStartDialog:
             self._vars[key] = var
         if snapshot and (snapshot.get("engine_hours") or snapshot.get("log_total_nm")):
             ttk.Label(
-                frame, text="(Motorstunden/Log aus NMEA vorbelegt)", foreground="#888"
+                frame, text=t("(Motorstunden/Log aus NMEA vorbelegt)"), foreground="#888"
             ).grid(row=len(rows), column=0, columnspan=2, sticky="w", pady=(2, 0))
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=len(rows) + 1, column=0, columnspan=2, pady=(10, 0))
-        ttk.Button(buttons, text="Törn beginnen", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Törn beginnen"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _on_save(self) -> None:
         self.result = {
@@ -4735,7 +4743,7 @@ class _TripCloseDialog:
     ) -> None:
         self.result: Optional[Dict] = None
         self.top = tk.Toplevel(parent)
-        self.top.title(f"Törn abschließen: {trip.name or trip.start_location}")
+        self.top.title(t("Törn abschließen: {name}", name=trip.name or trip.start_location))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -4746,12 +4754,12 @@ class _TripCloseDialog:
         live_log = _fmt_live(snapshot, "log_total_nm")
         self._vars: Dict[str, tk.StringVar] = {}
         rows = [
-            ("end_location", "Zielort:", ""),
-            ("end_water_l", "Wasser (Liter):", ""),
-            ("end_diesel_l", "Diesel (Liter):", ""),
-            ("end_engine_hours", "Motorenstunden:",
+            ("end_location", t("Zielort:"), ""),
+            ("end_water_l", t("Wasser (Liter):"), ""),
+            ("end_diesel_l", t("Diesel (Liter):"), ""),
+            ("end_engine_hours", t("Motorenstunden:"),
              live_hours or ("" if trip.start_engine_hours is None else str(trip.start_engine_hours))),
-            ("end_log_nm", "Log-Stand (Nm):",
+            ("end_log_nm", t("Log-Stand (Nm):"),
              live_log or ("" if trip.start_log_nm is None else str(trip.start_log_nm))),
         ]
         for i, (key, label, default) in enumerate(rows):
@@ -4760,7 +4768,7 @@ class _TripCloseDialog:
             ttk.Entry(frame, textvariable=var, width=30).grid(row=i, column=1, pady=4)
             self._vars[key] = var
 
-        ttk.Label(frame, text="Abschluss-Notiz:").grid(
+        ttk.Label(frame, text=t("Abschluss-Notiz:")).grid(
             row=len(rows), column=0, sticky="ne", padx=4, pady=4
         )
         self._note = tk.Text(frame, width=32, height=4)
@@ -4768,8 +4776,8 @@ class _TripCloseDialog:
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=len(rows) + 1, column=0, columnspan=2, pady=(10, 0))
-        ttk.Button(buttons, text="Törn abschließen", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Törn abschließen"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _on_save(self) -> None:
         self.result = {
@@ -4789,7 +4797,7 @@ class _VoyageDialog:
     def __init__(self, parent: tk.Tk, store) -> None:
         self._store = store
         self.top = tk.Toplevel(parent)
-        self.top.title("Törns / Etappen gruppieren")
+        self.top.title(t("Törns / Etappen gruppieren"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -4797,32 +4805,32 @@ class _VoyageDialog:
 
         ttk.Label(
             frame, wraplength=560, foreground="#555",
-            text="Fasse mehrere Etappen zu einem Törn zusammen: oben einen Törn "
+            text=t("Fasse mehrere Etappen zu einem Törn zusammen: oben einen Törn "
                  "wählen oder 'Neu…' anlegen, unten die Etappen markieren und "
-                 "'→ zuordnen'.",
+                 "'→ zuordnen'."),
         ).grid(row=0, column=0, columnspan=5, sticky="w", pady=(0, 8))
 
-        ttk.Label(frame, text="Törn:").grid(row=1, column=0, sticky="e")
+        ttk.Label(frame, text=t("Törn:")).grid(row=1, column=0, sticky="e")
         self._voy_var = tk.StringVar()
         self._voy_combo = ttk.Combobox(frame, textvariable=self._voy_var,
                                        state="readonly", width=30)
         self._voy_combo.grid(row=1, column=1, sticky="w", padx=4)
-        ttk.Button(frame, text="Neu…", command=self._new).grid(row=1, column=2, padx=2)
-        ttk.Button(frame, text="Umbenennen…", command=self._rename).grid(row=1, column=3, padx=2)
-        ttk.Button(frame, text="Löschen", command=self._delete).grid(row=1, column=4, padx=2)
+        ttk.Button(frame, text=t("Neu…"), command=self._new).grid(row=1, column=2, padx=2)
+        ttk.Button(frame, text=t("Umbenennen…"), command=self._rename).grid(row=1, column=3, padx=2)
+        ttk.Button(frame, text=t("Löschen"), command=self._delete).grid(row=1, column=4, padx=2)
 
-        ttk.Label(frame, text="Etappen (mehrere markierbar):").grid(
+        ttk.Label(frame, text=t("Etappen (mehrere markierbar):")).grid(
             row=2, column=0, columnspan=5, sticky="w", pady=(10, 2))
         self._list = tk.Listbox(frame, width=74, height=12, selectmode="extended")
         self._list.grid(row=3, column=0, columnspan=5, sticky="we")
 
         btns = ttk.Frame(frame)
         btns.grid(row=4, column=0, columnspan=5, pady=10)
-        ttk.Button(btns, text="→ dem gewählten Törn zuordnen",
+        ttk.Button(btns, text=t("→ dem gewählten Törn zuordnen"),
                    command=self._assign).pack(side="left", padx=4)
-        ttk.Button(btns, text="aus Törn entfernen",
+        ttk.Button(btns, text=t("aus Törn entfernen"),
                    command=self._remove).pack(side="left", padx=4)
-        ttk.Button(btns, text="Schließen", command=self.top.destroy).pack(side="left", padx=16)
+        ttk.Button(btns, text=t("Schließen"), command=self.top.destroy).pack(side="left", padx=16)
 
         self._voy_ids: Dict[str, int] = {}
         self._trip_ids: List[int] = []
@@ -4856,10 +4864,10 @@ class _VoyageDialog:
 
     def _new(self) -> None:
         from tkinter import simpledialog
-        name = simpledialog.askstring("Neuer Törn", "Name des Törns:", parent=self.top)
+        name = simpledialog.askstring(t("Neuer Törn"), t("Name des Törns:"), parent=self.top)
         if not name or not name.strip():
             return
-        revier = simpledialog.askstring("Neuer Törn", "Revier (optional):",
+        revier = simpledialog.askstring(t("Neuer Törn"), t("Revier (optional):"),
                                         parent=self.top) or ""
         vid = self._store.add_voyage(Voyage(name=name.strip(), revier=revier.strip()))
         self._refresh_voyages()
@@ -4872,11 +4880,11 @@ class _VoyageDialog:
             return
         from tkinter import simpledialog
         v = self._store.get_voyage(vid)
-        name = simpledialog.askstring("Umbenennen", "Name:", initialvalue=v.name,
+        name = simpledialog.askstring(t("Umbenennen"), t("Name:"), initialvalue=v.name,
                                       parent=self.top)
         if name is None:
             return
-        revier = simpledialog.askstring("Umbenennen", "Revier:", initialvalue=v.revier,
+        revier = simpledialog.askstring(t("Umbenennen"), t("Revier:"), initialvalue=v.revier,
                                         parent=self.top)
         v.name = name.strip()
         if revier is not None:
@@ -4890,7 +4898,7 @@ class _VoyageDialog:
         if vid is None:
             return
         if not messagebox.askyesno(
-                "Törn löschen", "Diesen Törn löschen?\n(Die Etappen bleiben erhalten.)"):
+                t("Törn löschen"), t("Diesen Törn löschen?\n(Die Etappen bleiben erhalten.)")):
             return
         self._store.delete_voyage(vid)
         self._refresh_voyages()
@@ -4899,11 +4907,11 @@ class _VoyageDialog:
     def _assign(self) -> None:
         vid = self._cur_voyage_id()
         if vid is None:
-            messagebox.showinfo("Törn", "Bitte oben einen Törn wählen oder 'Neu…'.")
+            messagebox.showinfo(t("Törn"), t("Bitte oben einen Törn wählen oder 'Neu…'."))
             return
         ids = self._selected_trip_ids()
         if not ids:
-            messagebox.showinfo("Etappen", "Bitte unten eine oder mehrere Etappen markieren.")
+            messagebox.showinfo(t("Etappen"), t("Bitte unten eine oder mehrere Etappen markieren."))
             return
         for tid in ids:
             self._store.set_trip_voyage(tid, vid)
