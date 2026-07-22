@@ -337,11 +337,12 @@ def _datalist_input(name: str, values: List[str], selected, list_id: str) -> str
 
 
 def _options(values: List[str], selected) -> str:
+    # value = kanonischer deutscher Code (wird so gespeichert), Anzeige = übersetzt.
     out = []
     sel = "" if selected is None else str(selected)
     for v in values:
         s = " selected" if str(v) == sel else ""
-        out.append(f"<option value='{_esc(v)}'{s}>{_esc(v)}</option>")
+        out.append(f"<option value='{_esc(v)}'{s}>{_esc(t(v))}</option>")
     return "".join(out)
 
 

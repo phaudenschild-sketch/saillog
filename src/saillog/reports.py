@@ -232,7 +232,9 @@ def entry_card(entry: LogEntry, offset: float, cum_nm: float,
         entry.entry_type, entry.entry_type)
     sails = []
     if entry.mainsail and entry.mainsail not in ("", "—"):
-        sails.append(t("Großsegel: {sail}", sail=entry.mainsail))
+        # Einzelwert (z.B. „Voll") wird übersetzt; zusammengesetzte Kurzfassungen
+        # („Groß Reff 1, Genua 60%") haben keinen Schlüssel und bleiben wie gespeichert.
+        sails.append(t("Großsegel: {sail}", sail=t(entry.mainsail)))
     if entry.genoa_percent is not None:
         sails.append(t("Fock/Genua: {pct}%", pct=f"{entry.genoa_percent:.0f}"))
     if entry.spinnaker:
@@ -258,13 +260,13 @@ def entry_card(entry: LogEntry, offset: float, cum_nm: float,
     cells = "".join([
         _grid_cell(t("Seegang"), _de(entry.wave_height_m) + " m" if entry.wave_height_m is not None else "---"),
         _grid_cell(t("Wassertiefe"), (_de(entry.depth_m, 1) + " m") if entry.depth_m is not None else "---"),
-        _grid_cell(t("Niederschlag"), entry.precipitation or "---"),
+        _grid_cell(t("Niederschlag"), t(entry.precipitation) or "---"),
         _grid_cell("Log", _de(cum_nm, 1) + " NM"),
         _grid_cell(t("FüG / KüG"), fug),
         _grid_cell("Wind", wind_str(entry.tws_kn, entry.twd_deg)),
         _grid_cell(t("Luft"), luft),
-        _grid_cell(t("Bewölkung"), entry.cloud_cover or "---"),
-        _grid_cell(t("Sicht"), entry.visibility or "---"),
+        _grid_cell(t("Bewölkung"), t(entry.cloud_cover) or "---"),
+        _grid_cell(t("Sicht"), t(entry.visibility) or "---"),
     ])
 
     img_html = ""
