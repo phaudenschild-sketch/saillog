@@ -1191,12 +1191,12 @@ class Application:
         trips = self._store.all_trips(newest_first=True)
         self._trip_choices = {"— (kein Törn)": None}
         open_display = None
-        for t in trips:
-            route = f"{t.start_location or '?'} → {t.end_location or '…'}"
-            status = "offen" if t.status == "open" else "abgeschlossen"
-            disp = f"#{t.id} {t.name or route}  [{status}]"
-            self._trip_choices[disp] = t.id
-            if t.status == "open" and open_display is None:
+        for tr in trips:
+            route = f"{tr.start_location or '?'} → {tr.end_location or '…'}"
+            status = "offen" if tr.status == "open" else "abgeschlossen"
+            disp = f"#{tr.id} {tr.name or route}  [{status}]"
+            self._trip_choices[disp] = tr.id
+            if tr.status == "open" and open_display is None:
                 open_display = disp
         self._trip_combo["values"] = list(self._trip_choices.keys())
 
@@ -1448,8 +1448,8 @@ class Application:
         r = dialog.result
         offset = self._tz_offset()
         # optionaler Zeitraum-Filter (nach Startdatum der Etappe)
-        trips = [t for t in trips_all
-                 if _in_date_range(t.start_dz, r["von"], r["bis"], offset)]
+        trips = [tr for tr in trips_all
+                 if _in_date_range(tr.start_dz, r["von"], r["bis"], offset)]
         if not trips:
             messagebox.showinfo("Seemeilen-Nachweis",
                                 "Im gewählten Zeitraum liegen keine Törns.")
@@ -2632,7 +2632,7 @@ class _NewEntryDialog:
         self._offset = offset
         self._logevents = logevents or fields.DEFAULT_LOGEVENTS
         self.top = tk.Toplevel(parent)
-        self.top.title("Neuer Eintrag (manuell)")
+        self.top.title(t("Neuer Eintrag (manuell)"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -2644,17 +2644,17 @@ class _NewEntryDialog:
             ttk.Label(frame, text=text).grid(row=row, column=col, sticky="e", padx=4, pady=2)
 
         # Zeit + Törn
-        lab("Zeit (lokal):", r)
+        lab(t("Zeit (lokal):"), r)
         now_local = timeutil.to_display(utc_now_iso(), offset)
         self._ts = tk.StringVar(value=now_local)
         ttk.Entry(frame, textvariable=self._ts, width=22).grid(row=r, column=1, sticky="w")
-        lab("Törn:", r, 2)
+        lab(t("Törn:"), r, 2)
         self._trip_choices: Dict[str, Optional[int]] = {"— (kein Törn)": None}
-        for t in trips:
-            route = f"{t.start_location or '?'} → {t.end_location or '…'}"
-            self._trip_choices[f"#{t.id} {t.name or route}"] = t.id
+        for tr in trips:
+            route = f"{tr.start_location or '?'} → {tr.end_location or '…'}"
+            self._trip_choices[f"#{tr.id} {tr.name or route}"] = tr.id
         self._trip_var = tk.StringVar()
-        cur = next((d for d, i in self._trip_choices.items() if i == current_trip_id),
+        cur = next((d for d, idx in self._trip_choices.items() if idx == current_trip_id),
                    "— (kein Törn)")
         self._trip_var.set(cur)
         ttk.Combobox(frame, textvariable=self._trip_var, width=26, state="readonly",
@@ -2662,37 +2662,37 @@ class _NewEntryDialog:
             row=r, column=3, sticky="w")
         r += 1
 
-        lab("Anlass:", r)
+        lab(t("Anlass:"), r)
         self._logevent = tk.StringVar(value=self._logevents[0])
         ttk.Combobox(frame, textvariable=self._logevent, width=19,
                      values=self._logevents).grid(row=r, column=1, sticky="w")
-        lab("Ort / Hafen:", r, 2)
+        lab(t("Ort / Hafen:"), r, 2)
         self._location = tk.StringVar()
         ttk.Entry(frame, textvariable=self._location, width=28).grid(
             row=r, column=3, sticky="w")
         r += 1
 
         # Position + Bewegung
-        lab("Breite (°):", r)
+        lab(t("Breite (°):"), r)
         self._lat = tk.StringVar()
         ttk.Entry(frame, textvariable=self._lat, width=22).grid(row=r, column=1, sticky="w")
-        lab("Länge (°):", r, 2)
+        lab(t("Länge (°):"), r, 2)
         self._lon = tk.StringVar()
         ttk.Entry(frame, textvariable=self._lon, width=28).grid(row=r, column=3, sticky="w")
         r += 1
 
-        lab("SOG (kn):", r)
+        lab(t("SOG (kn):"), r)
         self._sog = tk.StringVar()
         ttk.Entry(frame, textvariable=self._sog, width=22).grid(row=r, column=1, sticky="w")
-        lab("COG (°):", r, 2)
+        lab(t("COG (°):"), r, 2)
         self._cog = tk.StringVar()
         ttk.Entry(frame, textvariable=self._cog, width=28).grid(row=r, column=3, sticky="w")
         r += 1
 
-        lab("Tiefe (m):", r)
+        lab(t("Tiefe (m):"), r)
         self._depth = tk.StringVar()
         ttk.Entry(frame, textvariable=self._depth, width=22).grid(row=r, column=1, sticky="w")
-        lab("Wind wahr (kn / °):", r, 2)
+        lab(t("Wind wahr (kn / °):"), r, 2)
         wind = ttk.Frame(frame)
         wind.grid(row=r, column=3, sticky="w")
         self._tws = tk.StringVar()
@@ -2722,66 +2722,66 @@ class _NewEntryDialog:
         _pre(self._twd, "twd_deg", 0)
 
         # Motor / Segel
-        lab("Motor:", r)
+        lab(t("Motor:"), r)
         self._engine = tk.StringVar(value="—")
         ttk.Combobox(frame, textvariable=self._engine, width=19, state="readonly",
                      values=["—", "ein", "aus"]).grid(row=r, column=1, sticky="w")
-        lab("Großsegel:", r, 2)
+        lab(t("Großsegel:"), r, 2)
         self._mainsail = tk.StringVar(value="—")
         ttk.Combobox(frame, textvariable=self._mainsail, width=26, state="readonly",
                      values=MAINSAIL_OPTIONS).grid(row=r, column=3, sticky="w")
         r += 1
 
-        lab("Genua %:", r)
+        lab(t("Genua %:"), r)
         self._genoa = tk.StringVar()
         ttk.Spinbox(frame, from_=0, to=100, textvariable=self._genoa, width=8).grid(
             row=r, column=1, sticky="w")
-        lab("Spinnaker:", r, 2)
+        lab(t("Spinnaker:"), r, 2)
         self._spinnaker = tk.BooleanVar(value=False)
-        ttk.Checkbutton(frame, text="gesetzt", variable=self._spinnaker).grid(
+        ttk.Checkbutton(frame, text=t("gesetzt"), variable=self._spinnaker).grid(
             row=r, column=3, sticky="w")
         r += 1
 
         # Wetter
-        lab("Bewölkung:", r)
+        lab(t("Bewölkung:"), r)
         self._cloud = tk.StringVar(value="—")
         ttk.Combobox(frame, textvariable=self._cloud, width=19, state="readonly",
                      values=CLOUD_COVER_LABELS).grid(row=r, column=1, sticky="w")
-        lab("Niederschlag:", r, 2)
+        lab(t("Niederschlag:"), r, 2)
         self._precip = tk.StringVar(value="kein")
         ttk.Combobox(frame, textvariable=self._precip, width=26, state="readonly",
                      values=PRECIPITATION).grid(row=r, column=3, sticky="w")
         r += 1
 
-        lab("Sicht:", r)
+        lab(t("Sicht:"), r)
         self._visibility = tk.StringVar(value="—")
         ttk.Combobox(frame, textvariable=self._visibility, width=19, state="readonly",
                      values=VISIBILITY_LABELS).grid(row=r, column=1, sticky="w")
-        lab("Seegang (m):", r, 2)
+        lab(t("Seegang (m):"), r, 2)
         self._wave = tk.StringVar()
         ttk.Entry(frame, textvariable=self._wave, width=28).grid(row=r, column=3, sticky="w")
         r += 1
 
-        lab("Crew:", r)
+        lab(t("Crew:"), r)
         self._crew = tk.StringVar()
         ttk.Entry(frame, textvariable=self._crew, width=22).grid(row=r, column=1, sticky="w")
         r += 1
 
-        ttk.Label(frame, text="Notiz:").grid(row=r, column=0, sticky="ne", padx=4, pady=2)
+        ttk.Label(frame, text=t("Notiz:")).grid(row=r, column=0, sticky="ne", padx=4, pady=2)
         self._note = tk.Text(frame, width=52, height=4)
         self._note.grid(row=r, column=1, columnspan=3, sticky="w", pady=2)
         r += 1
 
-        ttk.Label(frame, text="(Position in Dezimalgrad, z.B. 54,806 / 9,451 — "
-                              "S/W als Minuszeichen)", foreground="#888").grid(
+        ttk.Label(frame, text=t("(Position in Dezimalgrad, z.B. 54,806 / 9,451 — "
+                                "S/W als Minuszeichen)"), foreground="#888").grid(
             row=r, column=0, columnspan=4, sticky="w", pady=(2, 6))
         r += 1
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=r, column=0, columnspan=4, pady=(6, 0))
-        ttk.Button(buttons, text="Eintrag speichern", command=self._on_save).pack(
+        ttk.Button(buttons, text=t("Eintrag speichern"), command=self._on_save).pack(
             side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(
             side="left", padx=4)
 
     def _on_save(self) -> None:
@@ -4828,11 +4828,11 @@ class _VoyageDialog:
         self._list.delete(0, "end")
         self._trip_ids = []
         names = {v.id: (v.name or f"Törn #{v.id}") for v in self._store.all_voyages()}
-        for t in self._store.all_trips(newest_first=False):
-            route = f"{t.start_location or '?'} → {t.end_location or '…'}"
-            vn = names.get(t.voyage_id, "—") if t.voyage_id else "—"
-            self._list.insert("end", f"#{t.id}  {t.name or route}   [{route}]   → {vn}")
-            self._trip_ids.append(t.id)
+        for tr in self._store.all_trips(newest_first=False):
+            route = f"{tr.start_location or '?'} → {tr.end_location or '…'}"
+            vn = names.get(tr.voyage_id, "—") if tr.voyage_id else "—"
+            self._list.insert("end", f"#{tr.id}  {tr.name or route}   [{route}]   → {vn}")
+            self._trip_ids.append(tr.id)
 
     def _cur_voyage_id(self) -> Optional[int]:
         return self._voy_ids.get(self._voy_var.get())

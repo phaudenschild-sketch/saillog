@@ -89,5 +89,22 @@
   "💾 Backup…": "💾 Backup…",
   "Trackpunkte anzeigen": "Show track points",
   "(Doppelklick = bearbeiten)": "(double-click = edit)",
-  "Zeitzone:": "Time zone:"
+  "Zeitzone:": "Time zone:",
+
+  "Neuer Eintrag (manuell)": "New entry (manual)",
+  "Zeit (lokal):": "Time (local):",
+  "Törn:": "Trip:",
+  "Ort / Hafen:": "Place / harbour:",
+  "Breite (°):": "Latitude (°):",
+  "Länge (°):": "Longitude (°):",
+  "Tiefe (m):": "Depth (m):",
+  "Wind wahr (kn / °):": "True wind (kn / °):",
+  "Motor:": "Engine:",
+  "Großsegel:": "Mainsail:",
+  "Genua %:": "Genoa %:",
+  "gesetzt": "set",
+  "Notiz:": "Note:",
+  "(Position in Dezimalgrad, z.B. 54,806 / 9,451 — S/W als Minuszeichen)": "(Position in decimal degrees, e.g. 54.806 / 9.451 — S/W as minus sign)",
+  "Eintrag speichern": "Save entry",
+  "Abbrechen": "Cancel"
 }
