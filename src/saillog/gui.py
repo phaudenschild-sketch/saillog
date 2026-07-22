@@ -27,6 +27,7 @@ from saillog.fields import (
     cloud_hint,
     visibility_hint,
 )
+from saillog.i18n import available_languages, current_language, set_language, t
 from saillog.livedata import LiveData
 from saillog.logbook import LogbookService, utc_now_iso
 from saillog.nmea import FIELD_LABELS
@@ -58,6 +59,7 @@ class Application:
     def __init__(self, root: tk.Tk) -> None:
         self._root = root
         self._config = Config.load()
+        set_language(self._config.language)   # Oberflächensprache aktivieren
         self._live = LiveData()
         self._store = LogbookStore(self._config.db_path)
         self._logbook = LogbookService(self._store, self._live)
@@ -93,7 +95,7 @@ class Application:
         # Törn-Auswahl: Anzeigetext -> Trip-ID (None = keinem Törn zugeordnet)
         self._trip_choices: Dict[str, Optional[int]] = {}
 
-        root.title("SailLog — Segel-Logbuch")
+        root.title(t("SailLog — Segel-Logbuch"))
         branding.set_window_icon(root)
         root.minsize(1000, 560)
 
@@ -137,70 +139,71 @@ class Application:
         # Menüleiste: Stammdaten (Personen/Schiffe verwalten)
         menubar = tk.Menu(self._root)
         stamm = tk.Menu(menubar, tearoff=0)
-        stamm.add_command(label="Personen verwalten…", command=self._on_manage_persons)
-        stamm.add_command(label="Schiffe verwalten…", command=self._on_manage_ships)
+        stamm.add_command(label=t("Personen verwalten…"), command=self._on_manage_persons)
+        stamm.add_command(label=t("Schiffe verwalten…"), command=self._on_manage_ships)
         stamm.add_separator()
-        stamm.add_command(label="Anlass-Liste bearbeiten…",
+        stamm.add_command(label=t("Anlass-Liste bearbeiten…"),
                           command=self._on_edit_logevents)
-        menubar.add_cascade(label="Stammdaten", menu=stamm)
+        menubar.add_cascade(label=t("Stammdaten"), menu=stamm)
         extras = tk.Menu(menubar, tearoff=0)
-        extras.add_command(label="Törns/Etappen gruppieren…",
+        extras.add_command(label=t("Törns/Etappen gruppieren…"),
                            command=self._on_manage_voyages)
-        extras.add_command(label="Plotter-Screenshot (ADB)…",
+        extras.add_command(label=t("Plotter-Screenshot (ADB)…"),
                            command=self._on_plotter_settings)
-        extras.add_command(label="🎓 Seemeilen-Nachweis (Segelscheine)…",
+        extras.add_command(label=t("🎓 Seemeilen-Nachweis (Segelscheine)…"),
                            command=self._on_meilennachweis)
         extras.add_separator()
-        extras.add_command(label="TripCon-Backup importieren…",
+        extras.add_command(label=t("TripCon-Backup importieren…"),
                            command=self._on_import_tripcon)
-        menubar.add_cascade(label="Extras", menu=extras)
+        self._build_language_menu(extras)
+        menubar.add_cascade(label=t("Extras"), menu=extras)
         self._root.config(menu=menubar)
 
         # Kopfzeile: Datenquellen (mehrere gleichzeitig möglich)
-        top = ttk.LabelFrame(self._root, text="Datenquellen")
+        top = ttk.LabelFrame(self._root, text=t("Datenquellen"))
         top.pack(fill="x", **pad)
 
-        self._connect_btn = ttk.Button(top, text="Verbinden", command=self._on_connect_all)
+        self._connect_btn = ttk.Button(top, text=t("Verbinden"), command=self._on_connect_all)
         self._connect_btn.grid(row=0, column=0, padx=6, pady=6)
-        ttk.Button(top, text="Quellen…", command=self._on_manage_sources).grid(
+        ttk.Button(top, text=t("Quellen…"), command=self._on_manage_sources).grid(
             row=0, column=1, padx=4
         )
-        ttk.Button(top, text="Rohdaten…", command=self._on_show_raw).grid(
+        ttk.Button(top, text=t("Rohdaten…"), command=self._on_show_raw).grid(
             row=0, column=2, padx=4
         )
-        self._status_label = tk.Label(top, text="getrennt", fg="#888888")
+        self._status_label = tk.Label(top, text=t("getrennt"), fg="#888888")
         self._status_label.grid(row=0, column=3, padx=8)
         self._sources_label = ttk.Label(top, text="", foreground="#555")
         self._sources_label.grid(row=1, column=0, columnspan=4, sticky="w", padx=8, pady=(0, 4))
         self._update_sources_label()
 
         # Törn-Leiste
-        trip_bar = ttk.LabelFrame(self._root, text="Törn")
+        trip_bar = ttk.LabelFrame(self._root, text=t("Törn"))
         trip_bar.pack(fill="x", **pad)
-        ttk.Label(trip_bar, text="Aktiver Törn:").grid(row=0, column=0, sticky="e", padx=4, pady=6)
+        ttk.Label(trip_bar, text=t("Aktiver Törn:")).grid(row=0, column=0, sticky="e", padx=4, pady=6)
         self._trip_var = tk.StringVar()
         self._trip_combo = ttk.Combobox(
             trip_bar, textvariable=self._trip_var, width=42, state="readonly"
         )
         self._trip_combo.grid(row=0, column=1, padx=4)
         self._trip_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_trip_selected())
-        ttk.Button(trip_bar, text="Neuer Törn…", command=self._on_new_trip).grid(
+        ttk.Button(trip_bar, text=t("Neuer Törn…"), command=self._on_new_trip).grid(
             row=0, column=2, padx=6
         )
-        ttk.Button(trip_bar, text="✎ Törn bearbeiten…", command=self._on_edit_trip).grid(
+        ttk.Button(trip_bar, text=t("✎ Törn bearbeiten…"), command=self._on_edit_trip).grid(
             row=0, column=3, padx=4
         )
         self._close_trip_btn = ttk.Button(
-            trip_bar, text="Törn abschließen…", command=self._on_close_trip
+            trip_bar, text=t("Törn abschließen…"), command=self._on_close_trip
         )
         self._close_trip_btn.grid(row=0, column=4, padx=4)
-        ttk.Button(trip_bar, text="Crewliste…", command=self._on_crewlist).grid(
+        ttk.Button(trip_bar, text=t("Crewliste…"), command=self._on_crewlist).grid(
             row=0, column=5, padx=4
         )
-        ttk.Button(trip_bar, text="📄 Bericht…", command=self._on_report).grid(
+        ttk.Button(trip_bar, text=t("📄 Bericht…"), command=self._on_report).grid(
             row=0, column=6, padx=4
         )
-        ttk.Button(trip_bar, text="⛽ Tanken…", command=self._on_fuel).grid(
+        ttk.Button(trip_bar, text=t("⛽ Tanken…"), command=self._on_fuel).grid(
             row=0, column=7, padx=4
         )
         self._trip_dist_label = ttk.Label(
@@ -213,13 +216,13 @@ class Application:
         main_row.pack(fill="x", **pad)
 
         # Messwerte kompakt (zwei Spalten, je Zeile "Label  Wert Einheit")
-        dash = ttk.LabelFrame(main_row, text="Messwerte")
+        dash = ttk.LabelFrame(main_row, text=t("Messwerte"))
         dash.pack(side="left", fill="y")
         per_col = (len(FIELD_LABELS) + 1) // 2
         for index, (key, label, _unit) in enumerate(FIELD_LABELS):
             row = index % per_col
             base = (index // per_col) * 2
-            ttk.Label(dash, text=label, foreground="#666").grid(
+            ttk.Label(dash, text=t(label), foreground="#666").grid(
                 row=row, column=base, sticky="e", padx=(8, 3), pady=1
             )
             value = tk.Label(dash, text="—", font=("TkDefaultFont", 10, "bold"),
@@ -227,31 +230,31 @@ class Application:
             value.grid(row=row, column=base + 1, sticky="w", padx=(0, 10), pady=1)
             self._value_labels[key] = value
 
-        cond = ttk.LabelFrame(main_row, text="Bedingungen (bei jedem Log mitgeschrieben)")
+        cond = ttk.LabelFrame(main_row, text=t("Bedingungen (bei jedem Log mitgeschrieben)"))
         cond.pack(side="left", fill="both", expand=True, padx=(8, 0))
         self._build_conditions(cond)
 
         # Logging-Steuerung
-        controls = ttk.LabelFrame(self._root, text="Logbuch")
+        controls = ttk.LabelFrame(self._root, text=t("Logbuch"))
         controls.pack(fill="x", **pad)
 
         self._auto_btn = ttk.Button(
-            controls, text="Auto-Logging starten", command=self._on_toggle_auto
+            controls, text=t("Auto-Logging starten"), command=self._on_toggle_auto
         )
         self._auto_btn.grid(row=0, column=0, padx=(8, 4), pady=6)
-        ttk.Button(controls, text="AutoLog…", command=self._on_autolog_settings).grid(
+        ttk.Button(controls, text=t("AutoLog…"), command=self._on_autolog_settings).grid(
             row=0, column=1, padx=4
         )
-        ttk.Button(controls, text="📷 Foto-Import…", command=self._on_photo_settings).grid(
+        ttk.Button(controls, text=t("📷 Foto-Import…"), command=self._on_photo_settings).grid(
             row=0, column=2, padx=4
         )
-        ttk.Button(controls, text="📱 Handy/Tablet…",
+        ttk.Button(controls, text=t("📱 Handy/Tablet…"),
                    command=self._on_remote_settings).grid(row=1, column=0, padx=(8, 4),
                                                           pady=(0, 6), sticky="w")
 
         entry_grp = ttk.Frame(controls)
         entry_grp.grid(row=0, column=3, padx=8)
-        ttk.Label(entry_grp, text="Bild:").pack(side="left")
+        ttk.Label(entry_grp, text=t("Bild:")).pack(side="left")
         self._entry_img_src = tk.StringVar(
             value=self._config.entry_image_source or "kein Bild")
         ttk.Combobox(
@@ -261,22 +264,22 @@ class Application:
         # gewählte Bildquelle merken (beim nächsten Start vorbelegen)
         self._entry_img_src.trace_add("write", lambda *_: self._save_img_source())
         ttk.Button(
-            entry_grp, text="✎ Eintrag speichern", command=self._on_save_entry
+            entry_grp, text=t("✎ Eintrag speichern"), command=self._on_save_entry
         ).pack(side="left")
         ttk.Button(
-            entry_grp, text="📸 Plotter", command=self._on_plotter_entry
+            entry_grp, text=t("📸 Plotter"), command=self._on_plotter_entry
         ).pack(side="left", padx=(6, 0))
 
-        ttk.Button(controls, text="CSV exportieren", command=self._on_export_csv).grid(
+        ttk.Button(controls, text=t("CSV exportieren"), command=self._on_export_csv).grid(
             row=0, column=4, padx=4
         )
-        ttk.Button(controls, text="GPX exportieren", command=self._on_export_gpx).grid(
+        ttk.Button(controls, text=t("GPX exportieren"), command=self._on_export_gpx).grid(
             row=0, column=5, padx=4
         )
-        ttk.Button(controls, text="🗺 AIS-Karte", command=self._on_open_map).grid(
+        ttk.Button(controls, text=t("🗺 AIS-Karte"), command=self._on_open_map).grid(
             row=0, column=6, padx=4
         )
-        ttk.Button(controls, text="🗺 Logbuch-Karte…",
+        ttk.Button(controls, text=t("🗺 Logbuch-Karte…"),
                    command=self._on_open_log_map).grid(row=0, column=7, padx=4)
 
         # Logbuch-Tabelle
@@ -286,9 +289,9 @@ class Application:
         cols = ("time", "ed", "anlass", "type", "pos", "sog", "wind", "depth",
                 "motor", "segel", "img", "note")
         headers = {
-            "time": "Zeit", "ed": "✎", "anlass": "Anlass", "type": "Typ",
-            "pos": "Position", "sog": "SOG", "wind": "Wind wahr", "depth": "Tiefe",
-            "motor": "Motor", "segel": "Segel", "img": "📷", "note": "Notiz",
+            "time": t("Zeit"), "ed": "✎", "anlass": t("Anlass"), "type": t("Typ"),
+            "pos": t("Position"), "sog": "SOG", "wind": t("Wind wahr"), "depth": t("Tiefe"),
+            "motor": t("Motor"), "segel": t("Segel"), "img": "📷", "note": t("Notiz"),
         }
         widths = {
             "time": 145, "ed": 26, "anlass": 100, "type": 58, "pos": 140, "sog": 48,
@@ -308,25 +311,25 @@ class Application:
 
         bottom = ttk.Frame(self._root)
         bottom.pack(side="bottom", fill="x", **pad)
-        ttk.Button(bottom, text="➕ Neuer Eintrag…", command=self._on_new_entry).pack(
+        ttk.Button(bottom, text=t("➕ Neuer Eintrag…"), command=self._on_new_entry).pack(
             side="left", padx=(0, 8)
         )
-        ttk.Button(bottom, text="Bearbeiten…", command=self._on_edit_entry).pack(side="left")
-        ttk.Button(bottom, text="Eintrag löschen", command=self._on_delete_entry).pack(
+        ttk.Button(bottom, text=t("Bearbeiten…"), command=self._on_edit_entry).pack(side="left")
+        ttk.Button(bottom, text=t("Eintrag löschen"), command=self._on_delete_entry).pack(
             side="left", padx=4
         )
-        ttk.Button(bottom, text="Bild ansehen", command=self._on_view_image).pack(
+        ttk.Button(bottom, text=t("Bild ansehen"), command=self._on_view_image).pack(
             side="left", padx=4
         )
-        ttk.Button(bottom, text="💾 Backup…", command=self._on_backup).pack(
+        ttk.Button(bottom, text=t("💾 Backup…"), command=self._on_backup).pack(
             side="left", padx=(12, 4)
         )
         self._show_track = tk.BooleanVar(value=False)
         ttk.Checkbutton(
-            bottom, text="Trackpunkte anzeigen", variable=self._show_track,
+            bottom, text=t("Trackpunkte anzeigen"), variable=self._show_track,
             command=self._refresh_logbook,
         ).pack(side="left", padx=(12, 4))
-        ttk.Label(bottom, text="(Doppelklick = bearbeiten)", foreground="#999").pack(
+        ttk.Label(bottom, text=t("(Doppelklick = bearbeiten)"), foreground="#999").pack(
             side="left", padx=8
         )
         self._count_label = ttk.Label(bottom, text="")
@@ -339,7 +342,34 @@ class Application:
         )
         tz.pack(side="right", padx=2)
         tz.bind("<<ComboboxSelected>>", lambda _e: self._on_tz_change())
-        ttk.Label(bottom, text="Zeitzone:").pack(side="right", padx=(14, 2))
+        ttk.Label(bottom, text=t("Zeitzone:")).pack(side="right", padx=(14, 2))
+
+    # --- Sprache ------------------------------------------------------------
+
+    def _build_language_menu(self, parent_menu: tk.Menu) -> None:
+        """Untermenü „Sprache / Language" mit allen verfügbaren Katalogen."""
+        parent_menu.add_separator()
+        lang_menu = tk.Menu(parent_menu, tearoff=0)
+        self._lang_var = tk.StringVar(value=current_language())
+        for code, name in available_languages().items():
+            lang_menu.add_radiobutton(
+                label=name, value=code, variable=self._lang_var,
+                command=lambda c=code: self._on_change_language(c),
+            )
+        parent_menu.add_cascade(label=t("Sprache / Language"), menu=lang_menu)
+
+    def _on_change_language(self, code: str) -> None:
+        """Sprache umschalten (wird beim nächsten Start wirksam)."""
+        self._lang_var.set(code)
+        if code == self._config.language:
+            return
+        self._config.language = code
+        self._config.save()
+        set_language(code)
+        messagebox.showinfo(
+            t("Sprache / Language"),
+            t("Die Sprache wird beim nächsten Start von SailLog übernommen."),
+        )
 
     # --- Bedingungs-Panel (dauerhafte Maskenwerte) -------------------------
 
@@ -364,35 +394,35 @@ class Application:
             parent, textvariable=self._cond_vars["logevent"], width=18,
             values=self._logevents,
         )
-        add("Anlass:", self._logevent_combo)
+        add(t("Anlass:"), self._logevent_combo)
         self._cond_vars["cloud"] = tk.StringVar(value="wolkenlos")
-        add("Bewölkung:", ttk.Combobox(
+        add(t("Bewölkung:"), ttk.Combobox(
             parent, textvariable=self._cond_vars["cloud"], width=18,
             state="readonly", values=CLOUD_COVER_LABELS,
         ))
         self._cond_vars["precip"] = tk.StringVar(value="kein")
-        add("Niederschlag:", ttk.Combobox(
+        add(t("Niederschlag:"), ttk.Combobox(
             parent, textvariable=self._cond_vars["precip"], width=18,
             state="readonly", values=PRECIPITATION,
         ))
         self._cond_vars["visibility"] = tk.StringVar(value="gut")
-        add("Sicht:", ttk.Combobox(
+        add(t("Sicht:"), ttk.Combobox(
             parent, textvariable=self._cond_vars["visibility"], width=18,
             state="readonly", values=VISIBILITY_LABELS,
         ))
         self._cond_vars["wave"] = tk.StringVar()
-        add("Seegang (m):", ttk.Entry(
+        add(t("Seegang (m):"), ttk.Entry(
             parent, textvariable=self._cond_vars["wave"], width=10,
         ))
         self._cond_vars["note"] = tk.StringVar()
-        add("Bemerkung:", ttk.Entry(
+        add(t("Bemerkung:"), ttk.Entry(
             parent, textvariable=self._cond_vars["note"], width=20,
         ))
 
         # Segel/Antrieb: passt sich an die Ausrüstung des aktiven Schiffs an
         # (Festsegel = an/aus, Rollsegel = 0–100 %, Bindereff = Reff-Stufen;
         # Motorboot = keine Segel). Wird bei Schiffswechsel neu aufgebaut.
-        self._sail_frame = ttk.LabelFrame(parent, text="Segel / Antrieb")
+        self._sail_frame = ttk.LabelFrame(parent, text=t("Segel / Antrieb"))
         self._sail_frame.grid(row=per_col, column=0, columnspan=4,
                               sticky="we", pady=(8, 0))
         self._sail_vars: Dict[str, tk.Variable] = {}
@@ -858,13 +888,15 @@ class Application:
                 connected += 1
             proto = d.get("protocol", "tcp")
             parts.append(f"{mark} {proto} {d.get('host')}:{d.get('port')}")
-        self._sources_label.config(text="   ".join(parts) if parts else "keine Quellen")
+        self._sources_label.config(text="   ".join(parts) if parts else t("keine Quellen"))
         if not self._connected:
-            self._status_label.config(text="getrennt", fg="#888888")
+            self._status_label.config(text=t("getrennt"), fg="#888888")
         else:
             total = len(self._sources)
             color = "#1a8a1a" if connected == total else "#c08000"
-            self._status_label.config(text=f"{connected}/{total} verbunden", fg=color)
+            self._status_label.config(
+                text=t("{connected}/{total} verbunden", connected=connected, total=total),
+                fg=color)
 
     def _on_manage_sources(self) -> None:
         dialog = _SourcesDialog(self._root, self._source_defs)
