@@ -1308,7 +1308,7 @@ class Application:
         if res["kind"] == "fahrtenbuch":
             trips = self._store.all_trips(newest_first=False)
             if not trips:
-                messagebox.showinfo("Bericht", "Noch keine Törns vorhanden.")
+                messagebox.showinfo(t("Bericht"), t("Noch keine Törns vorhanden."))
                 return
             name = "fahrtenbuch.html"
 
@@ -1322,8 +1322,8 @@ class Application:
             trips = self._store.trips_for_voyage(res["voyage_id"]) if voyage else []
             if not trips:
                 messagebox.showinfo(
-                    "Bericht", "Diesem Törn sind noch keine Etappen zugeordnet "
-                    "(Extras → 'Törns/Etappen gruppieren…').")
+                    t("Bericht"), t("Diesem Törn sind noch keine Etappen zugeordnet "
+                                    "(Extras → 'Törns/Etappen gruppieren…')."))
                 return
             name = "toern_bericht.html"
 
@@ -1336,7 +1336,7 @@ class Application:
         else:
             trip = self._store.get_trip(self._logbook.current_trip_id)
             if trip is None:
-                messagebox.showinfo("Bericht", "Bitte oben eine Etappe auswählen.")
+                messagebox.showinfo(t("Bericht"), t("Bitte oben eine Etappe auswählen."))
                 return
             name = "etappen_bericht.html"
 
@@ -1353,7 +1353,7 @@ class Application:
             try:
                 html = make(None, False)      # interaktive Leaflet-Karte
             except Exception as exc:  # noqa: BLE001
-                messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
+                messagebox.showerror(t("Bericht"), t("Bericht fehlgeschlagen:\n{error}", error=exc))
                 return
             self._open_report_html(html, name)
 
@@ -1362,7 +1362,7 @@ class Application:
         try:
             path.write_text(html, encoding="utf-8")
         except OSError as exc:
-            messagebox.showerror("Bericht", f"Konnte den Bericht nicht speichern:\n{exc}")
+            messagebox.showerror(t("Bericht"), t("Konnte den Bericht nicht speichern:\n{error}", error=exc))
             return
         webbrowser.open(path.as_uri())
 
@@ -1398,17 +1398,17 @@ class Application:
         from saillog import pdf
         if pdf.find_browser(self._config.pdf_browser_path) is None:
             if messagebox.askyesno(
-                "PDF-Export",
-                "Kein Chromium-Browser (Edge/Chrome) gefunden, um direkt ein PDF "
-                "zu erzeugen.\n\nStattdessen den Bericht im Browser öffnen? Dort "
-                "über 'Drucken → Als PDF speichern' ausgeben."):
+                t("PDF-Export"),
+                t("Kein Chromium-Browser (Edge/Chrome) gefunden, um direkt ein PDF "
+                  "zu erzeugen.\n\nStattdessen den Bericht im Browser öffnen? Dort "
+                  "über 'Drucken → Als PDF speichern' ausgeben.")):
                 try:
                     self._open_report_html(make_html(None, False), name)
                 except Exception as exc:  # noqa: BLE001
-                    messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
+                    messagebox.showerror(t("Bericht"), t("Bericht fehlgeschlagen:\n{error}", error=exc))
             return
         out = filedialog.asksaveasfilename(
-            title="Bericht als PDF speichern", defaultextension=".pdf",
+            title=t("Bericht als PDF speichern"), defaultextension=".pdf",
             filetypes=[("PDF", "*.pdf")],
             initialfile=Path(name).with_suffix(".pdf").name,
         )
@@ -1431,18 +1431,18 @@ class Application:
 
     def _after_pdf(self, ok: bool, out: str, make_html, name: str) -> None:
         if ok:
-            if messagebox.askyesno("PDF-Export",
-                                   f"PDF gespeichert:\n{out}\n\nJetzt öffnen?"):
+            if messagebox.askyesno(t("PDF-Export"),
+                                   t("PDF gespeichert:\n{path}\n\nJetzt öffnen?", path=out)):
                 webbrowser.open(Path(out).as_uri())
         else:
             if messagebox.askyesno(
-                "PDF-Export",
-                "Das PDF konnte nicht erzeugt werden.\n\nStattdessen den Bericht "
-                "im Browser öffnen (dort 'Als PDF speichern')?"):
+                t("PDF-Export"),
+                t("Das PDF konnte nicht erzeugt werden.\n\nStattdessen den Bericht "
+                  "im Browser öffnen (dort 'Als PDF speichern')?")):
                 try:
                     self._open_report_html(make_html(None, False), name)
                 except Exception as exc:  # noqa: BLE001
-                    messagebox.showerror("Bericht", f"Bericht fehlgeschlagen:\n{exc}")
+                    messagebox.showerror(t("Bericht"), t("Bericht fehlgeschlagen:\n{error}", error=exc))
 
     # --- Seemeilen-Nachweis -------------------------------------------------
 
@@ -4918,7 +4918,7 @@ class _ReportDialog:
         self.result: Optional[dict] = None
         self._voyages = voyages
         self.top = tk.Toplevel(parent)
-        self.top.title("Bericht erzeugen")
+        self.top.title(t("Bericht erzeugen"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=14)
@@ -4926,82 +4926,82 @@ class _ReportDialog:
 
         ttk.Label(
             frame, wraplength=480, foreground="#555",
-            text="Ausgabe wählen: direkt als PDF speichern (nutzt den "
-                 "installierten Edge/Chrome) oder als HTML im Browser öffnen "
-                 "und dort drucken.",
+            text=t("Ausgabe wählen: direkt als PDF speichern (nutzt den "
+                   "installierten Edge/Chrome) oder als HTML im Browser öffnen "
+                   "und dort drucken."),
         ).pack(anchor="w", pady=(0, 8))
 
         # Ausgabeformat
-        og = ttk.LabelFrame(frame, text="Ausgabe", padding=8)
+        og = ttk.LabelFrame(frame, text=t("Ausgabe"), padding=8)
         og.pack(fill="x", pady=(0, 8))
         self._output = tk.StringVar(value="pdf")
-        ttk.Radiobutton(og, text="Als PDF speichern", variable=self._output,
+        ttk.Radiobutton(og, text=t("Als PDF speichern"), variable=self._output,
                         value="pdf").pack(side="left", padx=(2, 12))
-        ttk.Radiobutton(og, text="Im Browser öffnen (HTML)", variable=self._output,
+        ttk.Radiobutton(og, text=t("Im Browser öffnen (HTML)"), variable=self._output,
                         value="html").pack(side="left")
 
         # Eintragsarten-Filter + Karte (gelten für jeden Bericht)
-        mg = ttk.LabelFrame(frame, text="Eintragsarten & Karte", padding=8)
+        mg = ttk.LabelFrame(frame, text=t("Eintragsarten & Karte"), padding=8)
         mg.pack(fill="x", pady=(0, 8))
-        ttk.Label(mg, text="Angezeigte Eintragsarten (Bericht + Kartenmarkierung):",
+        ttk.Label(mg, text=t("Angezeigte Eintragsarten (Bericht + Kartenmarkierung):"),
                   foreground="#556").grid(row=0, column=0, columnspan=4, sticky="w")
         self._map_auto = tk.BooleanVar(value=True)
         self._map_manual = tk.BooleanVar(value=True)
         self._map_tripcon = tk.BooleanVar(value=True)
         ttk.Checkbutton(mg, text="Autolog", variable=self._map_auto).grid(
             row=1, column=1, sticky="w", padx=(6, 0), pady=(2, 0))
-        ttk.Checkbutton(mg, text="Manuell", variable=self._map_manual).grid(
+        ttk.Checkbutton(mg, text=t("Manuell"), variable=self._map_manual).grid(
             row=1, column=2, sticky="w", padx=(6, 0), pady=(2, 0))
-        ttk.Checkbutton(mg, text="Import", variable=self._map_tripcon).grid(
+        ttk.Checkbutton(mg, text=t("Import"), variable=self._map_tripcon).grid(
             row=1, column=3, sticky="w", padx=(6, 0), pady=(2, 0))
         ttk.Separator(mg, orient="horizontal").grid(
             row=2, column=0, columnspan=4, sticky="we", pady=6)
         self._with_images = tk.BooleanVar(value=True)
-        ttk.Checkbutton(mg, text="Fotos der Einträge einbetten",
+        ttk.Checkbutton(mg, text=t("Fotos der Einträge einbetten"),
                         variable=self._with_images).grid(
             row=3, column=0, columnspan=4, sticky="w")
         self._with_map = tk.BooleanVar(value=True)
-        ttk.Checkbutton(mg, text="Karte einbetten (ohne AIS)",
+        ttk.Checkbutton(mg, text=t("Karte einbetten (ohne AIS)"),
                         variable=self._with_map).grid(row=4, column=0, columnspan=4,
                                                       sticky="w")
 
         # 1) Ganzer Törn (mehrere Etappen)
-        vg = ttk.LabelFrame(frame, text="Ganzer Törn (mehrere Etappen)", padding=8)
+        vg = ttk.LabelFrame(frame, text=t("Ganzer Törn (mehrere Etappen)"), padding=8)
         vg.pack(fill="x", pady=4)
-        self._voy_map = {f"{v.name or ('Törn #' + str(v.id))}": v.id for v in voyages}
+        self._voy_map = {f"{v.name or (t('Törn #') + str(v.id))}": v.id for v in voyages}
         self._voy_var = tk.StringVar()
         if self._voy_map:
             self._voy_var.set(next(iter(self._voy_map)))
         row = ttk.Frame(vg); row.pack(fill="x")
-        ttk.Label(row, text="Törn:").pack(side="left")
+        ttk.Label(row, text=t("Törn:")).pack(side="left")
         combo = ttk.Combobox(row, textvariable=self._voy_var, state="readonly",
                              width=34, values=list(self._voy_map.keys()))
         combo.pack(side="left", padx=6)
-        bv1 = ttk.Button(vg, text="Törn-Bericht erstellen", width=42,
+        bv1 = ttk.Button(vg, text=t("Törn-Bericht erstellen"), width=42,
                          command=lambda: self._pick("voyage"))
         bv1.pack(fill="x", pady=(6, 2))
         if not self._voy_map:
             combo.config(state="disabled"); bv1.config(state="disabled")
             ttk.Label(vg, foreground="#b25000",
-                      text="(Noch keine Törns — unter Extras → 'Törns/Etappen "
-                           "gruppieren…' anlegen.)", wraplength=380).pack(anchor="w")
+                      text=t("(Noch keine Törns — unter Extras → 'Törns/Etappen "
+                             "gruppieren…' anlegen.)"), wraplength=380).pack(anchor="w")
 
         # 2) Einzelne Etappe (aktueller Törn)
-        eg = ttk.LabelFrame(frame, text="Einzelne Etappe (aktueller Törn)", padding=8)
+        eg = ttk.LabelFrame(frame, text=t("Einzelne Etappe (aktueller Törn)"), padding=8)
         eg.pack(fill="x", pady=4)
-        be1 = ttk.Button(eg, text="Etappen-Bericht erstellen", width=42,
+        be1 = ttk.Button(eg, text=t("Etappen-Bericht erstellen"), width=42,
                          command=lambda: self._pick("trip"))
         be1.pack(fill="x", pady=2)
         if not has_trip:
             be1.config(state="disabled")
             ttk.Label(eg, foreground="#b25000",
-                      text="(Oben keine Etappe ausgewählt.)").pack(anchor="w")
+                      text=t("(Oben keine Etappe ausgewählt.)")).pack(anchor="w")
 
         # 3) Fahrtenbuch
-        ttk.Button(frame, text="Fahrtenbuch (alle Törns)", width=42,
+        ttk.Button(frame, text=t("Fahrtenbuch (alle Törns)"), width=42,
                    command=lambda: self._pick("fahrtenbuch")).pack(
             fill="x", pady=(8, 2))
-        ttk.Button(frame, text="Abbrechen", command=self.top.destroy).pack(pady=(10, 0))
+        ttk.Button(frame, text=t("Abbrechen"), command=self.top.destroy).pack(pady=(10, 0))
 
     def _pick(self, kind: str) -> None:
         voyage_id = self._voy_map.get(self._voy_var.get()) if kind == "voyage" else None
