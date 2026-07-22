@@ -18,6 +18,8 @@ class I18nTest(unittest.TestCase):
             "__language__": "English",
             "Speichern": "Save",
             "Motor {rpm} U/min": "Engine {rpm} rpm",
+            "Länge": "Longitude",
+            "ship\x04Länge": "Length",
         }), encoding="utf-8")
         (i18n._LANG_DIR / "de.json").write_text(json.dumps({
             "__language__": "Deutsch",
@@ -54,6 +56,15 @@ class I18nTest(unittest.TestCase):
     def test_unknown_language_behaves_like_german(self):
         i18n.set_language("xx")
         self.assertEqual(i18n.t("Speichern"), "Speichern")
+
+    def test_context_disambiguates_homographs(self):
+        i18n.set_language("en")
+        self.assertEqual(i18n.t("Länge"), "Longitude")              # Position
+        self.assertEqual(i18n.t("Länge", _ctx="ship"), "Length")    # Bootslänge
+        # Fehlender Kontext-Schlüssel -> deutscher Originaltext
+        self.assertEqual(i18n.t("Breite", _ctx="ship"), "Breite")
+        i18n.set_language("de")
+        self.assertEqual(i18n.t("Länge", _ctx="ship"), "Länge")
 
 
 if __name__ == "__main__":

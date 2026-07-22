@@ -23,6 +23,7 @@ from typing import Dict, List, Optional
 from xml.sax.saxutils import escape
 
 from saillog import branding, geo, sun, timeutil
+from saillog.i18n import t
 from saillog.storage import LogEntry, Ship, Trip, Voyage
 
 _COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
@@ -175,28 +176,31 @@ def ship_block(ship: Optional[Ship]) -> str:
     for attr, label in _SHIP_FIELDS:
         val = _ship_value(ship, attr)
         if val:
-            rows.append(f'<div class="sd"><span class="k">{escape(label)}</span>'
+            # „Länge"/„Breite" hier = Boots-Länge/-Breite (nicht Longitude/
+            # Latitude) -> eigener Übersetzungskontext „ship".
+            lbl = t(label, _ctx="ship") if attr in ("length_m", "beam_m") else t(label)
+            rows.append(f'<div class="sd"><span class="k">{escape(lbl)}</span>'
                         f'<span class="v">{escape(val)}</span></div>')
     extras = []
     if ship.sails:
-        extras.append(("Antrieb/Segel", ship.sails))
+        extras.append((t("Antrieb/Segel"), ship.sails))
     if ship.equipment:
-        extras.append(("Ausstattung", ship.equipment))
+        extras.append((t("Ausstattung"), ship.equipment))
     tanks = []
     if ship.water_tank_l:
-        tanks.append(f"Wassertank ({ship.water_tank_l:.0f} l)")
+        tanks.append(t("Wassertank ({liter} l)", liter=f"{ship.water_tank_l:.0f}"))
     if ship.fuel_tank_l:
-        tanks.append(f"Treibstofftank ({ship.fuel_tank_l:.0f} l)")
+        tanks.append(t("Treibstofftank ({liter} l)", liter=f"{ship.fuel_tank_l:.0f}"))
     if tanks:
-        extras.append(("Tankkapazitäten", "\n".join(tanks)))
+        extras.append((t("Tankkapazitäten"), "\n".join(tanks)))
     if ship.power_source:
-        extras.append(("Stromversorgung", ship.power_source))
+        extras.append((t("Stromversorgung"), ship.power_source))
     extra_html = "".join(
         f'<div class="sx"><b>{escape(k)}</b><br>{escape(v).replace(chr(10), "<br>")}</div>'
         for k, v in extras
     )
-    return (f'<section class="ship"><h2>{escape(ship.name or "Schiff")} — '
-            f'Technische Daten</h2><div class="sdgrid">{"".join(rows)}</div>'
+    return (f'<section class="ship"><h2>{escape(ship.name or t("Schiff"))} — '
+            f'{t("Technische Daten")}</h2><div class="sdgrid">{"".join(rows)}</div>'
             f'{extra_html}</section>')
 
 
@@ -209,7 +213,7 @@ def crew_block(crew: List) -> str:
         role = getattr(c, "position", "") or ""
         tag = f' <span class="role">({escape(role)})</span>' if role and role != "Crew" else ""
         items.append(f"<li>{escape(name)}{tag}</li>")
-    return f'<section class="crew"><h3>Crew</h3><ul>{"".join(items)}</ul></section>'
+    return f'<section class="crew"><h3>{t("Crew")}</h3><ul>{"".join(items)}</ul></section>'
 
 
 def _grid_cell(label: str, value: str) -> str:
@@ -224,13 +228,13 @@ def _data_uri(image: bytes, mime: str) -> str:
 
 def entry_card(entry: LogEntry, offset: float, cum_nm: float,
                images: Optional[List[dict]] = None) -> str:
-    kind = {"auto": "AutoLog", "manual": "manuell", "tripcon": "TripCon"}.get(
+    kind = {"auto": "AutoLog", "manual": t("manuell"), "tripcon": "TripCon"}.get(
         entry.entry_type, entry.entry_type)
     sails = []
     if entry.mainsail and entry.mainsail not in ("", "—"):
-        sails.append(f"Großsegel: {entry.mainsail}")
+        sails.append(t("Großsegel: {sail}", sail=entry.mainsail))
     if entry.genoa_percent is not None:
-        sails.append(f"Fock/Genua: {entry.genoa_percent:.0f}%")
+        sails.append(t("Fock/Genua: {pct}%", pct=f"{entry.genoa_percent:.0f}"))
     if entry.spinnaker:
         sails.append("Spinnaker")
     sail_html = (f'<div class="sails">{escape(" · ".join(sails))}</div>'
@@ -252,15 +256,15 @@ def entry_card(entry: LogEntry, offset: float, cum_nm: float,
         luft = ", ".join(parts)
 
     cells = "".join([
-        _grid_cell("Seegang", _de(entry.wave_height_m) + " m" if entry.wave_height_m is not None else "---"),
-        _grid_cell("Wassertiefe", (_de(entry.depth_m, 1) + " m") if entry.depth_m is not None else "---"),
-        _grid_cell("Niederschlag", entry.precipitation or "---"),
+        _grid_cell(t("Seegang"), _de(entry.wave_height_m) + " m" if entry.wave_height_m is not None else "---"),
+        _grid_cell(t("Wassertiefe"), (_de(entry.depth_m, 1) + " m") if entry.depth_m is not None else "---"),
+        _grid_cell(t("Niederschlag"), entry.precipitation or "---"),
         _grid_cell("Log", _de(cum_nm, 1) + " NM"),
-        _grid_cell("FüG / KüG", fug),
+        _grid_cell(t("FüG / KüG"), fug),
         _grid_cell("Wind", wind_str(entry.tws_kn, entry.twd_deg)),
-        _grid_cell("Luft", luft),
-        _grid_cell("Bewölkung", entry.cloud_cover or "---"),
-        _grid_cell("Sicht", entry.visibility or "---"),
+        _grid_cell(t("Luft"), luft),
+        _grid_cell(t("Bewölkung"), entry.cloud_cover or "---"),
+        _grid_cell(t("Sicht"), entry.visibility or "---"),
     ])
 
     img_html = ""
@@ -275,7 +279,7 @@ def entry_card(entry: LogEntry, offset: float, cum_nm: float,
         f'<article class="entry">'
         f'<div class="ehead"><span class="etime">{escape(_fmt_dt(entry.timestamp, offset))}</span>'
         f'<span class="ekind">{escape(kind)}</span></div>'
-        f'<div class="eanlass">{escape(entry.logevent or "Eintrag")}</div>'
+        f'<div class="eanlass">{escape(entry.logevent or t("Eintrag"))}</div>'
         f'<div class="epos">{escape(latlon_dm(entry.lat, entry.lon))}</div>'
         f'<div class="egrid">{cells}</div>'
         f'{sail_html}{note_html}{img_html}'
@@ -299,21 +303,21 @@ def leg_card(store, trip: Trip, entries: List[LogEntry], offset: float,
     crew_names = ""
     if crew:
         crew_names = ", ".join(
-            f"{c.last_name}" + (" (Skipper)" if getattr(c, "position", "") == "Skipper" else "")
+            f"{c.last_name}" + (f" ({t('Skipper')})" if getattr(c, "position", "") == "Skipper" else "")
             for c in crew)
     return (
         f'<section class="leg">'
         f'<div class="legtop"><b>{escape(trip.start_location or "?")} → '
         f'{escape(trip.end_location or "…")}</b><span>{escape(when)}</span></div>'
         f'<div class="leggrid">'
-        f'<div><span class="k">Gesamt</span><span class="v">{_de(stats["total"])} NM</span></div>'
-        f'<div><span class="k">Gesegelt</span><span class="v">{_de(stats["sailed"])} NM</span></div>'
-        f'<div><span class="k">Motor</span><span class="v">{_de(stats["motor"])} NM</span></div>'
+        f'<div><span class="k">{t("Gesamt")}</span><span class="v">{_de(stats["total"])} NM</span></div>'
+        f'<div><span class="k">{t("Gesegelt")}</span><span class="v">{_de(stats["sailed"])} NM</span></div>'
+        f'<div><span class="k">{t("Motor")}</span><span class="v">{_de(stats["motor"])} NM</span></div>'
         f'<div><span class="k">Wind</span><span class="v">{escape(wind_txt)}</span></div>'
-        f'<div><span class="k">Luftdruck</span><span class="v">{escape(baro_txt)}</span></div>'
-        f'<div><span class="k">Schiff</span><span class="v">{escape(trip.name or "")}</span></div>'
+        f'<div><span class="k">{t("Luftdruck")}</span><span class="v">{escape(baro_txt)}</span></div>'
+        f'<div><span class="k">{t("Schiff")}</span><span class="v">{escape(trip.name or "")}</span></div>'
         f'</div>'
-        + (f'<div class="legcrew">Crew: {escape(crew_names)}</div>' if crew_names else "")
+        + (f'<div class="legcrew">{t("Crew")}: {escape(crew_names)}</div>' if crew_names else "")
         + f'</section>'
     )
 
@@ -396,8 +400,9 @@ _MAP_HEAD = (
     '<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>'
 )
 
-_TOOLBAR = ('<div class="toolbar noprint">'
-            '<button onclick="window.print()">Drucken / Als PDF speichern</button>'
+def _toolbar() -> str:
+    return ('<div class="toolbar noprint">'
+            f'<button onclick="window.print()">{t("Drucken / Als PDF speichern")}</button>'
             '</div>')
 
 
@@ -406,11 +411,11 @@ def _doc(title: str, body: str, with_map: bool = False) -> str:
     footer = (
         f'<div class="rfoot"><span>{escape(branding.COPYRIGHT)}</span>'
         f'<span>{escape(title)}</span>'
-        f'<span>erstellt mit {escape(branding.APP_NAME)} ⛵</span></div>'
+        f'<span>{t("erstellt mit {app} ⛵", app=escape(branding.APP_NAME))}</span></div>'
     )
     return (f'<!doctype html><html lang="de"><head><meta charset="utf-8">'
             f'<title>{escape(title)}</title><style>{_STYLE}</style>{head_extra}'
-            f'</head><body>{_TOOLBAR}{body}{footer}</body></html>')
+            f'</head><body>{_toolbar()}{body}{footer}</body></html>')
 
 
 # --- Karte im Bericht (Leaflet, ohne AIS) ----------------------------------
@@ -430,8 +435,8 @@ def _keep(entry: LogEntry, types: Optional[set]) -> bool:
 def _entry_count(shown: int, total: int, types: Optional[set]) -> str:
     """Textzeile für die Anzahl gezeigter Einträge (mit Hinweis bei Filter)."""
     if types is None or shown == total:
-        return f"{total} Einträge"
-    return f"{shown} von {total} Einträgen (Typ-Filter)"
+        return t("{total} Einträge", total=total)
+    return t("{shown} von {total} Einträgen (Typ-Filter)", shown=shown, total=total)
 
 
 def _nice_step(span: float, target_divs: int = 4) -> float:
@@ -608,7 +613,7 @@ def map_page_html(track: List[List[float]], marks: List[dict],
 
 
 def map_block(entries: List[LogEntry], offset: float = 0.0,
-              types: Optional[set] = None, title: str = "Karte",
+              types: Optional[set] = None, title: Optional[str] = None,
               track: Optional[List[List[float]]] = None,
               static: bool = False, map_renderer=None) -> str:
     """Karte für den Bericht: Route (Linie) + markierte Einträge.
@@ -624,18 +629,20 @@ def map_block(entries: List[LogEntry], offset: float = 0.0,
       * ``static=True`` → eigenständiger **SVG-Plot** (offline, ohne Kacheln),
       * sonst die interaktive **Leaflet-Karte** (HTML im Browser).
     """
+    if title is None:
+        title = t("Karte")
     if track is None:
         track = [[e.lat, e.lon] for e in entries
                  if e.lat is not None and e.lon is not None]
     marks = _map_marks(entries, offset, types)
     if not track:
         return (f'<h2 class="pb">{escape(title)}</h2>'
-                f'<div class="sub">Keine Positionsdaten für die Karte.</div>')
-    legend = ('<div class="maplegend"><span style="color:#159c3f">●</span> Start '
-              '<span style="color:#c0392b">●</span> Ziel '
-              '<span style="color:#e8820c">●</span> Autolog '
-              '<span style="color:#d61e3c">●</span> Manuell '
-              '<span style="color:#9aa0a6">●</span> Import — Route als Linie</div>')
+                f'<div class="sub">{t("Keine Positionsdaten für die Karte.")}</div>')
+    legend = (f'<div class="maplegend"><span style="color:#159c3f">●</span> {t("Start")} '
+              f'<span style="color:#c0392b">●</span> {t("Ziel")} '
+              f'<span style="color:#e8820c">●</span> {t("Autolog")} '
+              f'<span style="color:#d61e3c">●</span> {t("Manuell")} '
+              f'<span style="color:#9aa0a6">●</span> {t("Import — Route als Linie")}</div>')
     if map_renderer is not None:
         try:
             uri = map_renderer(track, marks)
@@ -660,7 +667,7 @@ def map_block(entries: List[LogEntry], offset: float = 0.0,
         "fillColor:m.fill,fillOpacity:.95}).addTo(map).bindPopup("
         "'<b>'+m.time+'</b>'+(m.anlass?'<br>'+m.anlass:'')+"
         "'<br>'+m.lat.toFixed(4)+', '+m.lon.toFixed(4)+"
-        "(m.wind?'<br>Wind wahr '+m.wind:'')+(m.note?'<br><i>'+m.note+'</i>':''));});"
+        "(m.wind?'<br>" + t("Wind wahr") + " '+m.wind:'')+(m.note?'<br><i>'+m.note+'</i>':''));});"
         "map.fitBounds(line.getBounds().pad(0.15));"
         "setTimeout(function(){map.invalidateSize();},200);})();</script>"
     )
@@ -691,7 +698,7 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
 
     stats = leg_stats(entries)
     cum = _cumulative_nm(entries)
-    kind = "Etappenbericht" if with_images else "Törnbericht"
+    kind = t("Etappenbericht") if with_images else t("Törnbericht")
 
     period = _date_only(trip.start_dz, offset)
     if trip.end_dz:
@@ -700,7 +707,7 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
     parts = [
         f'<div class="title-page"><div class="brandbar">{branding.logo_html(72)}</div>'
         f'<div class="big">{escape(kind)}</div>'
-        f'<div>Logbuch der <b>{escape(ship.name if ship else "")}</b></div>'
+        f'<div>{t("Logbuch der")} <b>{escape(ship.name if ship else "")}</b></div>'
         f'<div class="sub">{escape(period)}<br>{escape(trip.name or "")}<br>'
         f'{escape(trip.start_location or "")} → {escape(trip.end_location or "")}</div></div>',
         f'<div class="pb"></div>',
@@ -708,10 +715,10 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
         crew_block(crew),
     ]
     if with_map:
-        parts.append(map_block(entries, offset, map_types, "Karte",
+        parts.append(map_block(entries, offset, map_types, t("Karte"),
                                track=_track_points(store, [trip.id]),
                                static=static_map, map_renderer=map_renderer))
-    parts.append(f'<h2 class="pb">Logbuch</h2>')
+    parts.append(f'<h2 class="pb">{t("Logbuch")}</h2>')
     shown = 0
     for i, e in enumerate(entries):
         if not _keep(e, entry_types):
@@ -720,9 +727,9 @@ def trip_report_html(store, config, trip: Trip, offset: float = 0.0,
         imgs = store.get_entry_images(e.id) if with_images else None
         parts.append(entry_card(e, offset, cum.get(i, 0.0), imgs))
     parts.append(
-        f'<div class="summary"><b>Zusammenfassung {escape(trip.name or "")}</b><br>'
-        f'Gesamt: {_de(stats["total"])} NM · Gesegelt: {_de(stats["sailed"])} NM · '
-        f'Motor: {_de(stats["motor"])} NM<br>{_entry_count(shown, len(entries), entry_types)}</div>')
+        f'<div class="summary"><b>{t("Zusammenfassung")} {escape(trip.name or "")}</b><br>'
+        f'{t("Gesamt")}: {_de(stats["total"])} NM · {t("Gesegelt")}: {_de(stats["sailed"])} NM · '
+        f'{t("Motor")}: {_de(stats["motor"])} NM<br>{_entry_count(shown, len(entries), entry_types)}</div>')
     return _doc(f"{kind} {trip.name}", "".join(parts),
                 with_map=with_map and not static_map)
 
@@ -790,12 +797,12 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
                        entry_types: Optional[set] = None,
                        static_map: bool = False, map_renderer=None) -> str:
     """Törnbericht/Etappenbericht über MEHRERE Etappen (ein Törn)."""
-    kind = "Etappenbericht" if with_images else "Törnbericht"
+    kind = t("Etappenbericht") if with_images else t("Törnbericht")
     ships = _ships_for_trips(store, config, trips)
     ship_name = _ship_names(ships) or ""
     crew = _combined_crew(store, trips)
 
-    dzs = [t.start_dz for t in trips if t.start_dz] + [t.end_dz for t in trips if t.end_dz]
+    dzs = [tr.start_dz for tr in trips if tr.start_dz] + [tr.end_dz for tr in trips if tr.end_dz]
     period = (_date_only(min(dzs), offset) + " – " + _date_only(max(dzs), offset)) if dzs else ""
     von = trips[0].start_location if trips else ""
     nach = trips[-1].end_location if trips else ""
@@ -803,43 +810,43 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
     parts = [
         f'<div class="title-page"><div class="brandbar">{branding.logo_html(72)}</div>'
         f'<div class="big">{escape(kind)}</div>'
-        f'<div>Logbuch der <b>{escape(ship_name)}</b></div>'
+        f'<div>{t("Logbuch der")} <b>{escape(ship_name)}</b></div>'
         f'<div class="sub">{escape(period)}<br><b>{escape(voyage.name)}</b><br>'
         f'{escape(von)} → {escape(nach)}'
-        + (f'<br>Revier: {escape(voyage.revier)}' if voyage.revier else "")
+        + (f'<br>{t("Revier")}: {escape(voyage.revier)}' if voyage.revier else "")
         + '</div></div><div class="pb"></div>',
         "".join(ship_block(s) for s in ships),
         crew_block(crew),
-        '<h2 class="pb">Etappenübersicht</h2>',
+        f'<h2 class="pb">{t("Etappenübersicht")}</h2>',
     ]
 
     total = sailed = motor = 0.0
     leg_entries: Dict[int, List[LogEntry]] = {}
-    for t in trips:
-        ents = store.all(newest_first=False, trip_id=t.id, limit=50000)
-        leg_entries[t.id] = ents
-        parts.append(leg_card(store, t, ents, offset, store.crew_for_trip(t.id)))
+    for tr in trips:
+        ents = store.all(newest_first=False, trip_id=tr.id, limit=50000)
+        leg_entries[tr.id] = ents
+        parts.append(leg_card(store, tr, ents, offset, store.crew_for_trip(tr.id)))
         s = leg_stats(ents)
         total += s["total"]; sailed += s["sailed"]; motor += s["motor"]
 
     if with_map:
-        combined = [e for t in trips for e in leg_entries[t.id]]
-        parts.append(map_block(combined, offset, map_types, "Karte (ganzer Törn)",
-                               track=_track_points(store, [t.id for t in trips]),
+        combined = [e for tr in trips for e in leg_entries[tr.id]]
+        parts.append(map_block(combined, offset, map_types, t("Karte (ganzer Törn)"),
+                               track=_track_points(store, [tr.id for tr in trips]),
                                static=static_map, map_renderer=map_renderer))
 
-    for t in trips:
-        ents = leg_entries[t.id]
-        when = _date_only(t.start_dz, offset)
-        legcrew = store.crew_for_trip(t.id)
+    for tr in trips:
+        ents = leg_entries[tr.id]
+        when = _date_only(tr.start_dz, offset)
+        legcrew = store.crew_for_trip(tr.id)
         roles = ""
         if legcrew:
             roles = "<div class='roles'>" + " · ".join(
-                f"{escape(getattr(c,'position','') or 'Crew')}: {escape(c.last_name)}, {escape(c.first_name)}"
+                f"{escape(getattr(c,'position','') or t('Crew'))}: {escape(c.last_name)}, {escape(c.first_name)}"
                 for c in legcrew) + "</div>"
         parts.append(
-            f'<h2 class="pb">Etappe: {escape(t.start_location or "?")} → '
-            f'{escape(t.end_location or "…")}</h2>'
+            f'<h2 class="pb">{t("Etappe")}: {escape(tr.start_location or "?")} → '
+            f'{escape(tr.end_location or "…")}</h2>'
             f'<div class="sub">{escape(when)}</div>{roles}')
         cum = _cumulative_nm(ents)
         for i, e in enumerate(ents):
@@ -849,14 +856,14 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
             parts.append(entry_card(e, offset, cum.get(i, 0.0), imgs))
         st = leg_stats(ents)
         parts.append(
-            f'<div class="summary">Etappe {escape(t.start_location or "")} → '
-            f'{escape(t.end_location or "")}: Gesamt {_de(st["total"])} NM · '
-            f'Gesegelt {_de(st["sailed"])} NM · Motor {_de(st["motor"])} NM</div>')
+            f'<div class="summary">{t("Etappe")} {escape(tr.start_location or "")} → '
+            f'{escape(tr.end_location or "")}: {t("Gesamt")} {_de(st["total"])} NM · '
+            f'{t("Gesegelt")} {_de(st["sailed"])} NM · {t("Motor")} {_de(st["motor"])} NM</div>')
 
     parts.append(
-        f'<div class="summary pb"><b>Zusammenfassung {escape(voyage.name)}</b><br>'
-        f'{len(trips)} Etappen · Gesamt: {_de(total)} NM · '
-        f'Gesegelt: {_de(sailed)} NM · Motor: {_de(motor)} NM</div>')
+        f'<div class="summary pb"><b>{t("Zusammenfassung")} {escape(voyage.name)}</b><br>'
+        f'{t("{n} Etappen", n=len(trips))} · {t("Gesamt")}: {_de(total)} NM · '
+        f'{t("Gesegelt")}: {_de(sailed)} NM · {t("Motor")}: {_de(motor)} NM</div>')
     return _doc(f"{kind} {voyage.name}", "".join(parts),
                 with_map=with_map and not static_map)
 
@@ -864,9 +871,11 @@ def voyage_report_html(store, config, voyage: Voyage, trips: List[Trip],
 # --- Fahrtenbuch / Übersicht (mehrere Törns) -------------------------------
 
 def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
-                    title: str = "Fahrtenbuch", with_map: bool = False,
+                    title: Optional[str] = None, with_map: bool = False,
                     map_types: Optional[set] = None,
                     static_map: bool = False, map_renderer=None) -> str:
+    if title is None:
+        title = t("Fahrtenbuch")
     total = sailed = motor = 0.0
     parts = []
     combined: List[LogEntry] = []
@@ -894,16 +903,16 @@ def voyage_log_html(store, config, trips: List[Trip], offset: float = 0.0,
         f'<div class="sub">{escape(period)}</div></div><div class="pb"></div>'
     )
     summary = (
-        f'<div class="summary"><b>Zusammenfassung</b><br>'
-        f'{len(trips)} Etappen · Gesamt: {_de(total)} NM · '
-        f'Gesegelt: {_de(sailed)} NM · Motor: {_de(motor)} NM</div>'
+        f'<div class="summary"><b>{t("Zusammenfassung")}</b><br>'
+        f'{t("{n} Etappen", n=len(trips))} · {t("Gesamt")}: {_de(total)} NM · '
+        f'{t("Gesegelt")}: {_de(sailed)} NM · {t("Motor")}: {_de(motor)} NM</div>'
     )
-    map_html = (map_block(combined, offset, map_types, "Karte",
-                          track=_track_points(store, [t.id for t in trips]),
+    map_html = (map_block(combined, offset, map_types, t("Karte"),
+                          track=_track_points(store, [tr.id for tr in trips]),
                           static=static_map, map_renderer=map_renderer)
                 if with_map else "")
     body = (head + ship_html + map_html
-            + '<h2 class="pb">Fahrtenübersicht</h2>' + "".join(parts) + summary)
+            + f'<h2 class="pb">{t("Fahrtenübersicht")}</h2>' + "".join(parts) + summary)
     return _doc(title, body, with_map=with_map and not static_map)
 
 
@@ -997,30 +1006,30 @@ def meilennachweis_html(store, config, trips: List[Trip], offset: float = 0.0,
     role_miles: Dict[str, float] = {}
     manual_used = False
     ships_used: Dict[str, Optional[Ship]] = {}   # Name -> Schiff (Reihenfolge)
-    for i, t in enumerate(trips, start=1):
-        entries = store.all(newest_first=False, trip_id=t.id, limit=50000)
+    for i, tr in enumerate(trips, start=1):
+        entries = store.all(newest_first=False, trip_id=tr.id, limit=50000)
         # Manuell bestätigte Seemeilen haben Vorrang vor der GPS-Berechnung
         # (z. B. bei lückenhafter/importierter Spur).
-        manual = t.distance_nm is not None and t.distance_nm > 0
-        nm = t.distance_nm if manual else leg_stats(entries)["total"]
+        manual = tr.distance_nm is not None and tr.distance_nm > 0
+        nm = tr.distance_nm if manual else leg_stats(entries)["total"]
         if nm <= 0:
             continue
         if manual:
             manual_used = True
-        tship = _ship_for(t)
+        tship = _ship_for(tr)
         tship_name = tship.name if tship else ""
         if tship_name:
             ships_used.setdefault(tship_name, tship)
         night = leg_night_nm(entries) if with_night else 0.0
-        rt = _trip_role(store, t, applicant, role)
+        rt = _trip_role(store, tr, applicant, role)
         total += nm
         night_total += night
         role_miles[rt] = role_miles.get(rt, 0.0) + nm
-        von = t.start_location or "?"
-        nach = t.end_location or "…"
-        zeit = _date_only(t.start_dz, offset)
-        if t.end_dz and _date_only(t.end_dz, offset) != zeit:
-            zeit += "–" + _date_only(t.end_dz, offset)
+        von = tr.start_location or "?"
+        nach = tr.end_location or "…"
+        zeit = _date_only(tr.start_dz, offset)
+        if tr.end_dz and _date_only(tr.end_dz, offset) != zeit:
+            zeit += "–" + _date_only(tr.end_dz, offset)
         nm_cell = _de(nm, 0) + (" *" if manual else "")
         night_cell = (f'<td class="num">{_de(night, 0)}</td>' if with_night else "")
         rows.append(
@@ -1042,15 +1051,15 @@ def meilennachweis_html(store, config, trips: List[Trip], offset: float = 0.0,
         ship_name = default_ship.name if default_ship else ""
         ship_detail = _ship_detail(default_ship)
 
-    night_head = "<th>davon Nacht (sm)</th>" if with_night else ""
+    night_head = f'<th>{t("davon Nacht (sm)")}</th>' if with_night else ""
     night_sum = f'<td class="num">{_de(night_total, 0)}</td>' if with_night else ""
     table = (
         '<table class="mtab"><thead><tr>'
-        '<th>Nr.</th><th>Zeitraum</th><th>Von → Nach (Revier)</th><th>Schiff</th>'
-        '<th>Funktion</th><th>Seemeilen</th>' + night_head +
-        '<th>Bestätigung / Unterschrift Skipper</th></tr></thead><tbody>'
+        f'<th>{t("Nr.")}</th><th>{t("Zeitraum")}</th><th>{t("Von → Nach (Revier)")}</th><th>{t("Schiff")}</th>'
+        f'<th>{t("Funktion")}</th><th>{t("Seemeilen")}</th>' + night_head +
+        f'<th>{t("Bestätigung / Unterschrift Skipper")}</th></tr></thead><tbody>'
         + "".join(rows) +
-        f'<tr class="sum"><td></td><td colspan="4">Summe ({len(rows)} Törns)</td>'
+        f'<tr class="sum"><td></td><td colspan="4">{t("Summe ({n} Törns)", n=len(rows))}</td>'
         f'<td class="num">{_de(total, 0)}</td>{night_sum}<td></td></tr>'
         '</tbody></table>'
     )
@@ -1061,71 +1070,74 @@ def meilennachweis_html(store, config, trips: List[Trip], offset: float = 0.0,
                                               key=lambda kv: -kv[1]))
 
     # Anforderungs-Übersicht mit Ampel
-    req_html = ['<h2 class="pb">Anforderungen &amp; Stand</h2>']
+    req_html = [f'<h2 class="pb">{t("Anforderungen")} &amp; {t("Stand")}</h2>']
     for land, lics in LICENSE_REQUIREMENTS:
-        req_html.append(f'<div class="reqbox"><h3>{land}</h3>')
-        req_html.append('<table class="mtab"><thead><tr><th>Schein</th>'
-                        '<th>gefordert</th><th>vorhanden</th><th>Status</th>'
-                        '<th>Hinweis</th></tr></thead><tbody>')
+        req_html.append(f'<div class="reqbox"><h3>{t(land)}</h3>')
+        req_html.append(f'<table class="mtab"><thead><tr><th>{t("Schein")}</th>'
+                        f'<th>{t("gefordert")}</th><th>{t("vorhanden")}</th><th>{t("Status")}</th>'
+                        f'<th>{t("Hinweis")}</th></tr></thead><tbody>')
         for name, miles, night_rel, hint in lics:
             done = total >= miles
-            status = ('<span class="ok">erfüllt ✓</span>' if done
-                      else f'<span class="open">noch {_de(miles - total, 0)} sm</span>')
+            status = (f'<span class="ok">{t("erfüllt ✓")}</span>' if done
+                      else f'<span class="open">{t("noch {miles} sm", miles=_de(miles - total, 0))}</span>')
             extra = ""
             if night_rel and with_night:
-                extra = f" · Nachtmeilen vorhanden: {_de(night_total, 0)} sm"
+                extra = f' · {t("Nachtmeilen vorhanden")}: {_de(night_total, 0)} sm'
             req_html.append(
-                f'<tr><td>{escape(name)}</td>'
+                f'<tr><td>{escape(t(name))}</td>'
                 f'<td class="num">{miles} sm</td>'
                 f'<td class="num">{_de(total, 0)} sm</td>'
                 f'<td>{status}</td>'
-                f'<td>{escape(hint)}{extra}</td></tr>')
+                f'<td>{escape(t(hint))}{extra}</td></tr>')
         req_html.append('</tbody></table></div>')
 
     period = period_label or (
-        (_date_only(min(t.start_dz for t in trips if t.start_dz), offset) + " – " +
-         _date_only(max((t.end_dz or t.start_dz) for t in trips), offset))
+        (_date_only(min(tr.start_dz for tr in trips if tr.start_dz), offset) + " – " +
+         _date_only(max((tr.end_dz or tr.start_dz) for tr in trips), offset))
         if trips else "")
 
     head = (
         f'<div class="title-page"><div class="brandbar">{branding.logo_html(72)}</div>'
-        f'<div class="big">Seemeilen-Nachweis</div>'
-        f'<div>für Segelscheine (Deutschland · Österreich · Schweiz)</div>'
-        f'<div class="sub">Antragsteller: <b>{escape(applicant or "—")}</b><br>'
-        f'{escape(period)}<br>Schiff: {escape(ship_name)}'
+        f'<div class="big">{t("Seemeilen-Nachweis")}</div>'
+        f'<div>{t("für Segelscheine (Deutschland · Österreich · Schweiz)")}</div>'
+        f'<div class="sub">{t("Antragsteller")}: <b>{escape(applicant or "—")}</b><br>'
+        f'{escape(period)}<br>{t("Schiff")}: {escape(ship_name)}'
         + (f' ({escape(ship_detail)})' if ship_detail else "")
         + '</div></div><div class="pb"></div>')
 
     summary = (
-        f'<div class="summary"><b>Gesamt: {_de(total, 0)} Seemeilen</b>'
-        + (f' · davon Nacht: {_de(night_total, 0)} sm' if with_night else "")
+        f'<div class="summary"><b>{t("Gesamt: {nm} Seemeilen", nm=_de(total, 0))}</b>'
+        + (f' · {t("davon Nacht")}: {_de(night_total, 0)} sm' if with_night else "")
         + (f'<br>{role_bits}' if role_bits else "")
-        + f'<br>{len(rows)} Törns'
+        + f'<br>{t("{n} Törns", n=len(rows))}'
         + '</div>')
 
     sign = (
-        '<div class="sign2"><div>Ort, Datum</div>'
-        '<div>Unterschrift Antragsteller/in</div></div>')
+        f'<div class="sign2"><div>{t("Ort, Datum")}</div>'
+        f'<div>{t("Unterschrift Antragsteller/in")}</div></div>')
 
     disclaimer = (
-        '<div class="disc"><b>Hinweis:</b> Dies ist eine aus dem Logbuch '
-        'erzeugte Zusammenstellung. Die Seemeilen wurden aus der GPS-Spur '
-        'berechnet (Großkreis). Nachtmeilen = Strecke bei Sonne unter dem '
-        'Horizont (astronomische Näherung). Anforderungen und deren genaue '
-        'Bedingungen (z.B. Meilen als Wachführer/Skipper, Nachtstunden, '
-        'Mindest-Törnlängen, Fahrtgebiete) unterscheiden sich je Schein und '
-        'ändern sich — bitte vor der Anmeldung beim jeweiligen Prüfungsträger '
-        'bestätigen lassen: DSV/DMYV (DE), zuständige Behörde/OeSV (AT), '
-        'Cruising Club der Schweiz / Seeschifffahrtsamt (CH). Jede Etappe ist '
-        'vom verantwortlichen Schiffsführer zu bestätigen (Spalte rechts).</div>')
+        f'<div class="disc"><b>{t("Hinweis")}:</b> '
+        + t('Dies ist eine aus dem Logbuch '
+            'erzeugte Zusammenstellung. Die Seemeilen wurden aus der GPS-Spur '
+            'berechnet (Großkreis). Nachtmeilen = Strecke bei Sonne unter dem '
+            'Horizont (astronomische Näherung). Anforderungen und deren genaue '
+            'Bedingungen (z.B. Meilen als Wachführer/Skipper, Nachtstunden, '
+            'Mindest-Törnlängen, Fahrtgebiete) unterscheiden sich je Schein und '
+            'ändern sich — bitte vor der Anmeldung beim jeweiligen Prüfungsträger '
+            'bestätigen lassen: DSV/DMYV (DE), zuständige Behörde/OeSV (AT), '
+            'Cruising Club der Schweiz / Seeschifffahrtsamt (CH). Jede Etappe ist '
+            'vom verantwortlichen Schiffsführer zu bestätigen (Spalte rechts).')
+        + '</div>')
 
     footnote = (
         '<div class="disc" style="margin-top:6px">'
-        '* Manuell bestätigte Seemeilen (Eingabe im Törn), '
-        'nicht aus der GPS-Spur berechnet.</div>'
+        + t('* Manuell bestätigte Seemeilen (Eingabe im Törn), '
+            'nicht aus der GPS-Spur berechnet.')
+        + '</div>'
         if manual_used else "")
 
     body = (head
-            + '<h2 class="pb">Törnübersicht</h2>' + table + footnote + summary
+            + f'<h2 class="pb">{t("Törnübersicht")}</h2>' + table + footnote + summary
             + "".join(req_html) + sign + disclaimer)
-    return _doc("Seemeilen-Nachweis", body)
+    return _doc(t("Seemeilen-Nachweis"), body)

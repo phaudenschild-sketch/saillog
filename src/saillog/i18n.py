@@ -102,16 +102,22 @@ def current_language() -> str:
     return _current
 
 
-def t(text: str, /, **kwargs) -> str:
+def t(text: str, /, _ctx: Optional[str] = None, **kwargs) -> str:
     """Übersetzt ``text`` in die aktive Sprache.
 
     Fehlt eine Übersetzung, wird der deutsche Originaltext zurückgegeben.
     Platzhalter werden per :meth:`str.format` gefüllt::
 
         t("Motor {rpm} U/min", rpm=1785)
+
+    ``_ctx`` unterscheidet gleich geschriebene, aber unterschiedlich zu
+    übersetzende Wörter (Homographen, z.B. „Länge" = Longitude vs. Bootslänge).
+    Der Katalogschlüssel ist dann ``"<ctx>\\x04<text>"`` (wie gettext-pgettext);
+    fehlt er, wird der deutsche Originaltext zurückgegeben.
     """
+    key = f"{_ctx}\x04{text}" if _ctx else text
     with _lock:
-        out = _catalog.get(text, text)
+        out = _catalog.get(key, text)
     if kwargs:
         try:
             return out.format(**kwargs)
