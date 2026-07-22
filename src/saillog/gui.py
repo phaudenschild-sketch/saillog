@@ -906,11 +906,18 @@ class Application:
         trip = None
         if tid is not None:
             trip = next((d for d, i in self._trip_choices.items() if i == tid), None)
+        spec = self._active_rig()
         return {
             "trip": trip,
             "measurements": self._live.snapshot(),
             "conditions": dict(getattr(self, "_condition_values", {}) or {}),
             "logevents": list(self._logevents),
+            "rig": {
+                "configured": spec.configured,
+                "is_motorboat": spec.is_motorboat,
+                "sails": [{"name": s.name, "control": s.control} for s in spec.sails],
+                "motors": list(spec.motors),
+            },
         }
 
     def _remote_submit(self, conditions: dict) -> dict:

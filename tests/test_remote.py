@@ -115,6 +115,55 @@ class RemoteServerTest(unittest.TestCase):
         self.assertEqual(len(self.submitted), 0)
 
 
+class RemoteAdaptiveTest(unittest.TestCase):
+    def setUp(self):
+        self.submitted = []
+        self.info = {
+            "measurements": {}, "conditions": {}, "logevents": ["Routineeintrag"],
+            "rig": {"configured": True, "is_motorboat": False, "motors": [],
+                    "sails": [{"name": "Genua", "control": "roller"},
+                              {"name": "Groß", "control": "slab"},
+                              {"name": "Fock", "control": "fixed"}]},
+        }
+        self.server = RemoteServer(lambda: self.info,
+                                   lambda c: (self.submitted.append(c) or {"time": "t"}),
+                                   pin="1", host="127.0.0.1", port=0)
+        self.server.start()
+        self.base = f"http://127.0.0.1:{self.server.port}"
+
+    def tearDown(self):
+        self.server.stop()
+
+    def _op(self):
+        return urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(CookieJar()))
+
+    def _post(self, op, path, data):
+        body = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in data.items())
+        req = urllib.request.Request(self.base + path, data=body.encode(),
+                                     headers={"Content-Type": "application/x-www-form-urlencoded"})
+        return op.open(req).read().decode("utf-8")
+
+    def test_adaptive_form_and_submit(self):
+        import json
+        op = self._op()
+        self._post(op, "/login", {"pin": "1"})
+        with op.open(self.base + "/") as r:
+            form = r.read().decode("utf-8")
+        self.assertIn("type='range'", form)          # Rollsegel-Slider
+        self.assertIn("Reff 2", form)                 # Bindereff-Stufen
+        self.assertIn("sailname_0", form)
+        self._post(op, "/entry", {
+            "logevent": "Manöver", "engine_mode": "aus",
+            "sailname_0": "Genua", "sailctrl_0": "roller", "sailval_0": "60",
+            "sailname_1": "Groß", "sailctrl_1": "slab", "sailval_1": "Reff 1",
+            "sailname_2": "Fock", "sailctrl_2": "fixed", "sailval_2": "1"})
+        self.assertEqual(len(self.submitted), 1)
+        c = self.submitted[0]
+        self.assertEqual(json.loads(c["sails_json"]),
+                         {"Genua": 60, "Groß": "Reff 1", "Fock": "gesetzt"})
+
+
 if __name__ == "__main__":
     import urllib.parse  # noqa
     unittest.main()

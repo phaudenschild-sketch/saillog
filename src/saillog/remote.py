@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import html
 import hmac
+import json
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,6 +28,7 @@ from http.cookies import SimpleCookie
 from typing import Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs
 
+from saillog import rig
 from saillog.fields import (
     CLOUD_COVER_LABELS,
     MAINSAIL_OPTIONS,
@@ -168,11 +170,8 @@ def _conditions_from_form(form: Dict[str, str]) -> Dict:
         val = (form.get(key) or "").strip()
         return "" if val in ("—", blank_value, "") else val
 
-    return {
+    result = {
         "engine_mode": (form.get("engine_mode") or "automatisch").strip(),
-        "mainsail": sel("mainsail", "—"),
-        "genoa_percent": num("genoa"),
-        "spinnaker": 1 if form.get("spinnaker") else 0,
         "wave_height_m": num("wave"),
         "cloud_cover": sel("cloud", "—"),
         "precipitation": sel("precip", "kein"),
@@ -180,6 +179,38 @@ def _conditions_from_form(form: Dict[str, str]) -> Dict:
         "logevent": (form.get("logevent") or "").strip(),
         "note": (form.get("note") or "").strip(),
     }
+    # Segel: adaptiv (sailname_/sailctrl_/sailval_) > klassisch (mainsail) > Motorboot
+    if "sailname_0" in form:
+        states: Dict[str, object] = {}
+        controls = []
+        i = 0
+        while f"sailname_{i}" in form:
+            name = form[f"sailname_{i}"]
+            ctrl = form.get(f"sailctrl_{i}", "fixed")
+            if ctrl == "roller":
+                states[name] = int(num(f"sailval_{i}") or 0)
+            elif ctrl == "fixed":
+                states[name] = "gesetzt" if form.get(f"sailval_{i}") else "nicht gesetzt"
+            else:
+                states[name] = (form.get(f"sailval_{i}") or "nicht gesetzt").strip()
+            controls.append(rig.SailControl(name=name, category="", control=ctrl))
+            i += 1
+        spec = rig.RigSpec(sails=controls)
+        result["sails_json"] = json.dumps(states, ensure_ascii=False)
+        result["mainsail"] = rig.summarize(states, spec)
+        result["genoa_percent"] = None
+        result["spinnaker"] = None
+    elif "mainsail" in form:
+        result["mainsail"] = sel("mainsail", "—")
+        result["genoa_percent"] = num("genoa")
+        result["spinnaker"] = 1 if form.get("spinnaker") else 0
+        result["sails_json"] = ""
+    else:                                   # Motorboot: keine Segelfelder
+        result["mainsail"] = ""
+        result["genoa_percent"] = None
+        result["spinnaker"] = None
+        result["sails_json"] = ""
+    return result
 
 
 # --- HTML-Seiten -----------------------------------------------------------
@@ -273,6 +304,52 @@ def _options(values: List[str], selected) -> str:
     return "".join(out)
 
 
+def _sail_fields(rig_info: Optional[Dict], c: Dict) -> str:
+    """Segel-/Antriebs-Felder passend zur Ausrüstung des aktiven Schiffs."""
+    rig_info = rig_info or {}
+    if not rig_info.get("configured"):
+        # klassisch (kein Schiff / keine Ausrüstung gepflegt)
+        genoa = c.get("genoa_percent")
+        genoa_val = "" if genoa is None else f"{genoa:g}"
+        spin = " checked" if c.get("spinnaker") else ""
+        mainsail_sel = c.get("mainsail") or "—"
+        return (
+            "<div><label>Großsegel</label>"
+            f"<select name='mainsail'>{_options(MAINSAIL_OPTIONS, mainsail_sel)}</select></div>"
+            "<div><label>Genua %</label>"
+            f"<input name='genoa' type='number' min='0' max='100' value='{_esc(genoa_val)}'></div>"
+            "<div class='full'><label style='display:inline;font-weight:400'>"
+            "<input type='checkbox' name='spinnaker' value='1' style='width:auto'" + spin +
+            "> Spinnaker gesetzt</label></div>"
+        )
+    if rig_info.get("is_motorboat"):
+        motors = ", ".join(rig_info.get("motors") or [])
+        extra = f" ({_esc(motors)})" if motors else ""
+        return ("<div class='full'><label>Antrieb</label>"
+                f"<div class='live'>🛥 Motorboot — keine Segel{extra}</div></div>")
+    # adaptiv: ein Feld je Segel, Bedienelement nach Reff-Art
+    out: List[str] = []
+    for i, s in enumerate(rig_info.get("sails") or []):
+        name = s.get("name", "")
+        ctrl = s.get("control", "fixed")
+        hidden = (f"<input type='hidden' name='sailname_{i}' value='{_esc(name)}'>"
+                  f"<input type='hidden' name='sailctrl_{i}' value='{_esc(ctrl)}'>")
+        if ctrl == "roller":
+            control = (
+                f"<input type='range' name='sailval_{i}' min='0' max='100' value='0' "
+                "oninput=\"this.nextElementSibling.value=this.value+' %'\">"
+                "<output style='font-weight:600'>0 %</output>")
+        elif ctrl == "slab":
+            control = (f"<select name='sailval_{i}'>"
+                       f"{_options(rig.SLAB_STATES, 'nicht gesetzt')}</select>")
+        else:
+            control = ("<label style='display:inline;font-weight:400'>"
+                       f"<input type='checkbox' name='sailval_{i}' value='1' "
+                       "style='width:auto'> gesetzt</label>")
+        out.append(f"<div class='full'><label>{_esc(name)}</label>{hidden}{control}</div>")
+    return "".join(out)
+
+
 def _form_page(info: Dict) -> str:
     info = info or {}
     m = info.get("measurements") or {}
@@ -290,12 +367,8 @@ def _form_page(info: Dict) -> str:
     )
 
     logevents = info.get("logevents") or _LOGEVENTS
-    genoa = c.get("genoa_percent")
-    genoa_val = "" if genoa is None else f"{genoa:g}"
     wave = c.get("wave_height_m")
     wave_val = "" if wave is None else f"{wave:g}"
-    spin = " checked" if c.get("spinnaker") else ""
-    mainsail_sel = c.get("mainsail") or "—"
     cloud_sel = c.get("cloud_cover") or "—"
     precip_sel = c.get("precipitation") or "kein"
     vis_sel = c.get("visibility") or "—"
@@ -309,21 +382,15 @@ def _form_page(info: Dict) -> str:
         "<textarea name='note' placeholder='z.B. Ankermanöver in der Bucht'></textarea></div>"
         "<div><label>Motor</label>"
         f"<select name='engine_mode'>{_options(['automatisch','ein','aus'], c.get('engine_mode') or 'automatisch')}</select></div>"
-        "<div><label>Großsegel</label>"
-        f"<select name='mainsail'>{_options(MAINSAIL_OPTIONS, mainsail_sel)}</select></div>"
-        "<div><label>Genua %</label>"
-        f"<input name='genoa' type='number' min='0' max='100' value='{_esc(genoa_val)}'></div>"
         "<div><label>Seegang (m)</label>"
         f"<input name='wave' type='number' step='0.1' min='0' value='{_esc(wave_val)}'></div>"
+        + _sail_fields(info.get("rig"), c) +
         "<div><label>Bewölkung</label>"
         f"<select name='cloud'>{_options(CLOUD_COVER_LABELS, cloud_sel)}</select></div>"
         "<div><label>Niederschlag</label>"
         f"<select name='precip'>{_options(PRECIPITATION, precip_sel)}</select></div>"
         "<div><label>Sicht</label>"
         f"<select name='visibility'>{_options(VISIBILITY_LABELS, vis_sel)}</select></div>"
-        "<div><label style='margin-top:1.9rem'>"
-        "<input type='checkbox' name='spinnaker' value='1' style='width:auto'" + spin +
-        "> Spinnaker gesetzt</label></div>"
         "<div class='full'><button type='submit'>✓ Eintrag speichern</button></div>"
         "</div></form></div>"
         "<p class='muted'>Position, Wind &amp; Tiefe werden automatisch aus dem Bordnetz übernommen.</p>"
