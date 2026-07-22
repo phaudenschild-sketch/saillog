@@ -1772,7 +1772,7 @@ class Application:
             with __import__("os").fdopen(fd, "wb") as fh:
                 fh.write(data)
         except OSError as exc:  # noqa: BLE001
-            messagebox.showerror("Bild", f"Konnte das Bild nicht öffnen:\n{exc}")
+            messagebox.showerror(t("Bild"), t("Konnte das Bild nicht öffnen:\n{error}", error=exc))
             return
         webbrowser.open(Path(path).as_uri())
 
@@ -1900,7 +1900,7 @@ class _EditEntryDialog:
         self._img_index = 0
         self._thumb = None            # ImageTk-Referenz festhalten (sonst weg-GC)
         self.top = tk.Toplevel(parent)
-        self.top.title(f"Eintrag bearbeiten (#{entry.id})")
+        self.top.title(t("Eintrag bearbeiten (#{id})", id=entry.id))
         self.top.transient(parent)
         self.top.grab_set()
 
@@ -1909,8 +1909,8 @@ class _EditEntryDialog:
         # damit auf kleinen Laptop-Bildschirmen nichts abgeschnitten wird.
         btnbar = ttk.Frame(self.top, padding=(12, 8))
         btnbar.pack(side="bottom", fill="x")
-        ttk.Button(btnbar, text="Speichern", command=self._on_save).pack(side="left", padx=4)
-        ttk.Button(btnbar, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(btnbar, text=t("Speichern"), command=self._on_save).pack(side="left", padx=4)
+        ttk.Button(btnbar, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
         ttk.Separator(self.top, orient="horizontal").pack(side="bottom", fill="x")
 
         # Scrollbarer Inhaltsbereich (Canvas + Frame)
@@ -1931,7 +1931,7 @@ class _EditEntryDialog:
         canvas.bind_all("<Button-5>", self._on_mousewheel)     # Linux runter
         self.top.bind("<Destroy>", self._on_destroy)
 
-        ttk.Label(frame, text=f"Typ: {entry.entry_type}",
+        ttk.Label(frame, text=t("Typ: {type}", type=entry.entry_type),
                   foreground="#555").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
 
         r = 1
@@ -1941,7 +1941,7 @@ class _EditEntryDialog:
 
         # Automatisch erfasste Messwerte — korrigierbar (z.B. falsche Koordinate,
         # die die Tagesdistanz verfälscht).
-        meas = ttk.LabelFrame(frame, text="Messwerte (automatisch erfasst — korrigierbar)")
+        meas = ttk.LabelFrame(frame, text=t("Messwerte (automatisch erfasst — korrigierbar)"))
         meas.grid(row=r, column=0, columnspan=4, sticky="we", pady=(0, 8))
 
         def mlab(text, row, col):
@@ -1951,24 +1951,24 @@ class _EditEntryDialog:
             var = tk.StringVar(value="" if value is None else fmt.format(value))
             return var
 
-        mlab("Breite (°):", 0, 0)
+        mlab(t("Breite (°):"), 0, 0)
         self._lat = mfield(entry.lat, "{:.6f}")
         ttk.Entry(meas, textvariable=self._lat, width=14).grid(row=0, column=1, sticky="w", padx=(0, 8))
-        mlab("Länge (°):", 0, 2)
+        mlab(t("Länge (°):"), 0, 2)
         self._lon = mfield(entry.lon, "{:.6f}")
         ttk.Entry(meas, textvariable=self._lon, width=14).grid(row=0, column=3, sticky="w", padx=(0, 8))
 
-        mlab("SOG (kn):", 1, 0)
+        mlab(t("SOG (kn):"), 1, 0)
         self._sog = mfield(entry.sog_kn)
         ttk.Entry(meas, textvariable=self._sog, width=14).grid(row=1, column=1, sticky="w")
-        mlab("COG (°):", 1, 2)
+        mlab(t("COG (°):"), 1, 2)
         self._cog = mfield(entry.cog_deg)
         ttk.Entry(meas, textvariable=self._cog, width=14).grid(row=1, column=3, sticky="w")
 
-        mlab("Tiefe (m):", 2, 0)
+        mlab(t("Tiefe (m):"), 2, 0)
         self._depth = mfield(entry.depth_m)
         ttk.Entry(meas, textvariable=self._depth, width=14).grid(row=2, column=1, sticky="w")
-        mlab("Wind wahr:", 2, 2)
+        mlab(t("Wind wahr:"), 2, 2)
         windbox = ttk.Frame(meas)
         windbox.grid(row=2, column=3, sticky="w")
         self._tws = mfield(entry.tws_kn)
@@ -1979,10 +1979,10 @@ class _EditEntryDialog:
         ttk.Label(windbox, text=" °").pack(side="left")
         r += 1
 
-        lab("Zeit (lokal):", r)
+        lab(t("Zeit (lokal):"), r)
         self._ts = tk.StringVar(value=ts_display or entry.timestamp)
         ttk.Entry(frame, textvariable=self._ts, width=24).grid(row=r, column=1, sticky="w")
-        lab("Anlass:", r, 2)
+        lab(t("Anlass:"), r, 2)
         self._logevent = tk.StringVar(value=entry.logevent)
         ttk.Combobox(frame, textvariable=self._logevent, width=18,
                      values=self._logevents).grid(row=r, column=3, sticky="w")
@@ -1994,34 +1994,34 @@ class _EditEntryDialog:
         self._build_edit_sails(frame, r, entry)
         r += 1
 
-        lab("Bewölkung:", r)
+        lab(t("Bewölkung:"), r)
         self._cloud = tk.StringVar(value=entry.cloud_cover or "—")
         ttk.Combobox(frame, textvariable=self._cloud, width=18, state="readonly",
                      values=CLOUD_COVER_LABELS).grid(row=r, column=1, sticky="w")
-        lab("Niederschlag:", r, 2)
+        lab(t("Niederschlag:"), r, 2)
         self._precip = tk.StringVar(value=entry.precipitation or "kein")
         ttk.Combobox(frame, textvariable=self._precip, width=18, state="readonly",
                      values=PRECIPITATION).grid(row=r, column=3, sticky="w")
         r += 1
 
-        lab("Sicht:", r)
+        lab(t("Sicht:"), r)
         self._visibility = tk.StringVar(value=entry.visibility or "—")
         ttk.Combobox(frame, textvariable=self._visibility, width=18, state="readonly",
                      values=VISIBILITY_LABELS).grid(row=r, column=1, sticky="w")
-        lab("Seegang (m):", r, 2)
+        lab(t("Seegang (m):"), r, 2)
         self._wave = tk.StringVar(value="" if entry.wave_height_m is None else f"{entry.wave_height_m:g}")
         ttk.Entry(frame, textvariable=self._wave, width=10).grid(row=r, column=3, sticky="w")
         r += 1
 
-        lab("Ort / Hafen:", r)
+        lab(t("Ort / Hafen:"), r)
         self._location = tk.StringVar(value=entry.location)
         ttk.Entry(frame, textvariable=self._location, width=24).grid(row=r, column=1, sticky="w")
-        lab("Crew:", r, 2)
+        lab(t("Crew:"), r, 2)
         self._crew = tk.StringVar(value=entry.crew)
         ttk.Entry(frame, textvariable=self._crew, width=18).grid(row=r, column=3, sticky="w")
         r += 1
 
-        ttk.Label(frame, text="Notiz:").grid(row=r, column=0, sticky="ne", padx=4, pady=2)
+        ttk.Label(frame, text=t("Notiz:")).grid(row=r, column=0, sticky="ne", padx=4, pady=2)
         self._note = tk.Text(frame, width=52, height=4)
         self._note.insert("1.0", entry.note or "")
         self._note.grid(row=r, column=1, columnspan=3, sticky="w", pady=2)
@@ -2069,9 +2069,9 @@ class _EditEntryDialog:
     # --- Bilder (mehrere je Eintrag: ansehen, blättern, +/−) ---------------
 
     def _build_image_panel(self, frame, row) -> None:
-        imgf = ttk.LabelFrame(frame, text="Bilder")
+        imgf = ttk.LabelFrame(frame, text=t("Bilder"))
         imgf.grid(row=row, column=0, columnspan=4, sticky="we", pady=(8, 0))
-        self._img_label = ttk.Label(imgf, text="(kein Bild)", anchor="center")
+        self._img_label = ttk.Label(imgf, text=t("(kein Bild)"), anchor="center")
         self._img_label.grid(row=0, column=0, columnspan=6, pady=4)
         self._img_caption = ttk.Label(imgf, text="", foreground="#555")
         self._img_caption.grid(row=1, column=0, columnspan=6)
@@ -2079,13 +2079,13 @@ class _EditEntryDialog:
         self._prev_btn.grid(row=2, column=0, padx=2, pady=4)
         self._next_btn = ttk.Button(imgf, text="▶", width=3, command=self._img_next)
         self._next_btn.grid(row=2, column=1, padx=2)
-        ttk.Button(imgf, text="+ Festplatte", command=self._img_add_disk).grid(
+        ttk.Button(imgf, text=t("+ Festplatte"), command=self._img_add_disk).grid(
             row=2, column=2, padx=(10, 2))
-        self._plotter_add_btn = ttk.Button(imgf, text="+ Plotter",
+        self._plotter_add_btn = ttk.Button(imgf, text=t("+ Plotter"),
                                            command=self._img_add_plotter)
         self._plotter_add_btn.grid(row=2, column=3, padx=2)
-        ttk.Button(imgf, text="Öffnen", command=self._img_open).grid(row=2, column=4, padx=2)
-        self._del_btn = ttk.Button(imgf, text="Löschen", command=self._img_delete)
+        ttk.Button(imgf, text=t("Öffnen"), command=self._img_open).grid(row=2, column=4, padx=2)
+        self._del_btn = ttk.Button(imgf, text=t("Löschen"), command=self._img_delete)
         self._del_btn.grid(row=2, column=5, padx=(2, 2))
         self._reload_images()
 
@@ -2102,12 +2102,12 @@ class _EditEntryDialog:
         for btn in (self._prev_btn, self._next_btn, self._del_btn):
             btn.config(state="normal" if has else "disabled")
         if not has:
-            self._img_label.config(image="", text="(kein Bild — über + hinzufügen)")
+            self._img_label.config(image="", text=t("(kein Bild — über + hinzufügen)"))
             self._img_caption.config(text="")
             self._thumb = None
             return
         rec = self._store.get_image_by_id(self._img_ids[self._img_index])
-        self._img_caption.config(text=f"Bild {self._img_index + 1}/{n}")
+        self._img_caption.config(text=t("Bild {n}/{total}", n=self._img_index + 1, total=n))
         try:
             import io
             from PIL import Image, ImageTk
@@ -2120,7 +2120,7 @@ class _EditEntryDialog:
         except Exception:  # noqa: BLE001  (kein Pillow → Text-Fallback)
             self._thumb = None
             self._img_label.config(
-                image="", text="(Vorschau braucht Pillow — 'Öffnen' zum Ansehen)")
+                image="", text=t("(Vorschau braucht Pillow — 'Öffnen' zum Ansehen)"))
 
     def _img_prev(self) -> None:
         if self._img_ids:
@@ -2134,16 +2134,16 @@ class _EditEntryDialog:
 
     def _img_add_disk(self) -> None:
         path = filedialog.askopenfilename(
-            title="Bild hinzufügen",
-            filetypes=[("Bilder", "*.jpg *.jpeg *.png *.bmp *.gif *.tif *.tiff *.webp"),
-                       ("Alle Dateien", "*.*")],
+            title=t("Bild hinzufügen"),
+            filetypes=[(t("Bilder"), "*.jpg *.jpeg *.png *.bmp *.gif *.tif *.tiff *.webp"),
+                       (t("Alle Dateien"), "*.*")],
         )
         if not path:
             return
         jpeg = photos.resize_to_jpeg(path, self._max_px)
         if not jpeg:
-            messagebox.showwarning("Bild", "Bild konnte nicht gelesen/verkleinert werden "
-                                          "(Pillow nötig).")
+            messagebox.showwarning(t("Bild"), t("Bild konnte nicht gelesen/verkleinert werden "
+                                                "(Pillow nötig)."))
             return
         self._store.add_entry_image(self._entry_id, jpeg, "image/jpeg", utc_now_iso())
         self._reload_images(select_last=True)
@@ -2151,14 +2151,14 @@ class _EditEntryDialog:
     def _img_add_plotter(self) -> None:
         if self._capture is None:
             return
-        self._img_caption.config(text="Plotter-Screenshot …")
+        self._img_caption.config(text=t("Plotter-Screenshot …"))
         self.top.update_idletasks()
         jpeg = self._capture()
         if not jpeg:
             messagebox.showerror(
-                "Plotter-Screenshot",
-                "Kein Screenshot erhalten (adb-Pfad/Gerät prüfen, Extras → "
-                "Plotter-Screenshot…).")
+                t("Plotter-Screenshot"),
+                t("Kein Screenshot erhalten (adb-Pfad/Gerät prüfen, Extras → "
+                  "Plotter-Screenshot…)."))
             self._render_thumb()
             return
         self._store.add_entry_image(self._entry_id, jpeg, "image/jpeg", utc_now_iso())
@@ -2167,7 +2167,7 @@ class _EditEntryDialog:
     def _img_delete(self) -> None:
         if not self._img_ids:
             return
-        if not messagebox.askyesno("Bild löschen", "Dieses Bild wirklich löschen?"):
+        if not messagebox.askyesno(t("Bild löschen"), t("Dieses Bild wirklich löschen?")):
             return
         self._store.delete_entry_image(self._img_ids[self._img_index])
         self._reload_images()
@@ -2186,7 +2186,7 @@ class _EditEntryDialog:
             with os.fdopen(fd, "wb") as fh:
                 fh.write(rec[0])
         except OSError as exc:  # noqa: BLE001
-            messagebox.showerror("Bild", f"Konnte das Bild nicht öffnen:\n{exc}")
+            messagebox.showerror(t("Bild"), t("Konnte das Bild nicht öffnen:\n{error}", error=exc))
             return
         webbrowser.open(Path(path).as_uri())
 
@@ -2204,16 +2204,16 @@ class _EditEntryDialog:
                 motors.append(n)
         if len(motors) >= 2:
             self._motor_mode = "multi"
-            ttk.Label(frame, text="Motoren:").grid(row=row, column=0, sticky="ne", padx=4, pady=2)
+            ttk.Label(frame, text=t("Motoren:")).grid(row=row, column=0, sticky="ne", padx=4, pady=2)
             box = ttk.Frame(frame)
             box.grid(row=row, column=1, columnspan=3, sticky="w")
             for n in motors:
                 var = tk.BooleanVar(value=bool(saved.get(n)))
-                ttk.Checkbutton(box, text=n + " läuft", variable=var).pack(anchor="w")
+                ttk.Checkbutton(box, text=t("{name} läuft", name=n), variable=var).pack(anchor="w")
                 self._motor_vars[n] = var
         else:
             self._motor_mode = "single"
-            ttk.Label(frame, text="Motor:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            ttk.Label(frame, text=t("Motor:")).grid(row=row, column=0, sticky="e", padx=4, pady=2)
             self._engine = tk.StringVar(value=self._ENGINE.get(entry.engine_on, "—"))
             ttk.Combobox(frame, textvariable=self._engine, width=18, state="readonly",
                          values=["—", "ein", "aus"]).grid(row=row, column=1, sticky="w")
@@ -2238,7 +2238,7 @@ class _EditEntryDialog:
         return rig.CONTROL_FIXED
 
     def _build_edit_sails(self, frame, row, entry) -> None:
-        box = ttk.LabelFrame(frame, text="Segel / Antrieb")
+        box = ttk.LabelFrame(frame, text=t("Segel / Antrieb"))
         box.grid(row=row, column=0, columnspan=4, sticky="we", pady=(2, 4))
         spec = self._rig
         try:
@@ -2269,7 +2269,7 @@ class _EditEntryDialog:
                                  values=rig.SLAB_STATES).grid(row=i, column=1, sticky="w")
                 else:
                     var = tk.BooleanVar(value=(init == "gesetzt"))
-                    ttk.Checkbutton(box, text="gesetzt", variable=var).grid(
+                    ttk.Checkbutton(box, text=t("gesetzt"), variable=var).grid(
                         row=i, column=1, sticky="w")
                 self._sail_controls.append((sail, var))
 
@@ -2284,7 +2284,7 @@ class _EditEntryDialog:
             build_adaptive(sails)
         elif spec is not None and spec.is_motorboat:
             self._sail_mode = "motor"
-            txt = "🛥 Motorboot — keine Segel"
+            txt = t("🛥 Motorboot — keine Segel")
             if spec.motors:
                 txt += "   (" + ", ".join(spec.motors) + ")"
             ttk.Label(box, text=txt, foreground="#555").grid(
@@ -2294,18 +2294,18 @@ class _EditEntryDialog:
         else:
             # klassisch (kein Schiff/keine Ausrüstung, kein sails_json)
             self._sail_mode = "classic"
-            ttk.Label(box, text="Großsegel:").grid(row=0, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Label(box, text=t("Großsegel:")).grid(row=0, column=0, sticky="e", padx=(6, 3), pady=2)
             self._mainsail = tk.StringVar(value=entry.mainsail or "—")
             ttk.Combobox(box, textvariable=self._mainsail, width=16, state="readonly",
                          values=MAINSAIL_OPTIONS).grid(row=0, column=1, sticky="w")
-            ttk.Label(box, text="Genua %:").grid(row=1, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Label(box, text=t("Genua %:")).grid(row=1, column=0, sticky="e", padx=(6, 3), pady=2)
             self._genoa = tk.StringVar(
                 value="" if entry.genoa_percent is None else f"{entry.genoa_percent:g}")
             ttk.Spinbox(box, from_=0, to=100, textvariable=self._genoa, width=8).grid(
                 row=1, column=1, sticky="w")
-            ttk.Label(box, text="Spinnaker:").grid(row=2, column=0, sticky="e", padx=(6, 3), pady=2)
+            ttk.Label(box, text=t("Spinnaker:")).grid(row=2, column=0, sticky="e", padx=(6, 3), pady=2)
             self._spinnaker = tk.BooleanVar(value=bool(entry.spinnaker))
-            ttk.Checkbutton(box, text="gesetzt", variable=self._spinnaker).grid(
+            ttk.Checkbutton(box, text=t("gesetzt"), variable=self._spinnaker).grid(
                 row=2, column=1, sticky="w")
 
     def _sail_result(self) -> Dict:
