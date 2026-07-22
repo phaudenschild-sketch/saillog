@@ -117,16 +117,21 @@ class Application:
             self._config.entry_image_source = val
             self._config.save()
 
+    # Zielhöhe des Startfensters: passt auf kleinere Laptop-Bildschirme; die
+    # Logbuch-Tabelle darüber ist scrollbar, die untere Knopfzeile bleibt so
+    # immer sichtbar.
+    _TARGET_HEIGHT = 640
+
     def _fit_window(self) -> None:
         """Fenster so groß, dass alles (inkl. untere Knopfzeile) sichtbar ist —
-        aber nie größer als der Bildschirm."""
+        aber nie höher als ~640 px bzw. der Bildschirm (Tabelle scrollt)."""
         r = self._root
         r.update_idletasks()
         req_w = max(1180, r.winfo_reqwidth())
         req_h = r.winfo_reqheight()
         scr_w, scr_h = r.winfo_screenwidth(), r.winfo_screenheight()
         w = min(req_w, int(scr_w * 0.96))
-        h = min(req_h + 8, int(scr_h * 0.92))
+        h = min(req_h + 8, self._TARGET_HEIGHT, int(scr_h * 0.92))
         x = max(0, (scr_w - w) // 2)
         y = max(0, (scr_h - h) // 4)
         r.geometry(f"{w}x{h}+{x}+{y}")
@@ -134,7 +139,7 @@ class Application:
     # --- UI-Aufbau ----------------------------------------------------------
 
     def _build_ui(self) -> None:
-        pad = dict(padx=8, pady=4)
+        pad = dict(padx=8, pady=2)
 
         # Menüleiste: Stammdaten (Personen/Schiffe verwalten)
         menubar = tk.Menu(self._root)
@@ -215,7 +220,9 @@ class Application:
         main_row = ttk.Frame(self._root)
         main_row.pack(fill="x", **pad)
 
-        # Messwerte kompakt (zwei Spalten, je Zeile "Label  Wert Einheit")
+        # Messwerte kompakt (zwei Spalten, je Zeile "Label  Wert Einheit").
+        # Enges Zeilen-Padding hält das Panel flach, ohne die Breite zu erhöhen
+        # (drei Spalten würden das Fenster zu breit für Laptop-Bildschirme machen).
         dash = ttk.LabelFrame(main_row, text=t("Messwerte"))
         dash.pack(side="left", fill="y")
         per_col = (len(FIELD_LABELS) + 1) // 2
@@ -223,11 +230,11 @@ class Application:
             row = index % per_col
             base = (index // per_col) * 2
             ttk.Label(dash, text=t(label), foreground="#666").grid(
-                row=row, column=base, sticky="e", padx=(8, 3), pady=1
+                row=row, column=base, sticky="e", padx=(8, 3), pady=0
             )
             value = tk.Label(dash, text="—", font=("TkDefaultFont", 10, "bold"),
                              width=11, anchor="w")
-            value.grid(row=row, column=base + 1, sticky="w", padx=(0, 10), pady=1)
+            value.grid(row=row, column=base + 1, sticky="w", padx=(0, 10), pady=0)
             self._value_labels[key] = value
 
         cond = ttk.LabelFrame(main_row, text=t("Bedingungen (bei jedem Log mitgeschrieben)"))
@@ -297,7 +304,9 @@ class Application:
             "time": 145, "ed": 26, "anlass": 100, "type": 58, "pos": 140, "sog": 48,
             "wind": 95, "depth": 52, "motor": 46, "segel": 120, "img": 28, "note": 150,
         }
-        self._tree = ttk.Treeview(table_frame, columns=cols, show="headings")
+        # Standardhöhe klein halten (scrollbar) — hält das Startfenster niedrig,
+        # damit die untere Knopfzeile auf Laptop-Bildschirmen sichtbar bleibt.
+        self._tree = ttk.Treeview(table_frame, columns=cols, show="headings", height=4)
         for col in cols:
             self._tree.heading(col, text=headers[col])
             self._tree.column(col, width=widths[col], anchor="w")
@@ -375,18 +384,19 @@ class Application:
 
     def _build_conditions(self, parent: ttk.LabelFrame) -> None:
         self._cond_vars: Dict[str, tk.Variable] = {}
-        # In zwei Spalten anordnen, damit die Maske flach bleibt.
+        # In zwei Spalten anordnen (je 3 Zeilen), damit die Maske flach bleibt
+        # und das Fenster auf einen Laptop-Bildschirm passt.
         self._row = 0
-        per_col = 5
+        per_col = 3
 
         def add(label, widget):
             i = self._row
             r = i % per_col
             base = (i // per_col) * 2
             ttk.Label(parent, text=label).grid(
-                row=r, column=base, sticky="e", padx=(6, 3), pady=2
+                row=r, column=base, sticky="e", padx=(6, 3), pady=1
             )
-            widget.grid(row=r, column=base + 1, sticky="w", padx=(0, 8), pady=2)
+            widget.grid(row=r, column=base + 1, sticky="w", padx=(0, 8), pady=1)
             self._row += 1
 
         self._cond_vars["logevent"] = tk.StringVar(value=self._logevents[0])
