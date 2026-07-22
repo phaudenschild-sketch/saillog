@@ -1449,7 +1449,7 @@ class Application:
     def _on_meilennachweis(self) -> None:
         trips_all = self._store.all_trips(newest_first=False)
         if not trips_all:
-            messagebox.showinfo("Seemeilen-Nachweis", "Noch keine Törns vorhanden.")
+            messagebox.showinfo(t("Seemeilen-Nachweis"), t("Noch keine Törns vorhanden."))
             return
         dialog = _MeilenDialog(self._root, self._config)
         self._root.wait_window(dialog.top)
@@ -1461,8 +1461,8 @@ class Application:
         trips = [tr for tr in trips_all
                  if _in_date_range(tr.start_dz, r["von"], r["bis"], offset)]
         if not trips:
-            messagebox.showinfo("Seemeilen-Nachweis",
-                                "Im gewählten Zeitraum liegen keine Törns.")
+            messagebox.showinfo(t("Seemeilen-Nachweis"),
+                                t("Im gewählten Zeitraum liegen keine Törns."))
             return
 
         name = "seemeilen_nachweis.html"
@@ -1478,8 +1478,8 @@ class Application:
             try:
                 self._open_report_html(make(None, False), name)
             except Exception as exc:  # noqa: BLE001
-                messagebox.showerror("Seemeilen-Nachweis",
-                                     f"Erstellung fehlgeschlagen:\n{exc}")
+                messagebox.showerror(t("Seemeilen-Nachweis"),
+                                     t("Erstellung fehlgeschlagen:\n{error}", error=exc))
 
     def _on_manage_voyages(self) -> None:
         dialog = _VoyageDialog(self._root, self._store)
@@ -4456,7 +4456,7 @@ class _FuelDialog:
         self._trip_id = trip_id
         self._config = config
         self.top = tk.Toplevel(parent)
-        self.top.title("Tanken & Verbrauch")
+        self.top.title(t("Tanken & Verbrauch"))
         self.top.transient(parent)
         self.top.grab_set()
         self.top.geometry("680x510")
@@ -4473,14 +4473,14 @@ class _FuelDialog:
         self._remaining.pack(anchor="w", pady=(2, 0))
         ttk.Label(
             frame, foreground="#777",
-            text="Verbrauch = getankte Menge zwischen zwei „voll getankt\"-Einträgen, "
-                 "geteilt durch die Motorstunden dazwischen.",
+            text=t("Verbrauch = getankte Menge zwischen zwei „voll getankt\"-Einträgen, "
+                   "geteilt durch die Motorstunden dazwischen."),
         ).pack(anchor="w", pady=(2, 6))
 
         # Tankgröße (wird gespeichert)
         tankrow = ttk.Frame(frame)
         tankrow.pack(fill="x", pady=(0, 6))
-        ttk.Label(tankrow, text="Tankgröße (L):").pack(side="left")
+        ttk.Label(tankrow, text=t("Tankgröße (L):")).pack(side="left")
         self._tank = tk.StringVar(
             value="" if not config.tank_capacity_l else f"{config.tank_capacity_l:g}")
         ent = ttk.Entry(tankrow, textvariable=self._tank, width=8)
@@ -4489,8 +4489,8 @@ class _FuelDialog:
         ent.bind("<Return>", lambda _e: self._save_tank())
 
         cols = ("time", "liters", "loc", "full", "hours")
-        headers = {"time": "Zeit", "liters": "Liter", "loc": "Ort",
-                   "full": "Voll", "hours": "Motorstd."}
+        headers = {"time": t("Zeit"), "liters": t("Liter"), "loc": t("Ort"),
+                   "full": t("Voll"), "hours": t("Motorstd.")}
         widths = {"time": 150, "liters": 70, "loc": 160, "full": 46, "hours": 90}
         self._tree = ttk.Treeview(frame, columns=cols, show="headings", height=11)
         for c in cols:
@@ -4502,10 +4502,10 @@ class _FuelDialog:
 
         btns = ttk.Frame(frame)
         btns.pack(fill="x")
-        ttk.Button(btns, text="Tankung hinzufügen…", command=self._on_add).pack(side="left")
-        ttk.Button(btns, text="Bearbeiten…", command=self._on_edit).pack(side="left", padx=4)
-        ttk.Button(btns, text="Entfernen", command=self._on_remove).pack(side="left")
-        ttk.Button(btns, text="Schließen", command=self.top.destroy).pack(side="right")
+        ttk.Button(btns, text=t("Tankung hinzufügen…"), command=self._on_add).pack(side="left")
+        ttk.Button(btns, text=t("Bearbeiten…"), command=self._on_edit).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Entfernen"), command=self._on_remove).pack(side="left")
+        ttk.Button(btns, text=t("Schließen"), command=self.top.destroy).pack(side="right")
 
         self._refresh()
 
@@ -4536,14 +4536,17 @@ class _FuelDialog:
     def _show_summary(self, stats) -> None:
         if stats["last_rate"] is None:
             self._summary.config(
-                text="Verbrauch: noch nicht berechenbar — mind. zwei „voll getankt\"-"
-                     "Einträge mit Motorstunden nötig."
+                text=t("Verbrauch: noch nicht berechenbar — mind. zwei „voll getankt\"-"
+                       "Einträge mit Motorstunden nötig.")
             )
             return
-        txt = f"Verbrauch (letztes Intervall): {stats['last_rate']:.1f} l/h"
+        txt = t("Verbrauch (letztes Intervall): {rate} l/h",
+                rate=f"{stats['last_rate']:.1f}")
         if stats["avg_rate"] is not None:
-            txt += (f"      Ø {stats['avg_rate']:.1f} l/h "
-                    f"({stats['total_liters']:.0f} l / {stats['total_hours']:.1f} h)")
+            txt += t("      Ø {rate} l/h ({liters} l / {hours} h)",
+                     rate=f"{stats['avg_rate']:.1f}",
+                     liters=f"{stats['total_liters']:.0f}",
+                     hours=f"{stats['total_hours']:.1f}")
         self._summary.config(text=txt)
 
     def _show_remaining(self, entries, stats) -> None:
@@ -4554,13 +4557,14 @@ class _FuelDialog:
         if est is None:
             hint = ""
             if capacity and rate and hours is None:
-                hint = " (keine Motorstunden aus dem NMEA-Netz)"
-            self._remaining.config(text="Restfüllstand: —" + hint)
+                hint = t(" (keine Motorstunden aus dem NMEA-Netz)")
+            self._remaining.config(text=t("Restfüllstand: —") + hint)
             return
         self._remaining.config(
-            text=f"Restfüllstand (geschätzt): {est['remaining_l']:.0f} L von "
-                 f"{est['capacity_l']:.0f} L  ·  Reichweite ~{est['remaining_hours']:.1f} h "
-                 f"Motorlaufzeit"
+            text=t("Restfüllstand (geschätzt): {rem} L von {cap} L  ·  "
+                   "Reichweite ~{h} h Motorlaufzeit",
+                   rem=f"{est['remaining_l']:.0f}", cap=f"{est['capacity_l']:.0f}",
+                   h=f"{est['remaining_hours']:.1f}")
         )
 
     def _selected(self) -> Optional[int]:
@@ -4600,7 +4604,7 @@ class _FuelDialog:
         fid = self._selected()
         if fid is None:
             return
-        if messagebox.askyesno("Entfernen", "Tankung entfernen?"):
+        if messagebox.askyesno(t("Entfernen"), t("Tankung entfernen?")):
             self._store.delete_fuel(fid)
             self._refresh()
 
@@ -4613,7 +4617,7 @@ class _FuelEntryDialog:
         self._entry = entry
         self._offset = offset
         self.top = tk.Toplevel(parent)
-        self.top.title("Tankung")
+        self.top.title(t("Tankung"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=12)
@@ -4622,40 +4626,40 @@ class _FuelEntryDialog:
         def lab(text, r):
             ttk.Label(frame, text=text).grid(row=r, column=0, sticky="e", padx=4, pady=3)
 
-        lab("Zeit (lokal):", 0)
+        lab(t("Zeit (lokal):"), 0)
         ts = timeutil.to_display(entry.timestamp, offset) if entry.timestamp else ""
         self._ts = tk.StringVar(value=ts)
         ttk.Entry(frame, textvariable=self._ts, width=24).grid(row=0, column=1, sticky="w")
 
-        lab("Liter:", 1)
+        lab(t("Liter:"), 1)
         self._liters = tk.StringVar(
             value="" if entry.liters is None else f"{entry.liters:g}")
         ttk.Entry(frame, textvariable=self._liters, width=12).grid(row=1, column=1, sticky="w")
 
-        lab("Ort:", 2)
+        lab(t("Ort:"), 2)
         self._loc = tk.StringVar(value=entry.location)
         ttk.Entry(frame, textvariable=self._loc, width=24).grid(row=2, column=1, sticky="w")
 
-        lab("Motorstunden:", 3)
+        lab(t("Motorstunden:"), 3)
         self._hours = tk.StringVar(
             value="" if entry.engine_hours is None else f"{entry.engine_hours:g}")
         ttk.Entry(frame, textvariable=self._hours, width=12).grid(row=3, column=1, sticky="w")
-        ttk.Label(frame, text="(aus NMEA vorbelegt)", foreground="#888").grid(
+        ttk.Label(frame, text=t("(aus NMEA vorbelegt)"), foreground="#888").grid(
             row=3, column=2, sticky="w")
 
         self._full = tk.BooleanVar(value=bool(entry.full_tank))
-        ttk.Checkbutton(frame, text="voll getankt", variable=self._full).grid(
+        ttk.Checkbutton(frame, text=t("voll getankt"), variable=self._full).grid(
             row=4, column=1, sticky="w", pady=3)
 
-        lab("Notiz:", 5)
+        lab(t("Notiz:"), 5)
         self._note = tk.StringVar(value=entry.note)
         ttk.Entry(frame, textvariable=self._note, width=30).grid(
             row=5, column=1, columnspan=2, sticky="w")
 
         btns = ttk.Frame(frame)
         btns.grid(row=6, column=0, columnspan=3, pady=(10, 0))
-        ttk.Button(btns, text="Speichern", command=self._on_ok).pack(side="left", padx=4)
-        ttk.Button(btns, text="Abbrechen", command=self.top.destroy).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Speichern"), command=self._on_ok).pack(side="left", padx=4)
+        ttk.Button(btns, text=t("Abbrechen"), command=self.top.destroy).pack(side="left", padx=4)
 
     def _on_ok(self) -> None:
         e = self._entry
@@ -5034,7 +5038,7 @@ class _MeilenDialog:
     def __init__(self, parent: tk.Tk, config) -> None:
         self.result: Optional[dict] = None
         self.top = tk.Toplevel(parent)
-        self.top.title("Seemeilen-Nachweis")
+        self.top.title(t("Seemeilen-Nachweis"))
         self.top.transient(parent)
         self.top.grab_set()
         frame = ttk.Frame(self.top, padding=14)
@@ -5042,10 +5046,10 @@ class _MeilenDialog:
 
         ttk.Label(
             frame, wraplength=470, foreground="#555",
-            text="Erzeugt eine druckbare Meilen-Zusammenstellung aus deinen "
-                 "Törns — mit Übersicht der Anforderungen für SKS/SSS/SHS (DE), "
-                 "FB3/FB4 (AT) und Hochseeschein (CH). Jede Etappe hat eine "
-                 "Unterschriftsspalte für den Skipper.",
+            text=t("Erzeugt eine druckbare Meilen-Zusammenstellung aus deinen "
+                   "Törns — mit Übersicht der Anforderungen für SKS/SSS/SHS (DE), "
+                   "FB3/FB4 (AT) und Hochseeschein (CH). Jede Etappe hat eine "
+                   "Unterschriftsspalte für den Skipper."),
         ).pack(anchor="w", pady=(0, 10))
 
         grid = ttk.Frame(frame)
@@ -5054,44 +5058,44 @@ class _MeilenDialog:
         def row(label, r):
             ttk.Label(grid, text=label).grid(row=r, column=0, sticky="e", padx=4, pady=4)
 
-        row("Antragsteller/in:", 0)
+        row(t("Antragsteller/in:"), 0)
         self._name = tk.StringVar(value=getattr(config, "skipper_name", "") or "")
         ttk.Entry(grid, textvariable=self._name, width=32).grid(
             row=0, column=1, columnspan=3, sticky="w", pady=4)
 
-        row("Funktion (Standard):", 1)
+        row(t("Funktion (Standard):"), 1)
         self._role = tk.StringVar(value="Skipper")
         ttk.Combobox(grid, textvariable=self._role, width=22, values=self._ROLES).grid(
             row=1, column=1, sticky="w")
-        ttk.Label(grid, text="(je Törn aus der Crewliste, falls hinterlegt)",
+        ttk.Label(grid, text=t("(je Törn aus der Crewliste, falls hinterlegt)"),
                   foreground="#888").grid(row=1, column=2, columnspan=2, sticky="w")
 
-        row("Zeitraum von:", 2)
+        row(t("Zeitraum von:"), 2)
         self._von = tk.StringVar()
         ttk.Entry(grid, textvariable=self._von, width=14).grid(row=2, column=1, sticky="w")
-        ttk.Label(grid, text="bis:").grid(row=2, column=2, sticky="e")
+        ttk.Label(grid, text=t("bis:")).grid(row=2, column=2, sticky="e")
         self._bis = tk.StringVar()
         ttk.Entry(grid, textvariable=self._bis, width=14).grid(row=2, column=3, sticky="w")
-        ttk.Label(grid, text="(JJJJ-MM-TT, leer = alle)", foreground="#888").grid(
+        ttk.Label(grid, text=t("(JJJJ-MM-TT, leer = alle)"), foreground="#888").grid(
             row=3, column=1, columnspan=3, sticky="w")
 
         self._night = tk.BooleanVar(value=True)
-        ttk.Checkbutton(frame, text="Nachtmeilen berechnen (aus Sonnenstand)",
+        ttk.Checkbutton(frame, text=t("Nachtmeilen berechnen (aus Sonnenstand)"),
                         variable=self._night).pack(anchor="w", pady=(8, 0))
 
-        og = ttk.LabelFrame(frame, text="Ausgabe", padding=8)
+        og = ttk.LabelFrame(frame, text=t("Ausgabe"), padding=8)
         og.pack(fill="x", pady=(8, 0))
         self._output = tk.StringVar(value="pdf")
-        ttk.Radiobutton(og, text="Als PDF speichern", variable=self._output,
+        ttk.Radiobutton(og, text=t("Als PDF speichern"), variable=self._output,
                         value="pdf").pack(side="left", padx=(2, 12))
-        ttk.Radiobutton(og, text="Im Browser öffnen (HTML)", variable=self._output,
+        ttk.Radiobutton(og, text=t("Im Browser öffnen (HTML)"), variable=self._output,
                         value="html").pack(side="left")
 
         buttons = ttk.Frame(frame)
         buttons.pack(pady=(12, 0))
-        ttk.Button(buttons, text="Nachweis erstellen", command=self._on_ok).pack(
+        ttk.Button(buttons, text=t("Nachweis erstellen"), command=self._on_ok).pack(
             side="left", padx=4)
-        ttk.Button(buttons, text="Abbrechen", command=self.top.destroy).pack(
+        ttk.Button(buttons, text=t("Abbrechen"), command=self.top.destroy).pack(
             side="left", padx=4)
 
     def _on_ok(self) -> None:
