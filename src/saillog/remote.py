@@ -171,7 +171,6 @@ def _conditions_from_form(form: Dict[str, str]) -> Dict:
         return "" if val in ("—", blank_value, "") else val
 
     result = {
-        "engine_mode": (form.get("engine_mode") or "automatisch").strip(),
         "wave_height_m": num("wave"),
         "cloud_cover": sel("cloud", "—"),
         "precipitation": sel("precip", "kein"),
@@ -179,6 +178,18 @@ def _conditions_from_form(form: Dict[str, str]) -> Dict:
         "logevent": (form.get("logevent") or "").strip(),
         "note": (form.get("note") or "").strip(),
     }
+    # Motor(en): ab 2 Motoren je Motor an/aus (motorname_/motorval_), sonst engine_mode
+    if "motorname_0" in form:
+        mstates: Dict[str, int] = {}
+        i = 0
+        while f"motorname_{i}" in form:
+            mstates[form[f"motorname_{i}"]] = 1 if form.get(f"motorval_{i}") else 0
+            i += 1
+        result["engine_mode"] = "ein" if any(mstates.values()) else "aus"
+        result["motors_json"] = json.dumps(mstates, ensure_ascii=False)
+    else:
+        result["engine_mode"] = (form.get("engine_mode") or "automatisch").strip()
+        result["motors_json"] = ""
     # Segel: adaptiv (sailname_/sailctrl_/sailval_) > klassisch (mainsail) > Motorboot
     if "sailname_0" in form:
         states: Dict[str, object] = {}
@@ -312,6 +323,24 @@ def _options(values: List[str], selected) -> str:
     return "".join(out)
 
 
+def _motor_fields(rig_info: Optional[Dict], c: Dict) -> str:
+    """Motor-Feld(er): ab 2 Motoren je Motor eine „läuft"-Checkbox."""
+    motors = (rig_info or {}).get("motors") or []
+    if len(motors) >= 2:
+        rows = []
+        for i, name in enumerate(motors):
+            rows.append(
+                f"<input type='hidden' name='motorname_{i}' value='{_esc(name)}'>"
+                "<label style='display:inline;font-weight:400'>"
+                f"<input type='checkbox' name='motorval_{i}' value='1' "
+                f"style='width:auto'> {_esc(name)} läuft</label><br>")
+        return f"<div class='full'><label>Motoren</label>{''.join(rows)}</div>"
+    return ("<div><label>Motor</label>"
+            f"<select name='engine_mode'>"
+            f"{_options(['automatisch','ein','aus'], c.get('engine_mode') or 'automatisch')}"
+            "</select></div>")
+
+
 def _sail_fields(rig_info: Optional[Dict], c: Dict) -> str:
     """Segel-/Antriebs-Felder passend zur Ausrüstung des aktiven Schiffs."""
     rig_info = rig_info or {}
@@ -390,8 +419,7 @@ def _form_page(info: Dict) -> str:
                           "logevent_list") + "</div>"
         "<div class='full'><label>Bemerkung</label>"
         "<textarea name='note' placeholder='z.B. Ankermanöver in der Bucht'></textarea></div>"
-        "<div><label>Motor</label>"
-        f"<select name='engine_mode'>{_options(['automatisch','ein','aus'], c.get('engine_mode') or 'automatisch')}</select></div>"
+        + _motor_fields(info.get("rig"), c) +
         "<div><label>Seegang (m)</label>"
         f"<input name='wave' type='number' step='0.1' min='0' value='{_esc(wave_val)}'></div>"
         + _sail_fields(info.get("rig"), c) +

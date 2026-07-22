@@ -279,15 +279,6 @@ class Application:
         ttk.Button(controls, text="🗺 Logbuch-Karte…",
                    command=self._on_open_log_map).grid(row=0, column=7, padx=4)
 
-        ttk.Label(controls, text="Zeitzone:").grid(row=0, column=8, sticky="e", padx=(16, 2))
-        self._tz_var = tk.StringVar(value=self._tz_current_choice())
-        tz = ttk.Combobox(
-            controls, textvariable=self._tz_var, width=12, state="readonly",
-            values=["System", "UTC", "UTC+1", "UTC+2", "UTC+3", "UTC+4", "UTC-1", "UTC-2"],
-        )
-        tz.grid(row=0, column=9, padx=2)
-        tz.bind("<<ComboboxSelected>>", lambda _e: self._on_tz_change())
-
         # Logbuch-Tabelle
         table_frame = ttk.Frame(self._root)
         table_frame.pack(fill="both", expand=True, **pad)
@@ -339,7 +330,16 @@ class Application:
             side="left", padx=8
         )
         self._count_label = ttk.Label(bottom, text="")
-        self._count_label.pack(side="right")
+        self._count_label.pack(side="right", padx=(0, 6))
+        # Zeitzone (aus der oberen Leiste hierher, damit sie ins Fenster passt)
+        self._tz_var = tk.StringVar(value=self._tz_current_choice())
+        tz = ttk.Combobox(
+            bottom, textvariable=self._tz_var, width=10, state="readonly",
+            values=["System", "UTC", "UTC+1", "UTC+2", "UTC+3", "UTC+4", "UTC-1", "UTC-2"],
+        )
+        tz.pack(side="right", padx=2)
+        tz.bind("<<ComboboxSelected>>", lambda _e: self._on_tz_change())
+        ttk.Label(bottom, text="Zeitzone:").pack(side="right", padx=(14, 2))
 
     # --- Bedingungs-Panel (dauerhafte Maskenwerte) -------------------------
 
@@ -1956,10 +1956,7 @@ class _EditEntryDialog:
                      values=self._logevents).grid(row=r, column=3, sticky="w")
         r += 1
 
-        lab("Motor:", r)
-        self._engine = tk.StringVar(value=self._ENGINE.get(entry.engine_on, "—"))
-        ttk.Combobox(frame, textvariable=self._engine, width=18, state="readonly",
-                     values=["—", "ein", "aus"]).grid(row=r, column=1, sticky="w")
+        self._build_edit_motor(frame, r, entry)
         r += 1
         # Segel/Antrieb adaptiv (nach Ausrüstung des Schiffs), aus sails_json vorbelegt
         self._build_edit_sails(frame, r, entry)
@@ -2161,6 +2158,42 @@ class _EditEntryDialog:
             return
         webbrowser.open(Path(path).as_uri())
 
+    def _build_edit_motor(self, frame, row, entry) -> None:
+        self._motor_vars = {}
+        motors = list(self._rig.motors) if self._rig is not None else []
+        try:
+            saved = json.loads(entry.motors_json) if entry.motors_json else {}
+        except Exception:  # noqa: BLE001
+            saved = {}
+        if not isinstance(saved, dict):
+            saved = {}
+        for n in saved:
+            if n not in motors:
+                motors.append(n)
+        if len(motors) >= 2:
+            self._motor_mode = "multi"
+            ttk.Label(frame, text="Motoren:").grid(row=row, column=0, sticky="ne", padx=4, pady=2)
+            box = ttk.Frame(frame)
+            box.grid(row=row, column=1, columnspan=3, sticky="w")
+            for n in motors:
+                var = tk.BooleanVar(value=bool(saved.get(n)))
+                ttk.Checkbutton(box, text=n + " läuft", variable=var).pack(anchor="w")
+                self._motor_vars[n] = var
+        else:
+            self._motor_mode = "single"
+            ttk.Label(frame, text="Motor:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            self._engine = tk.StringVar(value=self._ENGINE.get(entry.engine_on, "—"))
+            ttk.Combobox(frame, textvariable=self._engine, width=18, state="readonly",
+                         values=["—", "ein", "aus"]).grid(row=row, column=1, sticky="w")
+
+    def _motor_result(self) -> Dict:
+        if getattr(self, "_motor_mode", "single") == "multi":
+            m = {n: (1 if var.get() else 0) for n, var in self._motor_vars.items()}
+            return {"engine_on": 1 if any(m.values()) else 0,
+                    "motors_json": json.dumps(m, ensure_ascii=False)}
+        engine_map = {"—": None, "ein": 1, "aus": 0}
+        return {"engine_on": engine_map.get(self._engine.get()), "motors_json": ""}
+
     @staticmethod
     def _infer_control(value) -> str:
         try:
@@ -2269,7 +2302,6 @@ class _EditEntryDialog:
         }
 
     def _on_save(self) -> None:
-        engine_map = {"—": None, "ein": 1, "aus": 0}
         self.result = {
             "timestamp": self._ts.get().strip(),
             "lat": _parse_float(self._lat.get()),
@@ -2280,7 +2312,6 @@ class _EditEntryDialog:
             "tws_kn": _parse_float(self._tws.get()),
             "twd_deg": _parse_float(self._twd.get()),
             "logevent": self._logevent.get().strip(),
-            "engine_on": engine_map.get(self._engine.get()),
             "cloud_cover": self._cloud.get() if self._cloud.get() != "—" else "",
             "precipitation": self._precip.get() if self._precip.get() != "kein" else "",
             "visibility": self._visibility.get() if self._visibility.get() != "—" else "",
@@ -2290,6 +2321,7 @@ class _EditEntryDialog:
             "note": self._note.get("1.0", "end").strip(),
         }
         self.result.update(self._sail_result())
+        self.result.update(self._motor_result())
         self.top.destroy()
 
 
