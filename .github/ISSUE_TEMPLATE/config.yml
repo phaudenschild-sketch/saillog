@@ -1,0 +1,10 @@
+# Leere Issues erlauben wir nicht — es gibt die geführte Fehler-Vorlage.
+blank_issues_enabled: false
+contact_links:
+  - name: 🙋 Kein GitHub-Konto? Fehler per Formular melden
+    # TODO: hier die URL deines Google-Formulars eintragen (siehe docs/TESTING.md).
+    url: https://forms.gle/DEIN-FORMULAR-HIER
+    about: Wer sich mit GitHub nicht anmelden mag, meldet Fehler bequem über dieses Formular.
+  - name: 💬 Frage oder allgemeine Rückmeldung (E-Mail)
+    url: mailto:peter@haudenschild.ch
+    about: Für Fragen, Ideen oder Feedback, das kein Fehlerbericht ist.

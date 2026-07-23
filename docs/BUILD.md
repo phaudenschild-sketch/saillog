@@ -69,6 +69,32 @@ und bietet optional ein Desktop-Symbol.
 
 ---
 
+## Automatisch bauen lassen (GitHub Actions — ohne eigenen Windows-Rechner)
+
+GitHub kann die `SailLog.exe` (und den Installer) auf einem Windows-Server
+selbst bauen und als **Release** zum Download bereitstellen. Die fertige
+Workflow-Datei liegt als Vorlage unter **[`docs/ci/build-windows.yml`](ci/build-windows.yml)**.
+
+**Einmalig aktivieren** (die Workflow-Datei lässt sich nur über die
+GitHub-Weboberfläche anlegen — das ist Absicht von GitHub):
+
+1. Auf GitHub oben **„Add file" → „Create new file"**.
+2. Als Dateiname exakt eingeben: `.github/workflows/build-windows.yml`
+   (der Ordner entsteht dabei automatisch).
+3. Den Inhalt aus `docs/ci/build-windows.yml` hineinkopieren, **„Commit"**.
+
+**Danach nutzen:**
+- **Testversion bauen:** Reiter **„Actions" → „Windows-Build" → „Run workflow"**.
+  Das Ergebnis (ZIP + Installer) liegt unter dem Lauf als *Artifact*.
+- **Richtiges Release für Tester:** eine Version taggen, z.B.
+  ```bat
+  git tag v0.1.0
+  git push origin v0.1.0
+  ```
+  Dann baut GitHub automatisch und legt ein **Release** mit ZIP + Installer als
+  Download an — dieser Release-Link ist das, was du deinen Testern gibst
+  (siehe [`TESTING.md`](TESTING.md)).
+
 ## Gut zu wissen
 
 - **Version anheben:** in `installer\saillog.iss` (`#define AppVersion`) und

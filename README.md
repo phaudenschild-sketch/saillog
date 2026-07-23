@@ -11,6 +11,10 @@ Python.
 > **Weiterarbeit / aktueller Stand:** siehe [`docs/STATUS.md`](docs/STATUS.md)
 > — Hardware-Karte des Boots, erledigte Features und offene nächste Schritte.
 
+> 🧪 **Du willst mittesten (ohne Python)?** Fertige Windows-Versionen liegen
+> unter **[Releases](../../releases)**; die Kurz-Anleitung fürs Herunterladen,
+> Starten und Melden steht in **[`docs/TESTING.md`](docs/TESTING.md)**.
+
 ## Funktionen
 
 - 📡 **Live-Anbindung** ans Gateway per TCP oder UDP (NMEA0183-Stream)

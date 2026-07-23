@@ -1,0 +1,60 @@
+name: 🐞 Fehler melden
+description: Etwas funktioniert nicht wie erwartet
+labels: ["fehler"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke fürs Testen von SailLog! ⛵ Je konkreter, desto besser kann ich es
+        beheben. Kein Feld ist Pflicht außer der Beschreibung — fülle aus, was du
+        weißt.
+  - type: textarea
+    id: was
+    attributes:
+      label: Was ist passiert?
+      description: Was hast du erwartet, was ist stattdessen passiert?
+      placeholder: "z.B. Beim Speichern eines Eintrags stürzt das Fenster ab."
+    validations:
+      required: true
+  - type: textarea
+    id: schritte
+    attributes:
+      label: Schritte zum Nachstellen
+      description: Wie kann ich den Fehler selbst auslösen?
+      placeholder: |
+        1. „Neuer Eintrag…" öffnen
+        2. Bewölkung wählen
+        3. Speichern → Fehler
+  - type: input
+    id: version
+    attributes:
+      label: SailLog-Version
+      description: Steht im Fenstertitel bzw. im Dateinamen des Downloads (z.B. 0.1.0).
+  - type: dropdown
+    id: windows
+    attributes:
+      label: Windows-Version
+      options:
+        - Windows 11
+        - Windows 10
+        - Andere / weiß nicht
+  - type: dropdown
+    id: quelle
+    attributes:
+      label: Woher kommen die Daten?
+      description: Welches Gateway/welche Quelle war verbunden?
+      options:
+        - Kein Boot / nur ausprobiert
+        - Simulator
+        - PredictWind DataHub
+        - Maretron (COM/USB)
+        - B&G / GoFree
+        - GPS-Maus (USB)
+        - Andere / weiß nicht
+  - type: textarea
+    id: mehr
+    attributes:
+      label: Screenshot / weitere Hinweise
+      description: >
+        Gerne ein Bildschirmfoto anhängen (einfach ins Feld ziehen). Bei
+        Verbindungsproblemen helfen die „Rohdaten…" (Knopf oben) sehr.
