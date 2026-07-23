@@ -148,6 +148,7 @@
   "🔍 GoFree suchen": "🔍 Search GoFree",
   "Übernehmen": "Apply",
   "seriell: Host = COM-Port (COM13), Port = Baud (0 = automatisch erkennen)": "serial: Host = COM port (COM13), Port = baud (0 = auto-detect)",
+  "Signal K: Host = Server-IP, Port = 3000 (REST-Abfrage im Sekundentakt)": "Signal K: Host = server IP, Port = 3000 (REST query once per second)",
   "COM-Ports": "COM ports",
   "Keine seriellen Ports gefunden.\n\n• GPS-Maus eingesteckt? Im Windows-Gerätemanager unter\n  „Anschlüsse (COM & LPT)“ erscheint sie als COMx.\n• Fehlt pyserial? Dann 'pip install pyserial'.": "No serial ports found.\n\n• Is the GPS mouse plugged in? It appears as COMx in the Windows\n  Device Manager under “Ports (COM & LPT)”.\n• Missing pyserial? Then 'pip install pyserial'.",
   "Suche GoFree-Geräte (bis 6 s) …": "Searching for GoFree devices (up to 6 s) …",

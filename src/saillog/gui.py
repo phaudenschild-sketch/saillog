@@ -39,6 +39,7 @@ from saillog.source import (
     STATUS_ERROR,
     NmeaSource,
 )
+from saillog.signalk import SignalKSource
 from saillog.storage import (
     CrewMember, EquipmentParam, EQUIP_CATEGORIES, FuelEntry, LogbookStore,
     LogEntry, Person, REEF_TYPES, Ship, ShipEquipment, Trip, Voyage,
@@ -926,11 +927,13 @@ class Application:
             except (ValueError, KeyError, TypeError):
                 messagebox.showerror(t("Quelle"), t("Ungültiger Port bei Quelle {n}.", n=index + 1))
                 continue
-            source = NmeaSource(
+            proto = definition.get("protocol", "tcp")
+            source_cls = SignalKSource if proto == "signalk" else NmeaSource
+            source = source_cls(
                 host=str(definition["host"]).strip(),
                 port=port,
                 live=self._live,
-                protocol=definition.get("protocol", "tcp"),
+                protocol=proto,
                 on_status=self._make_status_cb(index),
                 on_raw=self._raw_buffer.append,
                 # Eigener Decoder je Quelle (Mehrteiler werden pro Kanal
@@ -5243,7 +5246,8 @@ class _SourcesDialog:
         ttk.Label(frame, text=t("Protokoll:")).grid(row=2, column=0, sticky="e", pady=6)
         self._proto = tk.StringVar(value="tcp")
         proto = ttk.Combobox(
-            frame, textvariable=self._proto, values=["tcp", "udp", "serial"],
+            frame, textvariable=self._proto,
+            values=["tcp", "udp", "serial", "signalk"],
             width=8, state="readonly",
         )
         proto.grid(row=2, column=1, sticky="w")
@@ -5270,6 +5274,7 @@ class _SourcesDialog:
         ttk.Button(tmpl, text="B&G (TCP 10110)", command=self._tmpl_bg).pack(side="left", padx=3)
         ttk.Button(tmpl, text="PredictWind DataHub", command=self._tmpl_datahub).pack(side="left", padx=3)
         ttk.Button(tmpl, text="Maretron (COM)", command=self._tmpl_maretron).pack(side="left", padx=3)
+        ttk.Button(tmpl, text="Signal K", command=self._tmpl_signalk).pack(side="left", padx=3)
         ttk.Button(tmpl, text=t("🔍 Ports…"), command=self._on_pick_port).pack(side="left", padx=3)
         self._gofree_btn = ttk.Button(
             tmpl, text=t("🔍 GoFree suchen"), command=self._on_gofree_search
@@ -5294,6 +5299,9 @@ class _SourcesDialog:
         if self._proto.get() == "serial":
             self._hint.config(text=t("seriell: Host = COM-Port (COM13), "
                                      "Port = Baud (0 = automatisch erkennen)"))
+        elif self._proto.get() == "signalk":
+            self._hint.config(text=t("Signal K: Host = Server-IP, "
+                                     "Port = 3000 (REST-Abfrage im Sekundentakt)"))
         else:
             self._hint.config(text="")
 
@@ -5415,6 +5423,12 @@ class _SourcesDialog:
         # COM-Port ist rechnerabhängig (im Gerätemanager nachsehen); COM3 als
         # üblicher Vorgabewert.
         self._proto.set("serial"); self._host.set("COM3"); self._port.set("115200")
+        self._update_hint()
+
+    def _tmpl_signalk(self) -> None:
+        # Signal-K-Server: REST-Abfrage über HTTP, Standardport 3000. Die
+        # Server-IP ist netzabhängig (oft ein Raspberry Pi im Bordnetz).
+        self._proto.set("signalk"); self._host.set(""); self._port.set("3000")
         self._update_hint()
 
     def _on_ok(self) -> None:

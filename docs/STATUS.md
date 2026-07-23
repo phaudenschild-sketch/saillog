@@ -29,6 +29,17 @@ Konfiguration & Datenbank liegen unter `~/.saillog/`
 
 ## Zuletzt geändert (Verhalten)
 
+- **Signal K als Datenquelle (neu):** Neuer Quellentyp `protocol: "signalk"`
+  neben tcp/udp/seriell. `signalk.py` fragt einen Signal-K-Server per REST ab
+  (`GET http://host:3000/signalk/v1/api/vessels/self`, 1×/s) und rechnet die
+  SI-Einheiten der Signal-K-Pfade auf die internen Schlüssel um
+  (`signalk_to_snapshot()`). `SignalKSource` ist schnittstellengleich zu
+  `NmeaSource` (start/stop/status) und läuft im Mehrquellen-Betrieb mit. Reine
+  Standardbibliothek (kein WebSocket, keine Zusatzabhängigkeit; Proxys werden
+  fürs Bordnetz umgangen). Im Quellen-Dialog: Protokoll „signalk" + Vorlage
+  „Signal K" (Port 3000). Später optional ausbaubar: WebSocket-Delta-Stream für
+  Echtzeit, Signal-K-Discovery, AIS aus dem Vollmodell. Tests: `test_signalk.py`
+  (Mapping inkl. Umrechnungen + Live-Poll gegen einen lokalen HTTP-Server).
 - **AutoLog Kurswechsel entschärft (zu viele Einträge):** Drei Änderungen in
   `autolog.py` / AutoLog-Dialog:
   1. **Motor-Ausnahme** (neue Checkbox „bei Motor ein keinen Kurswechsel
