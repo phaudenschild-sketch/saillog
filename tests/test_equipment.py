@@ -36,7 +36,7 @@ class EquipmentTest(unittest.TestCase):
         self.assertEqual(got.attrs["rpm_max"], 6000)
 
     def test_assign_and_replace_ship_equipment(self):
-        ship = Ship(name="MASARASI")
+        ship = Ship(name="BEISPIEL")
         sid = self.store.add_ship(ship)
         heads = self.store.equipment_params("headsail")
         genua = next(p for p in heads if p.name == "Genua")

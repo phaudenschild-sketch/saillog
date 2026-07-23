@@ -22,9 +22,9 @@ class CrewStoreTest(unittest.TestCase):
         self.store.add_crew(CrewMember(trip_id=trip_id, position="Crew",
                                        last_name="Meyer", sort_order=1))
         self.store.add_crew(CrewMember(trip_id=trip_id, position="Skipper",
-                                       last_name="Haudenschild", sort_order=0))
+                                       last_name="Mustermann", sort_order=0))
         crew = self.store.crew_for_trip(trip_id)
-        self.assertEqual([m.last_name for m in crew], ["Haudenschild", "Meyer"])
+        self.assertEqual([m.last_name for m in crew], ["Mustermann", "Meyer"])
         self.assertEqual(crew[0].position, "Skipper")
 
     def test_update_and_delete(self):
@@ -85,15 +85,15 @@ class PersonRosterTest(unittest.TestCase):
         self.assertEqual(self.store.all_persons(), [])
 
     def test_extended_fields_and_crud(self):
-        p = Person(last_name="Haudenschild", first_name="Peter",
-                   email="peter@haudenschild.ch", street="Gässli 10",
-                   zip_code="4704", city="Niederbipp", nationality="Switzerland",
-                   passport_no="E5663801", birth_place="Niederbipp",
-                   birth_date="18.02.1968")
+        p = Person(last_name="Mustermann", first_name="Max",
+                   email="max@example.com", street="Musterweg 1",
+                   zip_code="3000", city="Musterstadt", nationality="Switzerland",
+                   passport_no="X7654321", birth_place="Musterstadt",
+                   birth_date="01.01.1970")
         pid = self.store.add_person(p)              # „Neu"
         got = self.store.get_person(pid)
-        self.assertEqual(got.email, "peter@haudenschild.ch")
-        self.assertEqual(got.city, "Niederbipp")
+        self.assertEqual(got.email, "max@example.com")
+        self.assertEqual(got.city, "Musterstadt")
         got.city = "Bern"                            # „Ändern"
         self.store.update_person(got)
         self.assertEqual(self.store.get_person(pid).city, "Bern")
@@ -110,19 +110,19 @@ class PersonRosterTest(unittest.TestCase):
 
 class CrewListHtmlTest(unittest.TestCase):
     def test_html_contains_boat_and_crew(self):
-        boat = {"ship_name": "Masarasi", "ship_flag": "Schweiz",
+        boat = {"ship_name": "Beispiel", "ship_flag": "Schweiz",
                 "call_sign": "HBY1234", "home_port": "Kastela"}
         crew = [
-            CrewMember(position="Skipper", last_name="Haudenschild",
-                       first_name="Peter", nationality="CH", passport_no="X999"),
+            CrewMember(position="Skipper", last_name="Mustermann",
+                       first_name="Max", nationality="CH", passport_no="X999"),
             CrewMember(position="Crew", last_name="Meyer", first_name="Anna"),
         ]
         html = crewlist.build_html(boat, crew, place="Dubrovnik", date_str="09.07.2026")
         self.assertIn("Crewliste", html)
         self.assertIn("Crew List", html)          # zweisprachig
-        self.assertIn("Masarasi", html)
+        self.assertIn("Beispiel", html)
         self.assertIn("HBY1234", html)
-        self.assertIn("Haudenschild", html)
+        self.assertIn("Mustermann", html)
         self.assertIn("Skipper", html)
         self.assertIn("Dubrovnik, 09.07.2026", html)
         self.assertIn("window.print()", html)     # Druck-Knopf

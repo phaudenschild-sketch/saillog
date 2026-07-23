@@ -15,7 +15,7 @@ class BackupTest(unittest.TestCase):
         self._work = tempfile.mkdtemp()
         self._db = os.path.join(self._work, "logbook.sqlite3")
         self._cfg = os.path.join(self._work, "config.json")
-        Path(self._cfg).write_text('{"boat_name": "Masarasi"}', encoding="utf-8")
+        Path(self._cfg).write_text('{"boat_name": "Beispiel"}', encoding="utf-8")
         store = LogbookStore(self._db)
         store.add(LogEntry(timestamp="2026-07-10T10:00:00Z", entry_type="auto",
                            lat=43.5, lon=16.0))

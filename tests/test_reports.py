@@ -57,10 +57,10 @@ class ReportTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         db = os.path.join(self.tmp.name, "l.sqlite3")
         self.store = LogbookStore(db)
-        self.ship = Ship(name="SY MASARASI", ship_type="Dufour 385", length_m=12.0)
+        self.ship = Ship(name="SY BEISPIEL", ship_type="Dufour 385", length_m=12.0)
         self.store.add_ship(self.ship)
         self.cfg = _Cfg(self.ship.id, db)
-        self.trip = Trip(name="SY MASARASI", status="closed",
+        self.trip = Trip(name="SY BEISPIEL", status="closed",
                          start_location="Vella Luka", end_location="Uvala Gradina",
                          start_dz="2024-07-25T06:24:00Z", end_dz="2024-07-25T17:03:00Z")
         self.store.add_trip(self.trip)
@@ -86,7 +86,7 @@ class ReportTest(unittest.TestCase):
         html = reports.trip_report_html(self.store, self.cfg, self.trip, 0.0,
                                         with_images=False)
         self.assertIn("Törnbericht", html)
-        self.assertIn("SY MASARASI", html)
+        self.assertIn("SY BEISPIEL", html)
         self.assertIn("Technische Daten", html)
         self.assertIn("Ablegen", html)
         self.assertIn("42°", html)                 # Position im DM-Format
@@ -211,7 +211,7 @@ class ReportTest(unittest.TestCase):
 
     def test_voyage_report_multi_leg(self):
         # zweite Etappe + beide einem Törn zuordnen
-        t2 = Trip(name="SY MASARASI", status="closed", start_location="Uvala Gradina",
+        t2 = Trip(name="SY BEISPIEL", status="closed", start_location="Uvala Gradina",
                   end_location="Vela Luka", start_dz="2024-07-26T08:00:00Z",
                   end_dz="2024-07-26T14:00:00Z")
         self.store.add_trip(t2)

@@ -52,7 +52,7 @@ class MeilennachweisTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         db = os.path.join(self.tmp.name, "l.sqlite3")
         self.store = LogbookStore(db)
-        self.store.add_ship(Ship(name="SY MASARASI", ship_type="Dufour 385",
+        self.store.add_ship(Ship(name="SY BEISPIEL", ship_type="Dufour 385",
                                  length_m=11.6))
 
         class C:
@@ -71,8 +71,8 @@ class MeilennachweisTest(unittest.TestCase):
     def test_report_structure(self):
         html = reports.meilennachweis_html(
             self.store, self.cfg, [self.trip], 0.0,
-            applicant="Peter Haudenschild", role="Skipper", with_night=True)
-        for key in ("Seemeilen-Nachweis", "Peter Haudenschild", "SY MASARASI",
+            applicant="Max Mustermann", role="Skipper", with_night=True)
+        for key in ("Seemeilen-Nachweis", "Max Mustermann", "SY BEISPIEL",
                     "SKS", "SSS", "SHS", "FB4", "Hochseeschein",
                     "davon Nacht", "Unterschrift Skipper", "Prüfungsträger"):
             self.assertIn(key, html)
@@ -130,7 +130,7 @@ class ManualOverrideTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         db = os.path.join(self.tmp.name, "l.sqlite3")
         self.store = LogbookStore(db)
-        self.store.add_ship(Ship(name="SY MASARASI", length_m=11.6))
+        self.store.add_ship(Ship(name="SY BEISPIEL", length_m=11.6))
 
         class C:
             active_ship_id = None
@@ -176,7 +176,7 @@ class TripShipTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         db = os.path.join(self.tmp.name, "l.sqlite3")
         self.store = LogbookStore(db)
-        self.ship_a = Ship(name="SY MASARASI", length_m=11.6)
+        self.ship_a = Ship(name="SY BEISPIEL", length_m=11.6)
         self.ship_b = Ship(name="SY BAVARIA", length_m=13.0)
         self.store.add_ship(self.ship_a)
         self.store.add_ship(self.ship_b)
@@ -204,14 +204,14 @@ class TripShipTest(unittest.TestCase):
         t2 = self._trip(self.ship_b.id, "T2", 90.0)
         html = reports.meilennachweis_html(
             self.store, self.cfg, [t1, t2], 0.0, applicant="X", with_night=False)
-        self.assertIn("SY MASARASI", html)
+        self.assertIn("SY BEISPIEL", html)
         self.assertIn("SY BAVARIA", html)
 
     def test_trip_without_ship_falls_back_to_active(self):
         t = self._trip(None, "T", 50.0)
         html = reports.meilennachweis_html(
             self.store, self.cfg, [t], 0.0, applicant="X", with_night=False)
-        self.assertIn("SY MASARASI", html)   # aktives Schiff
+        self.assertIn("SY BEISPIEL", html)   # aktives Schiff
         self.assertNotIn("SY BAVARIA", html)
 
 

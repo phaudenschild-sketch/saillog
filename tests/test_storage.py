@@ -73,13 +73,13 @@ class StorageTest(unittest.TestCase):
             entry_type="manual",
             measurements={},
             note="Ankunft im Hafen",
-            crew="Peter, Anna",
+            crew="Max, Anna",
             location="Romanshorn",
         )
         self.store.add(entry)
         loaded = self.store.all()[0]
         self.assertEqual(loaded.entry_type, "manual")
-        self.assertEqual(loaded.crew, "Peter, Anna")
+        self.assertEqual(loaded.crew, "Max, Anna")
         self.assertIsNone(loaded.lat)
 
     def test_export_csv(self):

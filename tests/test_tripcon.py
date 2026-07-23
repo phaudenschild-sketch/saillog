@@ -99,7 +99,7 @@ def _build_tripcon_db(path: str) -> None:
     c.execute("CREATE TABLE S006_Persons (ID INTEGER, LastName TEXT, FirstName TEXT, Email TEXT, "
               "Nationality TEXT, Passport_Nr TEXT, Birthday TEXT, Picture BLOB, Address TEXT, "
               "ZipCode TEXT, City TEXT, PlaceOfBirth TEXT, Active INTEGER)")
-    c.execute("INSERT INTO S006_Persons VALUES (15,'Haudenschild','Peter','peter@haudenschild.ch',"
+    c.execute("INSERT INTO S006_Persons VALUES (15,'Mustermann','Max','max@example.com',"
               "'CH','X1234567','1965-03-12 00:00:00.000Z',?,'Seeweg 1','8000','Zürich','Bern',1)",
               (_jpg(),))
 
@@ -198,7 +198,7 @@ class TripconTest(unittest.TestCase):
         self.assertEqual([s.name for s in ships], ["Tymanfaya"])
         self.assertIsNotNone(store.get_ship_photo(ships[0].id))
         persons = store.all_persons()
-        self.assertEqual([p.last_name for p in persons], ["Haudenschild"])
+        self.assertEqual([p.last_name for p in persons], ["Mustermann"])
         self.assertIsNotNone(store.get_person_photo(persons[0].id))
 
     def test_import_maps_ship_fields(self):
@@ -226,8 +226,8 @@ class TripconTest(unittest.TestCase):
         db_path = os.path.join(self.tmp.name, "saillog.sqlite3")
         tripcon.import_into_saillog(self.conn, db_path)
         person = LogbookStore(db_path).all_persons()[0]
-        self.assertEqual(person.first_name, "Peter")
-        self.assertEqual(person.email, "peter@haudenschild.ch")
+        self.assertEqual(person.first_name, "Max")
+        self.assertEqual(person.email, "max@example.com")
         self.assertEqual(person.nationality, "CH")
         self.assertEqual(person.passport_no, "X1234567")
         self.assertEqual(person.birth_date, "1965-03-12")   # Uhrzeit/Z entfernt
@@ -243,7 +243,7 @@ class TripconTest(unittest.TestCase):
         store = LogbookStore(db_path)
         from saillog.storage import Person, Ship
         store.add_ship(Ship(name="Tymanfaya", home_port="Eigenhafen"))
-        store.add_person(Person(last_name="Haudenschild", first_name="Peter",
+        store.add_person(Person(last_name="Mustermann", first_name="Max",
                                 nationality="Schweiz"))
         result = tripcon.import_into_saillog(self.conn, db_path)
         self.assertEqual(result["ships_matched"], 1)
