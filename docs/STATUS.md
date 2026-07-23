@@ -29,6 +29,23 @@ Konfiguration & Datenbank liegen unter `~/.saillog/`
 
 ## Zuletzt geändert (Verhalten)
 
+- **AutoLog Kurswechsel entschärft (zu viele Einträge):** Drei Änderungen in
+  `autolog.py` / AutoLog-Dialog:
+  1. **Motor-Ausnahme** (neue Checkbox „bei Motor ein keinen Kurswechsel
+     auslösen", `course_skip_motor`, standardmäßig **an**): Unter Maschine
+     werden Kursänderungen nicht mehr als Eintrag gewertet (`engine_running()`
+     aus `nmea.py`). Der Kurs-Zustand wird dabei zurückgesetzt, damit beim
+     Zurück-unter-Segel kein Sprung fälschlich aufsummiert.
+  2. **Mindestabstand statt Mittelwertfenster:** Das alte Feld
+     „Mittelwertbildung über" (`course_avg_seconds`) war nur ein auf 8 s
+     gedeckeltes Glättungsfenster und **griff nicht** als Zeitsperre. Es heißt
+     jetzt **„Mindestabstand zwischen Kurswechseln"** (`course_cooldown_seconds`,
+     Standard 120 s): nach einem Kurswechsel-Eintrag wird für diese Dauer nicht
+     erneut aufsummiert. Damit erzeugt **eine** 90°-Wende beim Kreuzen (bei z.B.
+     40° Schwelle) nur noch **einen** Eintrag statt zwei hintereinander.
+     Abwärtskompatibel: alte Configs mit `course_avg_seconds` werden übernommen.
+  3. Das Glättungsfenster ist jetzt fest 5 s (`_COURSE_SMOOTH_WINDOW`) — klein
+     genug, dass ein 360°-Kreis nicht verschmiert, groß genug gegen COG-Rauschen.
 - **Auto-Verbinden beim Start:** Beim Programmstart verbindet SailLog sich
   automatisch mit den Datenquellen — **aber nur, wenn der Nutzer wirklich eine
   Quelle konfiguriert hat** (`config.sources` ist gesetzt, d.h. über „Quellen…"

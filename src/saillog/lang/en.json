@@ -336,6 +336,8 @@
   "ship\u0004Breite": "Beam",
 
   "   Mittelwertbildung über": "   averaging over",
+  "   Mindestabstand zwischen Kurswechseln": "   minimum gap between course changes",
+  "   bei Motor ein keinen Kurswechsel auslösen": "   no course change while engine on",
   "   bei Kurswechsel ≥": "   on course change ≥",
   "   sonst spätestens alle": "   otherwise at least every",
   " (erkannt: {state})": " (detected: {state})",

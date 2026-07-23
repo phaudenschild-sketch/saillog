@@ -23,10 +23,12 @@ from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional
 
 from saillog import geo
+from saillog.nmea import engine_running
 
 # Kurswechsel-Erkennung
 _COURSE_MIN_SOG = 2.0      # kn — nur unter Fahrt auswerten (COG darunter unbrauchbar)
-_COURSE_SMOOTH_MAX = 8     # s  — Glättung gedeckelt, damit ein Kreis nicht „verschmiert"
+_COURSE_SMOOTH_WINDOW = 5  # s  — festes Glättungsfenster (filtert COG-Rauschen,
+                           #      klein genug, dass ein 360°-Kreis nicht „verschmiert")
 _COURSE_DEADBAND = 0.5     # °  — nur reines Rauschen unterdrücken (langsame Drehung zählt)
 
 
@@ -48,7 +50,13 @@ class AutoLogSettings:
 
     course_enabled: bool = False
     course_threshold: float = 40.0    # Grad
-    course_avg_seconds: int = 120
+    # Mindestabstand: nach einem Kurswechsel-Eintrag frühestens nach so vielen
+    # Sekunden wieder ein Kurswechsel-Eintrag. Verhindert, dass EINE Wende/Drehung
+    # (z.B. 90° beim Kreuzen) gleich mehrere Einträge hintereinander erzeugt.
+    course_cooldown_seconds: int = 120
+    # Beim Motoren keine Kurswechsel-Einträge erzeugen (Kursänderungen unter
+    # Maschine sind meist keine dokumentierenswerten Manöver).
+    course_skip_motor: bool = True
 
     depth_enabled: bool = True
     depth_threshold: float = 2.0      # m
@@ -73,6 +81,11 @@ class AutoLogSettings:
     def from_dict(cls, data: Optional[Dict]) -> "AutoLogSettings":
         if not data:
             return cls()
+        data = dict(data)
+        # Abwärtskompatibel: frühere Einstellung „course_avg_seconds" wird zum
+        # neuen Mindestabstand „course_cooldown_seconds".
+        if "course_avg_seconds" in data and "course_cooldown_seconds" not in data:
+            data["course_cooldown_seconds"] = data["course_avg_seconds"]
         known = {f for f in cls().__dict__}
         return cls(**{k: v for k, v in data.items() if k in known})
 
@@ -116,6 +129,7 @@ class AutoLogEngine:
         self._course_prev: Optional[float] = None   # zuletzt geglätteter Kurs
         self._course_accum: float = 0.0             # aufsummierte Drehung (Grad)
         self._course_hist: deque = deque()    # (t, heading)
+        self._course_cooldown_until: Optional[float] = None  # Sperrzeit nach Eintrag
         self._depth_armed = True
         self._sog_armed = True
         self._stw_armed = True
@@ -168,17 +182,15 @@ class AutoLogEngine:
         if s.course_enabled:
             h = _heading(snapshot)
             sog = snapshot.get("sog_kn")
+            # Beim Motoren keine Kurswechsel werten, wenn so eingestellt (eine
+            # Kursänderung unter Maschine ist meist kein Manöver zum Loggen).
+            motor_on = s.course_skip_motor and engine_running(snapshot) == 1
+            under_way = sog is None or sog >= _COURSE_MIN_SOG
             # Nur unter Fahrt (≥ 2 kn) auswerten: darunter ist COG/Steuerkurs
-            # unbrauchbar (Rauschen im Hafen/beim Manövrieren). Über der Schwelle
-            # muss jede Abweichung > Schwelle sicher einen Eintrag erzeugen — vor
-            # allem eine Wende (~90°).
-            if h is not None and (sog is None or sog >= _COURSE_MIN_SOG):
+            # unbrauchbar (Rauschen im Hafen/beim Manövrieren).
+            if h is not None and under_way and not motor_on:
                 self._course_hist.append((now, h))
-                # Nur LEICHT glätten: ein langes Mittelungsfenster würde einen
-                # vollständigen 360°-Kreis „verschmieren", sodass der gemittelte
-                # Kurs nie ausschlägt. Darum gedeckelt.
-                window = min(max(1, int(s.course_avg_seconds)), _COURSE_SMOOTH_MAX)
-                cutoff = now - window
+                cutoff = now - _COURSE_SMOOTH_WINDOW
                 while self._course_hist and self._course_hist[0][0] < cutoff:
                     self._course_hist.popleft()
                 cur = _circular_mean([hh for _, hh in self._course_hist])
@@ -191,11 +203,27 @@ class AutoLogEngine:
                         # gleich ist — die Beträge addieren sich zu ≥ 360°.
                         step = _angle_diff_signed(cur, self._course_prev)
                         self._course_prev = cur
-                        if abs(step) >= _COURSE_DEADBAND:
-                            self._course_accum += step
-                        if abs(self._course_accum) >= s.course_threshold:
-                            reasons.append(f"Kurswechsel ≥ {s.course_threshold:g}°")
+                        in_cooldown = (self._course_cooldown_until is not None
+                                       and now < self._course_cooldown_until)
+                        if in_cooldown:
+                            # Sperrzeit nach einem Kurswechsel: nicht neu
+                            # aufsummieren, damit EINE Wende/Drehung (die die
+                            # Schwelle überschreitet) nur EINEN Eintrag erzeugt.
                             self._course_accum = 0.0
+                        else:
+                            if abs(step) >= _COURSE_DEADBAND:
+                                self._course_accum += step
+                            if abs(self._course_accum) >= s.course_threshold:
+                                reasons.append(f"Kurswechsel ≥ {s.course_threshold:g}°")
+                                self._course_accum = 0.0
+                                self._course_cooldown_until = (
+                                    now + max(0, int(s.course_cooldown_seconds)))
+            else:
+                # Motor an oder zu langsam: Kurs-Referenz zurücksetzen, damit beim
+                # Wiederaufnehmen unter Segeln kein Sprung fälschlich aufsummiert.
+                self._course_hist.clear()
+                self._course_prev = None
+                self._course_accum = 0.0
 
         if s.depth_enabled:
             d = snapshot.get("depth_m")

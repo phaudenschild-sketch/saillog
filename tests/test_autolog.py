@@ -28,6 +28,13 @@ class SettingsTest(unittest.TestCase):
         self.assertTrue(s.enabled)
         self.assertEqual(s.interval_seconds, 3600)
 
+    def test_legacy_course_avg_seconds_maps_to_cooldown(self):
+        # Alte Konfigurationen mit „course_avg_seconds" werden auf den neuen
+        # Mindestabstand „course_cooldown_seconds" übernommen.
+        s = AutoLogSettings.from_dict({"course_avg_seconds": 90})
+        self.assertEqual(s.course_cooldown_seconds, 90)
+        self.assertTrue(s.course_skip_motor)   # neuer Standard
+
 
 class IntervalTest(unittest.TestCase):
     def test_fires_at_interval(self):
@@ -88,42 +95,91 @@ class SogTest(unittest.TestCase):
 
 
 class CourseTest(unittest.TestCase):
+    @staticmethod
+    def _feed(e, headings, *, sog=4.0, start=0.0, dt=1.0, extra=None):
+        """Speist eine Kursfolge im 1-s-Takt ein und zählt die Kurswechsel-Auslöser.
+
+        Das Glättungsfenster (5 s) verlangt eine *fortlaufende* Drehung — ein
+        Sprung über zwei Messwerte wird herausgemittelt. Deshalb geben die
+        Tests realistische Kursrampen vor.
+        """
+        fires = 0
+        t = start
+        for h in headings:
+            snap = {"cog_deg": h, "sog_kn": sog}
+            if extra:
+                snap.update(extra)
+            r = e.evaluate(snap, t)
+            if r and "Kurswechsel" in r:
+                fires += 1
+            t += dt
+        return fires
+
     def test_course_change_fires(self):
-        e = _engine(course_enabled=True, course_threshold=40.0, course_avg_seconds=1)
-        self.assertIsNone(e.evaluate({"cog_deg": 10.0}, 0.0))   # Referenz = 10
-        # 2 s später (altes fällt aus dem 1-s-Fenster), neuer Kurs 60° -> 50° Diff
-        self.assertIn("Kurswechsel", e.evaluate({"cog_deg": 60.0}, 2.0))
+        # Drehung 10° -> 60° (50°) über 10 s, danach halten: löst aus (> 40°).
+        e = _engine(course_enabled=True, course_threshold=40.0)
+        headings = [10.0 + i * 5.0 for i in range(11)] + [60.0] * 5
+        self.assertGreaterEqual(self._feed(e, headings), 1)
 
     def test_small_change_ignored(self):
-        e = _engine(course_enabled=True, course_threshold=40.0, course_avg_seconds=1)
-        e.evaluate({"cog_deg": 10.0}, 0.0)
-        self.assertIsNone(e.evaluate({"cog_deg": 30.0}, 2.0))   # 20° < 40°
+        # Drehung 10° -> 30° (nur 20°): darf nicht auslösen.
+        e = _engine(course_enabled=True, course_threshold=40.0)
+        headings = [10.0 + i * 2.0 for i in range(11)] + [30.0] * 6
+        self.assertEqual(self._feed(e, headings), 0)
 
-    def test_tack_fires(self):
-        # Eine Wende (~90°) muss zuverlässig einen Eintrag erzeugen.
-        e = _engine(course_enabled=True, course_threshold=40.0, course_avg_seconds=1)
-        self.assertIsNone(e.evaluate({"cog_deg": 0.0, "sog_kn": 4.0}, 0.0))
-        self.assertIn("Kurswechsel", e.evaluate({"cog_deg": 90.0, "sog_kn": 4.0}, 2.0))
+    def test_tack_single_entry(self):
+        # Eine Wende (~90° beim Kreuzen) muss GENAU EINEN Eintrag erzeugen —
+        # nicht zwei hintereinander. Der Mindestabstand (Cooldown) verhindert,
+        # dass die Restdrehung nach dem ersten Auslösen einen zweiten Eintrag
+        # ergibt.
+        e = _engine(course_enabled=True, course_threshold=40.0,
+                    course_cooldown_seconds=120)
+        headings = [i * 9.0 for i in range(11)] + [90.0] * 15   # 0 -> 90, halten
+        self.assertEqual(self._feed(e, headings), 1)
+
+    def test_overshoot_correction_single_entry(self):
+        # Wende auf 120° und danach Korrektur zurück auf 90° (normales Segeln):
+        # solange das innerhalb der 2-Minuten-Sperre passiert, ergibt der ganze
+        # Vorgang GENAU EINEN Eintrag — nicht mehrere durch die Nachkorrektur.
+        e = _engine(course_enabled=True, course_threshold=40.0,
+                    course_cooldown_seconds=120)
+        up = [i * 12.0 for i in range(11)]          # 0 -> 120 über 10 s
+        hold = [120.0] * 5
+        back = [120.0 - i * 6.0 for i in range(6)]  # 120 -> 90 zurück korrigiert
+        tail = [90.0] * 10                          # halten (alles < 120 s)
+        self.assertEqual(self._feed(e, up + hold + back + tail), 1)
 
     def test_full_circle_fires(self):
         # 360°-Kreis bei 4 kn: der Kurs schließt sich (Anfang = Ende), muss aber
         # trotzdem auslösen, weil sich die Drehung fortlaufend aufsummiert.
-        e = _engine(course_enabled=True, course_threshold=40.0, course_avg_seconds=120)
-        fires = 0
-        t = 0.0
-        # 60-s-Kreis, 2-s-Takt: Kurs läuft 0 -> 360
-        for i in range(31):
-            hdg = (i / 30.0 * 360.0) % 360.0
-            if e.evaluate({"cog_deg": hdg, "sog_kn": 4.0}, t):
-                fires += 1
-            t += 2.0
-        self.assertGreater(fires, 0)
+        e = _engine(course_enabled=True, course_threshold=40.0,
+                    course_cooldown_seconds=120)
+        headings = [(i / 30.0 * 360.0) % 360.0 for i in range(31)]
+        self.assertGreater(self._feed(e, headings, dt=2.0), 0)
+
+    def test_motor_running_skips_course(self):
+        # Bei laufendem Motor (course_skip_motor=True) wird ein Kurswechsel
+        # nicht als Eintrag gewertet.
+        e = _engine(course_enabled=True, course_threshold=40.0,
+                    course_skip_motor=True)
+        headings = [i * 9.0 for i in range(11)] + [90.0] * 5
+        fires = self._feed(e, headings, extra={"engine_rpm": 1800.0})
+        self.assertEqual(fires, 0)
+
+    def test_motor_running_counts_when_not_skipped(self):
+        # Ist die Motor-Ausnahme abgeschaltet, löst die Wende auch unter
+        # Maschine aus.
+        e = _engine(course_enabled=True, course_threshold=40.0,
+                    course_skip_motor=False)
+        headings = [i * 9.0 for i in range(11)] + [90.0] * 5
+        fires = self._feed(e, headings, extra={"engine_rpm": 1800.0})
+        self.assertGreaterEqual(fires, 1)
 
     def test_not_under_way_ignored(self):
         # Unter 2 kn (Manövrieren/Hafen) darf ein Kurswechsel nicht auslösen.
-        e = _engine(course_enabled=True, course_threshold=40.0, course_avg_seconds=1)
-        self.assertIsNone(e.evaluate({"cog_deg": 0.0, "sog_kn": 0.5}, 0.0))
-        self.assertIsNone(e.evaluate({"cog_deg": 90.0, "sog_kn": 0.5}, 2.0))
+        e = _engine(course_enabled=True, course_threshold=40.0)
+        headings = [i * 9.0 for i in range(11)] + [90.0] * 5
+        self.assertEqual(self._feed(e, headings, sog=0.5), 0)
 
 
 class MasterSwitchTest(unittest.TestCase):

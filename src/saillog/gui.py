@@ -3038,10 +3038,16 @@ class _AutoLogDialog:
         ttk.Entry(box, textvariable=self._course, width=8).grid(row=r, column=1, sticky="w")
         ttk.Label(box, text="°").grid(row=r, column=2, sticky="w")
         r += 1
-        ttk.Label(box, text=t("   Mittelwertbildung über")).grid(row=r, column=0, sticky="w", padx=6)
-        self._avg = tk.StringVar(value=f"{int(settings.course_avg_seconds)} s")
+        ttk.Label(box, text=t("   Mindestabstand zwischen Kurswechseln")).grid(
+            row=r, column=0, sticky="w", padx=6)
+        self._avg = tk.StringVar(value=f"{int(settings.course_cooldown_seconds)} s")
         ttk.Combobox(box, textvariable=self._avg, width=8, state="readonly",
                      values=self._AVG).grid(row=r, column=1, sticky="w")
+        r += 1
+        self._course_skip_motor = tk.BooleanVar(value=settings.course_skip_motor)
+        ttk.Checkbutton(box, text=t("   bei Motor ein keinen Kurswechsel auslösen"),
+                        variable=self._course_skip_motor).grid(
+            row=r, column=0, columnspan=3, sticky="w", padx=6)
         r += 1
 
         self._depth_on = tk.BooleanVar(value=settings.depth_enabled)
@@ -3134,7 +3140,8 @@ class _AutoLogDialog:
             stw_threshold=_parse_float(self._stw.get()) or 4.0,
             course_enabled=self._course_on.get(),
             course_threshold=_parse_float(self._course.get()) or 40.0,
-            course_avg_seconds=int(self._avg.get().split()[0]),
+            course_cooldown_seconds=int(self._avg.get().split()[0]),
+            course_skip_motor=self._course_skip_motor.get(),
             depth_enabled=self._depth_on.get(),
             depth_threshold=_parse_float(self._depth.get()) or 2.0,
             decel_enabled=self._decel_on.get(),
