@@ -1,0 +1,66 @@
+name: Windows-Build
+
+# Baut SailLog automatisch als Windows-Programm — du brauchst dafür KEINEN
+# Windows-Rechner. Zwei Wege, es auszulösen:
+#
+#  1. Auf GitHub unter „Actions" → „Windows-Build" → „Run workflow" (Knopf).
+#     Ergebnis liegt danach unter dem Lauf als „Artifact" zum Download.
+#  2. Eine Version taggen (z.B. `git tag v0.1.0 && git push origin v0.1.0`).
+#     Dann wird zusätzlich automatisch ein **Release** mit der ZIP und dem
+#     Installer als Download angelegt — das ist der Link, den du Testern gibst.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:        # manueller Knopf unter „Actions"
+
+permissions:
+  contents: write           # nötig, um ein Release anzulegen
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Quellcode holen
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build-Abhängigkeiten installieren
+        # pillow = Foto-Verkleinerung/-Vorschau, pyserial = serieller Anschluss
+        # (GPS-Maus / Maretron am COM-Port). Beides wird so mit ins EXE gepackt.
+        run: python -m pip install --upgrade pip pyinstaller pillow pyserial
+
+      - name: SailLog.exe bauen (PyInstaller)
+        run: python -m PyInstaller --clean --noconfirm saillog.spec
+
+      - name: EXE-Ordner als ZIP verpacken
+        run: Compress-Archive -Path dist\SailLog -DestinationPath SailLog-windows-x64.zip -Force
+
+      - name: Installer bauen (Inno Setup, optional)
+        continue-on-error: true          # scheitert das, gibt es trotzdem die ZIP
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\saillog.iss
+
+      - name: Ergebnisse als Artifact anhängen (immer)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SailLog-windows
+          path: |
+            SailLog-windows-x64.zip
+            installer/Output/*.exe
+          if-no-files-found: warn
+
+      - name: Release veröffentlichen (nur bei Version-Tag v*)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            SailLog-windows-x64.zip
+            installer/Output/*.exe
+          generate_release_notes: true
