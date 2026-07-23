@@ -95,6 +95,48 @@ def _serve_client(conn: socket.socket, addr, period: float) -> None:
         conn.close()
 
 
+def _serve_client_quiet(conn: socket.socket, period: float) -> None:
+    """Wie _serve_client, aber ohne Konsolenausgabe (für den eingebetteten
+    Demo-Datenbus in der GUI)."""
+    step = 0
+    try:
+        while True:
+            conn.sendall(build_burst(step).encode("ascii"))
+            step += 1
+            time.sleep(period)
+    except OSError:
+        pass
+    finally:
+        conn.close()
+
+
+def start_demo_bus(host: str = "127.0.0.1", port: int = 2100,
+                   period: float = 1.0) -> socket.socket:
+    """Startet den Simulator **eingebettet** in Hintergrund-Threads.
+
+    Für die App („Demo-Datenbus"): ein Testuser bekommt live NMEA-Daten eines
+    simulierten Bootes, ganz ohne echtes Gateway. Lauscht standardmäßig nur auf
+    localhost. Gibt das Server-Socket zurück (zum Schließen); die Threads sind
+    Daemons und enden mit dem Programm.
+    """
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((host, port))
+    server.listen(1)
+
+    def _accept_loop() -> None:
+        while True:
+            try:
+                conn, _addr = server.accept()
+            except OSError:
+                break                      # Socket geschlossen -> Schleife beenden
+            threading.Thread(target=_serve_client_quiet, args=(conn, period),
+                             daemon=True).start()
+
+    threading.Thread(target=_accept_loop, daemon=True).start()
+    return server
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="NMEA0183-Testsimulator für SailLog")
     parser.add_argument("--host", default="0.0.0.0", help="Bind-Adresse (Standard: alle)")

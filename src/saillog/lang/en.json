@@ -654,5 +654,10 @@
   "geborgen": "furled",
   "nicht gesetzt": "not set",
   "automatisch": "automatic",
-  "ein": "on"
+  "ein": "on",
+
+  "🎮 Demo-Datenbus": "🎮 Demo data bus",
+  "Demo-Datenbus": "Demo data bus",
+  "Der Demo-Datenbus konnte nicht gestartet werden (Port {port} belegt?).\n\n{error}": "The demo data bus could not be started (port {port} in use?).\n\n{error}",
+  "Demo-Datenbus läuft — die Messwerte kommen jetzt aus einem simulierten Boot (kein echtes Gateway). Zum Beenden auf „Trennen\" klicken oder das Programm neu starten.": "Demo data bus running — the readings now come from a simulated boat (no real gateway). Click “Disconnect” to stop, or restart the program."
 }

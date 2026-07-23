@@ -115,6 +115,7 @@ class Application:
         self._schedule_live_update()
         self._maybe_start_photo_watcher()
         self._autostart_logging()
+        self._autostart_connect()
         self._remote_server: Optional[RemoteServer] = None
         self._maybe_start_remote()
 
@@ -185,10 +186,15 @@ class Application:
         ttk.Button(top, text=t("Rohdaten…"), command=self._on_show_raw).grid(
             row=0, column=2, padx=4
         )
+        # Ein-Klick-Demo: startet einen eingebetteten NMEA-Simulator und
+        # verbindet darauf — Tester sehen sofort Live-Werte, ganz ohne Boot.
+        ttk.Button(top, text=t("🎮 Demo-Datenbus"), command=self._on_demo_bus).grid(
+            row=0, column=3, padx=(14, 4)
+        )
         self._status_label = tk.Label(top, text=t("getrennt"), fg="#888888")
-        self._status_label.grid(row=0, column=3, padx=8)
+        self._status_label.grid(row=0, column=4, padx=8)
         self._sources_label = ttk.Label(top, text="", foreground="#555")
-        self._sources_label.grid(row=1, column=0, columnspan=4, sticky="w", padx=8, pady=(0, 4))
+        self._sources_label.grid(row=1, column=0, columnspan=5, sticky="w", padx=8, pady=(0, 4))
         self._update_sources_label()
 
         # Törn-Leiste
@@ -862,6 +868,43 @@ class Application:
     @property
     def _connected(self) -> bool:
         return bool(self._sources)
+
+    _DEMO_PORT = 2100     # lokaler Port des eingebetteten Demo-Simulators
+
+    def _on_demo_bus(self) -> None:
+        """Startet den eingebetteten NMEA-Simulator und verbindet darauf —
+        ein Klick, damit ein Testuser ohne Boot/Gateway sofort Live-Werte sieht."""
+        from saillog import simulator
+        if getattr(self, "_demo_bus", None) is None:
+            try:
+                self._demo_bus = simulator.start_demo_bus(port=self._DEMO_PORT)
+            except OSError as exc:
+                messagebox.showerror(
+                    t("Demo-Datenbus"),
+                    t("Der Demo-Datenbus konnte nicht gestartet werden "
+                      "(Port {port} belegt?).\n\n{error}", port=self._DEMO_PORT, error=exc))
+                return
+        if self._connected:                       # zuerst Bestehendes trennen
+            self._on_connect_all()
+        # nur im Speicher (nicht in die Konfiguration schreiben) -> beim
+        # nächsten Start ist wieder alles normal.
+        self._source_defs = [{"host": "127.0.0.1", "port": self._DEMO_PORT,
+                              "protocol": "tcp"}]
+        self._on_connect_all()
+        messagebox.showinfo(
+            t("Demo-Datenbus"),
+            t("Demo-Datenbus läuft — die Messwerte kommen jetzt aus einem "
+              "simulierten Boot (kein echtes Gateway). Zum Beenden auf "
+              "„Trennen\" klicken oder das Programm neu starten."))
+
+    def _autostart_connect(self) -> None:
+        """Beim Programmstart automatisch mit den Datenquellen verbinden —
+        aber nur, wenn der Nutzer wirklich eine Quelle eingetragen hat
+        (``config.sources``). Ohne konfigurierte Quelle passiert nichts (kein
+        Verbindungsversuch, keine Meldung) — sonst würde ein frisch installierter
+        Testrechner vergeblich das Standard-Gateway anfunken."""
+        if self._config.sources and not self._connected:
+            self._on_connect_all()
 
     def _on_connect_all(self) -> None:
         if self._connected:

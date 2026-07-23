@@ -27,6 +27,25 @@ Optionale Zusatzpakete: `pip install pillow` (JPG-Screenshots),
 Konfiguration & Datenbank liegen unter `~/.saillog/`
 (`config.json`, `logbook.sqlite3`) — **nicht** im Repo.
 
+## Zuletzt geändert (Verhalten)
+
+- **Auto-Verbinden beim Start:** Beim Programmstart verbindet SailLog sich
+  automatisch mit den Datenquellen — **aber nur, wenn der Nutzer wirklich eine
+  Quelle konfiguriert hat** (`config.sources` ist gesetzt, d.h. über „Quellen…"
+  eingetragen). Ohne konfigurierte Quelle passiert nichts (kein
+  Verbindungsversuch, keine Meldung), damit ein frisch installierter Testrechner
+  nicht vergeblich das Standard-Gateway anfunkt.
+  → `Application._autostart_connect()` in `gui.py`.
+- **Demo-Datenbus (ein Klick):** Knopf **„🎮 Demo-Datenbus"** in der
+  Datenquellen-Leiste startet einen **eingebetteten** NMEA-Simulator
+  (`simulator.start_demo_bus()`, nur `127.0.0.1:2100`) und verbindet darauf —
+  Tester sehen sofort Live-Werte eines simulierten Bootes, ganz ohne echtes
+  Gateway. Läuft nur im Speicher (nichts wird in die Konfiguration geschrieben);
+  „Trennen" bzw. Neustart beendet es.
+- **Demo-Daten beim ersten Start:** Ist das Logbuch brandneu, wird einmalig ein
+  klar gekennzeichneter **„Beispiel-Törn Adria (Demo)"** angelegt
+  (`demo.seed_demo_data()`), damit Tester nicht vor einem leeren Logbuch sitzen.
+
 ## Bord-Hardware (dieses Boot)
 
 | Gerät | Anbindung in saillog | Liefert |
