@@ -1,4 +1,4 @@
-# SailLog testen — Anleitung für Mitsegler 🧪⛵
+# SailLog testen — Anleitung für die Test-Crew 🧪⛵
 
 Danke, dass du SailLog testest! Du brauchst **kein Python und keine
 Programmierkenntnisse** — nur Windows und ein paar Minuten.
