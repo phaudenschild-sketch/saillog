@@ -61,7 +61,16 @@ class Application:
         self._config = Config.load()
         set_language(self._config.language)   # Oberflächensprache aktivieren
         self._live = LiveData()
+        # Brandneue Installation? -> danach einen Demo-Törn anlegen, damit Tester
+        # nicht vor einem leeren Logbuch sitzen (nur beim allerersten Start).
+        fresh_install = not Path(self._config.db_path).exists()
         self._store = LogbookStore(self._config.db_path)
+        if fresh_install:
+            try:
+                from saillog import demo
+                demo.seed_demo_data(self._store)
+            except Exception:  # noqa: BLE001 - Demo-Daten dürfen den Start nie verhindern
+                pass
         self._logbook = LogbookService(self._store, self._live)
         # Plotter-Screenshot bei Auto-Einträgen (falls aktiviert)
         self._apply_plotter_autolog()
