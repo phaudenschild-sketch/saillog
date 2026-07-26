@@ -68,6 +68,42 @@ class LiveDataTest(unittest.TestCase):
         live.update({"log_total_nm": 5.0}, now=100.0)   # nach Veralten neu
         self.assertAlmostEqual(live.get("log_total_nm", now=100.5), 5.0)
 
+    # --- Prioritäten mehrerer Quellen --------------------------------------
+
+    def test_higher_priority_wins_over_lower(self):
+        live = LiveData(stale_after=10.0)
+        # Niedrig-priorisierte Quelle liefert zuerst …
+        live.update({"sog_kn": 5.0}, now=1.0, priority=1)
+        # … die höher priorisierte Quelle überschreibt.
+        live.update({"sog_kn": 6.0}, now=2.0, priority=3)
+        self.assertEqual(live.get("sog_kn", now=2.5), 6.0)
+
+    def test_lower_priority_does_not_override_fresh(self):
+        live = LiveData(stale_after=10.0)
+        live.update({"sog_kn": 6.0}, now=1.0, priority=3)   # bevorzugt
+        live.update({"sog_kn": 5.0}, now=2.0, priority=1)   # schwächer, frisch
+        self.assertEqual(live.get("sog_kn", now=2.5), 6.0)  # bevorzugt bleibt
+
+    def test_lower_priority_fills_in_when_preferred_stale(self):
+        live = LiveData(stale_after=10.0)
+        live.update({"sog_kn": 6.0}, now=1.0, priority=3)   # bevorzugt
+        # 20 s später ist die bevorzugte Quelle veraltet -> schwächere springt ein
+        live.update({"sog_kn": 5.0}, now=21.0, priority=1)
+        self.assertEqual(live.get("sog_kn", now=21.5), 5.0)
+
+    def test_preferred_source_recovers(self):
+        live = LiveData(stale_after=10.0)
+        live.update({"sog_kn": 6.0}, now=1.0, priority=3)
+        live.update({"sog_kn": 5.0}, now=21.0, priority=1)  # Einspringer
+        live.update({"sog_kn": 7.0}, now=22.0, priority=3)  # bevorzugt zurück
+        self.assertEqual(live.get("sog_kn", now=22.5), 7.0)
+
+    def test_equal_priority_last_wins(self):
+        live = LiveData(stale_after=10.0)
+        live.update({"sog_kn": 5.0}, now=1.0, priority=2)
+        live.update({"sog_kn": 6.0}, now=2.0, priority=2)
+        self.assertEqual(live.get("sog_kn", now=2.5), 6.0)
+
 
 if __name__ == "__main__":
     unittest.main()

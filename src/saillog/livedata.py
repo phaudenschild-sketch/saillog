@@ -38,6 +38,8 @@ class LiveData:
         self._lock = threading.Lock()
         self._values: Dict[str, float] = {}
         self._timestamps: Dict[str, float] = {}
+        # Priorität der Quelle, die einen Schlüssel zuletzt gesetzt hat.
+        self._priorities: Dict[str, int] = {}
         self._stale_after = stale_after
         self._last_update: Optional[float] = None
 
@@ -45,23 +47,45 @@ class LiveData:
         """Frische-Fenster für einen Schlüssel (langsame Motorwerte länger)."""
         return _SLOW_STALE.get(key, self._stale_after)
 
-    def update(self, values: Dict[str, float], now: Optional[float] = None) -> None:
-        """Übernimmt neue Messwerte (überschreibt bestehende Schlüssel)."""
+    def update(
+        self,
+        values: Dict[str, float],
+        now: Optional[float] = None,
+        priority: int = 1,
+    ) -> None:
+        """Übernimmt neue Messwerte (überschreibt bestehende Schlüssel).
+
+        ``priority`` steuert das Zusammenführen mehrerer Quellen: **je höher,
+        desto bevorzugter**. Ein Wert einer **niedriger** priorisierten Quelle
+        überschreibt einen noch **frischen** Wert einer höher priorisierten
+        Quelle nicht — erst wenn deren Wert veraltet ist (die bevorzugte Quelle
+        also ausfällt), springt die nächste Quelle ein. Gleich hohe Prioritäten
+        verhalten sich wie bisher (der zuletzt eintreffende Wert gewinnt).
+        """
         if not values:
             return
         if now is None:
             now = time.time()
         with self._lock:
             for key, value in values.items():
-                if key in _MONOTONIC_MAX and key in self._values:
-                    fresh = (now - self._timestamps[key]) <= self._stale_after
-                    try:
-                        if fresh and value < self._values[key]:
-                            continue  # kleineren Ausreißer/Reset ignorieren
-                    except TypeError:
-                        pass
+                if key in self._values:
+                    # Prioritäts-Gate: frischen Wert einer bevorzugten Quelle
+                    # nicht von einer schwächeren Quelle überschreiben lassen.
+                    prev_prio = self._priorities.get(key, priority)
+                    if priority < prev_prio and (
+                        now - self._timestamps[key]
+                    ) <= self._ttl(key):
+                        continue
+                    if key in _MONOTONIC_MAX:
+                        fresh = (now - self._timestamps[key]) <= self._stale_after
+                        try:
+                            if fresh and value < self._values[key]:
+                                continue  # kleineren Ausreißer/Reset ignorieren
+                        except TypeError:
+                            pass
                 self._values[key] = value
                 self._timestamps[key] = now
+                self._priorities[key] = priority
             self._last_update = now
 
     def snapshot(self, now: Optional[float] = None) -> Dict[str, float]:
@@ -99,4 +123,5 @@ class LiveData:
         with self._lock:
             self._values.clear()
             self._timestamps.clear()
+            self._priorities.clear()
             self._last_update = None

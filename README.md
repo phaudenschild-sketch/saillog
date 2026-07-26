@@ -239,15 +239,20 @@ klicken — das Dashboard füllt sich mit Live-Werten.
 NMEA-Sätze live anzeigt — ideal, um am Boot zu sehen, ob die Verbindung
 steht und welche Sätze Orca Core / B&G tatsächlich senden.
 
-### Quellen ein- und ausschalten
+### Quellen-Priorität (mehrere Quellen zusammenführen)
 
-Sind **mehrere Datenquellen** eingetragen, kannst du unter **Quellen…** jede
-einzelne **zu- oder wegschalten**, ohne sie zu löschen — praktisch zum Testen,
-welche Quelle welche Werte liefert. Ein **Häkchen (☑)** vor der Quelle heißt
-„wird gelesen", ein leeres Kästchen (☐, „aus") heißt „übersprungen". Zum
-Umschalten die Quelle markieren und auf **Ein/Aus** klicken (oder doppelklicken).
-Ausgeschaltete Quellen bleiben gespeichert und werden beim **Verbinden**
-einfach übergangen.
+Sind **mehrere Datenquellen** eingetragen, bekommt jede unter **Quellen…** eine
+**Priorität**: **je höher, desto bevorzugter**. Liefern zwei Quellen denselben
+Messwert (z.B. beide eine Position), gewinnt die Quelle mit der **höheren
+Priorität**; fällt sie aus (kein frischer Wert mehr), springt automatisch die
+nächsthöhere ein. **Priorität 0 = aus** — die Quelle bleibt gespeichert, wird
+aber nicht gelesen.
+
+Praktisch zum Testen, welche Quelle welche Werte liefert: einfach die Priorität
+mit **Priorität +/−** verstellen (oder eine Quelle per **Priorität −** auf 0
+setzen), statt sie zu löschen und neu einzutragen. Neue Quellen starten mit
+Priorität 1; gleiche Prioritäten verhalten sich wie bisher (der zuletzt
+eintreffende Wert gewinnt).
 
 ## Vorher am Schreibtisch testen
 

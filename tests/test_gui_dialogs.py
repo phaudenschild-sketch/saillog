@@ -46,23 +46,29 @@ class NewEntryDialogTest(unittest.TestCase):
 
 @unittest.skipUnless(_HAS_TK, "kein Tk-Display verfügbar")
 class SourcesDialogTest(unittest.TestCase):
-    def test_toggle_switches_source_off_and_on(self):
-        # Quelle ohne Löschen zu-/wegschalten (enabled-Flag umschalten).
-        from saillog.gui import _SourcesDialog
+    def test_priority_up_and_down_to_off(self):
+        # Priorität hoch-/runterstufen; 0 = aus (Quelle bleibt gespeichert).
+        from saillog.gui import _SourcesDialog, _source_priority
         dialog = _SourcesDialog(
             _root, [{"host": "192.168.4.1", "port": 2000, "protocol": "tcp"}]
         )
         self.addCleanup(dialog.top.destroy)
-        # Fehlendes Flag gilt als eingeschaltet (Abwärtskompatibilität).
-        self.assertTrue(dialog._defs[0].get("enabled", True))
+        # Fehlende Priorität gilt als 1 (Abwärtskompatibilität).
+        self.assertEqual(_source_priority(dialog._defs[0]), 1)
         dialog._listbox.selection_set(0)
-        dialog._on_toggle()
-        self.assertFalse(dialog._defs[0]["enabled"])
+        dialog._on_prio(+1)
+        self.assertEqual(dialog._defs[0]["priority"], 2)
         dialog._listbox.selection_set(0)
-        dialog._on_toggle()
-        self.assertTrue(dialog._defs[0]["enabled"])
+        dialog._on_prio(-1)
+        dialog._listbox.selection_set(0)
+        dialog._on_prio(-1)
+        self.assertEqual(dialog._defs[0]["priority"], 0)     # 0 = aus
+        # Nicht unter 0 fallen.
+        dialog._listbox.selection_set(0)
+        dialog._on_prio(-1)
+        self.assertEqual(dialog._defs[0]["priority"], 0)
 
-    def test_added_source_is_enabled(self):
+    def test_added_source_has_priority_one(self):
         from saillog.gui import _SourcesDialog
         dialog = _SourcesDialog(_root, [])
         self.addCleanup(dialog.top.destroy)
@@ -70,22 +76,30 @@ class SourcesDialogTest(unittest.TestCase):
         dialog._port.set("10110")
         dialog._on_add()
         self.assertEqual(len(dialog._defs), 1)
-        self.assertTrue(dialog._defs[0]["enabled"])
+        self.assertEqual(dialog._defs[0]["priority"], 1)
 
-    def test_disabled_source_survives_ok(self):
-        # Ausgeschaltete Quelle bleibt in der Liste (nur weggeschaltet).
+    def test_legacy_enabled_flag_maps_to_priority(self):
+        # Alte Konfiguration mit enabled=False -> Priorität 0 (aus).
+        from saillog.gui import _source_priority
+        self.assertEqual(_source_priority({"enabled": True}), 1)
+        self.assertEqual(_source_priority({"enabled": False}), 0)
+        self.assertEqual(_source_priority({}), 1)
+        self.assertEqual(_source_priority({"priority": 5}), 5)
+
+    def test_off_source_survives_ok(self):
+        # Ausgeschaltete Quelle (Prio 0) bleibt in der Liste.
         from saillog.gui import _SourcesDialog
         dialog = _SourcesDialog(
             _root,
             [
-                {"host": "a", "port": 1, "protocol": "tcp", "enabled": True},
-                {"host": "b", "port": 2, "protocol": "tcp", "enabled": False},
+                {"host": "a", "port": 1, "protocol": "tcp", "priority": 3},
+                {"host": "b", "port": 2, "protocol": "tcp", "priority": 0},
             ],
         )
         self.addCleanup(dialog.top.destroy)
         dialog._on_ok()
         self.assertEqual(len(dialog.result), 2)
-        self.assertFalse(dialog.result[1]["enabled"])
+        self.assertEqual(dialog.result[1]["priority"], 0)
 
 
 @unittest.skipUnless(_HAS_TK, "kein Tk-Display verfügbar")
