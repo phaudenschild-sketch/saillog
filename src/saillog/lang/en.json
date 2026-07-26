@@ -137,6 +137,10 @@
   "Konnte das Bild nicht öffnen:\n{error}": "Could not open the image:\n{error}",
 
   "Aktive Quellen (alle werden gleichzeitig gelesen):": "Active sources (all are read at the same time):",
+  "Aktive Quellen (Häkchen = wird gelesen, Doppelklick schaltet um):": "Active sources (checkmark = read, double-click to toggle):",
+  "Ein/Aus": "On/Off",
+  "   (aus)": "   (off)",
+  "Alle Quellen sind ausgeschaltet — bitte über 'Quellen…' mindestens eine einschalten.": "All sources are switched off — please enable at least one via 'Sources…'.",
   "Entfernen": "Remove",
   "Protokoll:": "Protocol:",
   "Host / COM:": "Host / COM:",

@@ -44,5 +44,49 @@ class NewEntryDialogTest(unittest.TestCase):
         self.assertEqual(dialog._logevent.get(), "Ankern vor Insel")
 
 
+@unittest.skipUnless(_HAS_TK, "kein Tk-Display verfügbar")
+class SourcesDialogTest(unittest.TestCase):
+    def test_toggle_switches_source_off_and_on(self):
+        # Quelle ohne Löschen zu-/wegschalten (enabled-Flag umschalten).
+        from saillog.gui import _SourcesDialog
+        dialog = _SourcesDialog(
+            _root, [{"host": "192.168.4.1", "port": 2000, "protocol": "tcp"}]
+        )
+        self.addCleanup(dialog.top.destroy)
+        # Fehlendes Flag gilt als eingeschaltet (Abwärtskompatibilität).
+        self.assertTrue(dialog._defs[0].get("enabled", True))
+        dialog._listbox.selection_set(0)
+        dialog._on_toggle()
+        self.assertFalse(dialog._defs[0]["enabled"])
+        dialog._listbox.selection_set(0)
+        dialog._on_toggle()
+        self.assertTrue(dialog._defs[0]["enabled"])
+
+    def test_added_source_is_enabled(self):
+        from saillog.gui import _SourcesDialog
+        dialog = _SourcesDialog(_root, [])
+        self.addCleanup(dialog.top.destroy)
+        dialog._host.set("10.0.0.1")
+        dialog._port.set("10110")
+        dialog._on_add()
+        self.assertEqual(len(dialog._defs), 1)
+        self.assertTrue(dialog._defs[0]["enabled"])
+
+    def test_disabled_source_survives_ok(self):
+        # Ausgeschaltete Quelle bleibt in der Liste (nur weggeschaltet).
+        from saillog.gui import _SourcesDialog
+        dialog = _SourcesDialog(
+            _root,
+            [
+                {"host": "a", "port": 1, "protocol": "tcp", "enabled": True},
+                {"host": "b", "port": 2, "protocol": "tcp", "enabled": False},
+            ],
+        )
+        self.addCleanup(dialog.top.destroy)
+        dialog._on_ok()
+        self.assertEqual(len(dialog.result), 2)
+        self.assertFalse(dialog.result[1]["enabled"])
+
+
 if __name__ == "__main__":
     unittest.main()

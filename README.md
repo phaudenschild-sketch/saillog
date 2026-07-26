@@ -239,6 +239,16 @@ klicken — das Dashboard füllt sich mit Live-Werten.
 NMEA-Sätze live anzeigt — ideal, um am Boot zu sehen, ob die Verbindung
 steht und welche Sätze Orca Core / B&G tatsächlich senden.
 
+### Quellen ein- und ausschalten
+
+Sind **mehrere Datenquellen** eingetragen, kannst du unter **Quellen…** jede
+einzelne **zu- oder wegschalten**, ohne sie zu löschen — praktisch zum Testen,
+welche Quelle welche Werte liefert. Ein **Häkchen (☑)** vor der Quelle heißt
+„wird gelesen", ein leeres Kästchen (☐, „aus") heißt „übersprungen". Zum
+Umschalten die Quelle markieren und auf **Ein/Aus** klicken (oder doppelklicken).
+Ausgeschaltete Quellen bleiben gespeichert und werden beim **Verbinden**
+einfach übergangen.
+
 ## Vorher am Schreibtisch testen
 
 Ein mitgelieferter Simulator sendet realistische Segeldaten, damit du

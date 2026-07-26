@@ -904,7 +904,8 @@ class Application:
         (``config.sources``). Ohne konfigurierte Quelle passiert nichts (kein
         Verbindungsversuch, keine Meldung) — sonst würde ein frisch installierter
         Testrechner vergeblich das Standard-Gateway anfunken."""
-        if self._config.sources and not self._connected:
+        if (self._config.sources and not self._connected
+                and any(d.get("enabled", True) for d in self._config.sources)):
             self._on_connect_all()
 
     def _on_connect_all(self) -> None:
@@ -920,8 +921,15 @@ class Application:
         if not self._source_defs:
             messagebox.showinfo(t("Quellen"), t("Bitte zuerst über 'Quellen…' eine Datenquelle anlegen."))
             return
+        if not any(d.get("enabled", True) for d in self._source_defs):
+            messagebox.showinfo(
+                t("Quellen"),
+                t("Alle Quellen sind ausgeschaltet — bitte über 'Quellen…' mindestens eine einschalten."))
+            return
         self._ais_decoders = []
         for index, definition in enumerate(self._source_defs):
+            if not definition.get("enabled", True):
+                continue                     # ausgeschaltete Quelle überspringen
             try:
                 port = int(definition["port"])
             except (ValueError, KeyError, TypeError):
@@ -957,6 +965,10 @@ class Application:
         parts = []
         connected = 0
         for index, d in enumerate(self._source_defs):
+            proto = d.get("protocol", "tcp")
+            if not d.get("enabled", True):       # ausgeschaltete Quelle
+                parts.append(f"⊘ {proto} {d.get('host')}:{d.get('port')}")
+                continue
             status = self._src_status.get(index, (STATUS_DISCONNECTED, ""))[0]
             mark = {
                 STATUS_CONNECTED: "✓", STATUS_CONNECTING: "…",
@@ -964,7 +976,6 @@ class Application:
             }.get(status, "·")
             if status == STATUS_CONNECTED:
                 connected += 1
-            proto = d.get("protocol", "tcp")
             parts.append(f"{mark} {proto} {d.get('host')}:{d.get('port')}")
         self._sources_label.config(text="   ".join(parts) if parts else t("keine Quellen"))
         if not self._connected:
@@ -5239,14 +5250,18 @@ class _SourcesDialog:
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text=t("Aktive Quellen (alle werden gleichzeitig gelesen):")).grid(
+        ttk.Label(frame, text=t("Aktive Quellen (Häkchen = wird gelesen, Doppelklick schaltet um):")).grid(
             row=0, column=0, columnspan=6, sticky="w"
         )
         self._listbox = tk.Listbox(frame, width=52, height=5)
         self._listbox.grid(row=1, column=0, columnspan=5, pady=6, sticky="w")
-        ttk.Button(frame, text=t("Entfernen"), command=self._on_remove).grid(
-            row=1, column=5, sticky="n", padx=4
-        )
+        # Doppelklick auf eine Quelle schaltet sie ein/aus (zum Testen, welche
+        # Quelle welche Werte liefert — ohne sie löschen und neu eintragen zu müssen).
+        self._listbox.bind("<Double-Button-1>", lambda _e: self._on_toggle())
+        side = ttk.Frame(frame)
+        side.grid(row=1, column=5, sticky="n", padx=4)
+        ttk.Button(side, text=t("Ein/Aus"), command=self._on_toggle).pack(fill="x", pady=(0, 4))
+        ttk.Button(side, text=t("Entfernen"), command=self._on_remove).pack(fill="x")
         self._refresh_list()
 
         # Eingabezeile zum Hinzufügen
@@ -5295,12 +5310,17 @@ class _SourcesDialog:
 
     def _refresh_list(self) -> None:
         self._listbox.delete(0, "end")
-        for d in self._defs:
+        for i, d in enumerate(self._defs):
             port = d.get("port")
             baud = "auto" if str(port).strip() in ("0", "") else port
-            self._listbox.insert(
-                "end", f"{d.get('protocol', 'tcp')}   {d.get('host')} : {baud}"
-            )
+            on = d.get("enabled", True)
+            mark = "☑" if on else "☐"
+            text = f"{mark}  {d.get('protocol', 'tcp')}   {d.get('host')} : {baud}"
+            if not on:
+                text += t("   (aus)")
+            self._listbox.insert("end", text)
+            if not on:                       # ausgeschaltete Quellen abblenden
+                self._listbox.itemconfig(i, foreground="#999")
 
     def _update_hint(self) -> None:
         if self._proto.get() == "serial":
@@ -5349,7 +5369,8 @@ class _SourcesDialog:
         port = self._port.get().strip()
         if not host or not port:
             return
-        self._defs.append({"host": host, "port": port, "protocol": self._proto.get()})
+        self._defs.append({"host": host, "port": port,
+                           "protocol": self._proto.get(), "enabled": True})
         self._host.set("")
         self._port.set("")
         self._refresh_list()
@@ -5359,6 +5380,17 @@ class _SourcesDialog:
         if sel:
             del self._defs[sel[0]]
             self._refresh_list()
+
+    def _on_toggle(self) -> None:
+        """Schaltet die ausgewählte Quelle ein/aus, ohne sie zu löschen —
+        praktisch zum Testen, welche Quelle welche Werte liefert."""
+        sel = self._listbox.curselection()
+        if not sel:
+            return
+        i = sel[0]
+        self._defs[i]["enabled"] = not self._defs[i].get("enabled", True)
+        self._refresh_list()
+        self._listbox.selection_set(i)      # Auswahl beibehalten
 
     def _on_gofree_search(self) -> None:
         """Lauscht kurz auf GoFree-Ankündigungen und trägt die NMEA-Quelle ein."""
