@@ -372,6 +372,7 @@
   "Autolog-Einträge": "Auto-log entries",
   "Backup": "Backup",
   "Backup fehlgeschlagen:\n{error}": "Backup failed:\n{error}",
+  "Vor dem Beenden ein Backup der Logbuch-Datenbank erstellen?\n\nZiel:\n{folder}": "Create a backup of the logbook database before quitting?\n\nDestination:\n{folder}",
   "Backup-Zielordner": "Backup destination folder",
   "Bei jedem Auto-Eintrag einen Plotter-Screenshot mitspeichern": "Save a plotter screenshot with every auto entry",
   "Bezeichnung": "Name",

@@ -1936,13 +1936,43 @@ class Application:
             self._map_server.stop()
         if self._remote_server is not None:
             self._remote_server.stop()
-        # Automatische Sicherung beim Beenden (best effort, blockiert nie)
-        if self._config.backup_on_close and self._config.backup_folder:
+        self._backup_on_close()
+        self._root.destroy()
+
+    def _backup_on_close(self) -> None:
+        """Sicherung beim Beenden (best effort — blockiert oder verhindert das
+        Beenden nie).
+
+        Ist „beim Beenden automatisch sichern" eingeschaltet und ein Zielordner
+        gesetzt, wird ohne Nachfrage gesichert (wie bisher). Sonst fragt SailLog
+        beim Schließen nach — **Vorgabe „Ja"**, sodass ein einfaches Enter
+        genügt, um ein Backup anzulegen.
+        """
+        configured = (self._config.backup_folder or "").strip()
+        # Auto-Sicherung: unverändert still im konfigurierten Ordner.
+        if self._config.backup_on_close and configured:
             try:
-                self._make_backup(self._config.backup_folder)
+                self._make_backup(configured)
             except Exception:  # noqa: BLE001
                 pass
-        self._root.destroy()
+            return
+        # Sonst nachfragen (Vorgabe „Ja" -> Enter genügt). Ohne Zielordner in
+        # den Standardordner ~/.saillog/backups sichern.
+        folder = configured or str(CONFIG_PATH.parent / "backups")
+        try:
+            want = messagebox.askyesno(
+                t("Backup"),
+                t("Vor dem Beenden ein Backup der Logbuch-Datenbank erstellen?\n\n"
+                  "Ziel:\n{folder}", folder=folder),
+                default=messagebox.YES,
+            )
+        except Exception:  # noqa: BLE001 - z.B. kein Display -> ohne Backup schließen
+            return
+        if want:
+            try:
+                self._make_backup(folder)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def _parse_float(text: str) -> Optional[float]:

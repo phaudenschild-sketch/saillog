@@ -88,5 +88,62 @@ class SourcesDialogTest(unittest.TestCase):
         self.assertFalse(dialog.result[1]["enabled"])
 
 
+@unittest.skipUnless(_HAS_TK, "kein Tk-Display verfügbar")
+class BackupOnCloseTest(unittest.TestCase):
+    """Backup-Abfrage beim Beenden (Vorgabe „Ja", Enter genügt)."""
+
+    def _fake_app(self, folder="", auto=False):
+        from types import SimpleNamespace
+        from saillog.config import Config
+        calls = []
+        cfg = Config(backup_folder=folder, backup_on_close=auto)
+        app = SimpleNamespace(_config=cfg, _make_backup=lambda f: calls.append(f))
+        return app, calls
+
+    def test_prompt_defaults_to_yes_and_backs_up(self):
+        from saillog import gui
+        app, calls = self._fake_app()
+        captured = {}
+
+        def fake_ask(title, message, **kw):
+            captured.update(kw)
+            return True                       # Nutzer bestätigt (Enter)
+
+        orig = gui.messagebox.askyesno
+        gui.messagebox.askyesno = fake_ask
+        try:
+            gui.Application._backup_on_close(app)
+        finally:
+            gui.messagebox.askyesno = orig
+        self.assertEqual(len(calls), 1)                       # Backup ausgeführt
+        self.assertEqual(captured.get("default"), gui.messagebox.YES)  # Vorgabe „Ja"
+
+    def test_prompt_no_skips_backup(self):
+        from saillog import gui
+        app, calls = self._fake_app()
+        orig = gui.messagebox.askyesno
+        gui.messagebox.askyesno = lambda *a, **k: False
+        try:
+            gui.Application._backup_on_close(app)
+        finally:
+            gui.messagebox.askyesno = orig
+        self.assertEqual(calls, [])                           # kein Backup
+
+    def test_auto_backup_stays_silent(self):
+        from saillog import gui
+        app, calls = self._fake_app(folder="/tmp/saillog-test-x", auto=True)
+
+        def boom(*a, **k):
+            raise AssertionError("Auto-Backup darf nicht nachfragen")
+
+        orig = gui.messagebox.askyesno
+        gui.messagebox.askyesno = boom
+        try:
+            gui.Application._backup_on_close(app)
+        finally:
+            gui.messagebox.askyesno = orig
+        self.assertEqual(calls, ["/tmp/saillog-test-x"])      # still gesichert
+
+
 if __name__ == "__main__":
     unittest.main()
