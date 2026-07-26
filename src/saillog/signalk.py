@@ -226,8 +226,12 @@ class SignalKSource:
         reconnect_delay: float = 3.0,
         log_correction: float = 1.0,
         poll_interval: float = 1.0,
+        priority: int = 1,
     ) -> None:
         self._host = str(host).strip()
+        # Priorität beim Zusammenführen mehrerer Quellen (je höher, desto
+        # bevorzugter). Eine gestartete Quelle hat mindestens 1.
+        self._priority = max(1, int(priority))
         try:
             p = int(port)
         except (TypeError, ValueError):
@@ -299,7 +303,7 @@ class SignalKSource:
                 for key in ("stw_kn", "log_total_nm"):
                     if values.get(key) is not None:
                         values[key] = values[key] * self.log_correction
-            self._live.update(values)
+            self._live.update(values, priority=self._priority)
             self._set_status(STATUS_CONNECTED, f"{len(values)} Werte")
             if self._on_raw is not None:
                 self._on_raw(self._summary(values))

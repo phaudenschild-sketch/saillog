@@ -54,6 +54,22 @@ _STATUS_TEXT = {
 }
 
 
+def _source_priority(d: dict) -> int:
+    """Priorität einer Quelle (je höher, desto bevorzugter; 0 = aus).
+
+    Abwärtskompatibel: eine ältere Konfiguration mit ``enabled`` (True/False)
+    wird auf Priorität 1 bzw. 0 abgebildet; fehlt beides, gilt Priorität 1.
+    """
+    if "priority" in d:
+        try:
+            return max(0, int(d["priority"]))
+        except (TypeError, ValueError):
+            return 1
+    if "enabled" in d:
+        return 1 if d.get("enabled") else 0
+    return 1
+
+
 class Application:
     """Hauptfenster der Anwendung."""
 
@@ -904,7 +920,8 @@ class Application:
         (``config.sources``). Ohne konfigurierte Quelle passiert nichts (kein
         Verbindungsversuch, keine Meldung) — sonst würde ein frisch installierter
         Testrechner vergeblich das Standard-Gateway anfunken."""
-        if self._config.sources and not self._connected:
+        if (self._config.sources and not self._connected
+                and any(_source_priority(d) > 0 for d in self._config.sources)):
             self._on_connect_all()
 
     def _on_connect_all(self) -> None:
@@ -920,8 +937,17 @@ class Application:
         if not self._source_defs:
             messagebox.showinfo(t("Quellen"), t("Bitte zuerst über 'Quellen…' eine Datenquelle anlegen."))
             return
+        if not any(_source_priority(d) > 0 for d in self._source_defs):
+            messagebox.showinfo(
+                t("Quellen"),
+                t("Alle Quellen sind ausgeschaltet (Priorität 0) — bitte über "
+                  "'Quellen…' mindestens einer eine Priorität geben."))
+            return
         self._ais_decoders = []
         for index, definition in enumerate(self._source_defs):
+            prio = _source_priority(definition)
+            if prio <= 0:
+                continue                     # ausgeschaltete Quelle (Priorität 0)
             try:
                 port = int(definition["port"])
             except (ValueError, KeyError, TypeError):
@@ -940,6 +966,7 @@ class Application:
                 # zusammengesetzt), gemeinsame Zielliste.
                 on_ais=self._make_ais_decoder(),
                 log_correction=self._active_log_correction(),
+                priority=prio,
             )
             source.start()
             self._sources.append(source)
@@ -957,6 +984,11 @@ class Application:
         parts = []
         connected = 0
         for index, d in enumerate(self._source_defs):
+            proto = d.get("protocol", "tcp")
+            prio = _source_priority(d)
+            if prio <= 0:                        # ausgeschaltete Quelle (Prio 0)
+                parts.append(f"⊘ {proto} {d.get('host')}:{d.get('port')}")
+                continue
             status = self._src_status.get(index, (STATUS_DISCONNECTED, ""))[0]
             mark = {
                 STATUS_CONNECTED: "✓", STATUS_CONNECTING: "…",
@@ -964,8 +996,9 @@ class Application:
             }.get(status, "·")
             if status == STATUS_CONNECTED:
                 connected += 1
-            proto = d.get("protocol", "tcp")
-            parts.append(f"{mark} {proto} {d.get('host')}:{d.get('port')}")
+            # Priorität nur anzeigen, wenn mehr als eine Quelle konfiguriert ist.
+            tag = f"P{prio} " if len(self._source_defs) > 1 else ""
+            parts.append(f"{mark} {tag}{proto} {d.get('host')}:{d.get('port')}")
         self._sources_label.config(text="   ".join(parts) if parts else t("keine Quellen"))
         if not self._connected:
             self._status_label.config(text=t("getrennt"), fg="#888888")
@@ -1925,13 +1958,43 @@ class Application:
             self._map_server.stop()
         if self._remote_server is not None:
             self._remote_server.stop()
-        # Automatische Sicherung beim Beenden (best effort, blockiert nie)
-        if self._config.backup_on_close and self._config.backup_folder:
+        self._backup_on_close()
+        self._root.destroy()
+
+    def _backup_on_close(self) -> None:
+        """Sicherung beim Beenden (best effort — blockiert oder verhindert das
+        Beenden nie).
+
+        Ist „beim Beenden automatisch sichern" eingeschaltet und ein Zielordner
+        gesetzt, wird ohne Nachfrage gesichert (wie bisher). Sonst fragt SailLog
+        beim Schließen nach — **Vorgabe „Ja"**, sodass ein einfaches Enter
+        genügt, um ein Backup anzulegen.
+        """
+        configured = (self._config.backup_folder or "").strip()
+        # Auto-Sicherung: unverändert still im konfigurierten Ordner.
+        if self._config.backup_on_close and configured:
             try:
-                self._make_backup(self._config.backup_folder)
+                self._make_backup(configured)
             except Exception:  # noqa: BLE001
                 pass
-        self._root.destroy()
+            return
+        # Sonst nachfragen (Vorgabe „Ja" -> Enter genügt). Ohne Zielordner in
+        # den Standardordner ~/.saillog/backups sichern.
+        folder = configured or str(CONFIG_PATH.parent / "backups")
+        try:
+            want = messagebox.askyesno(
+                t("Backup"),
+                t("Vor dem Beenden ein Backup der Logbuch-Datenbank erstellen?\n\n"
+                  "Ziel:\n{folder}", folder=folder),
+                default=messagebox.YES,
+            )
+        except Exception:  # noqa: BLE001 - z.B. kein Display -> ohne Backup schließen
+            return
+        if want:
+            try:
+                self._make_backup(folder)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def _parse_float(text: str) -> Optional[float]:
@@ -5239,14 +5302,20 @@ class _SourcesDialog:
         frame = ttk.Frame(self.top, padding=12)
         frame.pack(fill="both", expand=True)
 
-        ttk.Label(frame, text=t("Aktive Quellen (alle werden gleichzeitig gelesen):")).grid(
+        ttk.Label(frame, text=t("Quellen (Priorität: je höher, desto bevorzugt; 0 = aus):")).grid(
             row=0, column=0, columnspan=6, sticky="w"
         )
         self._listbox = tk.Listbox(frame, width=52, height=5)
         self._listbox.grid(row=1, column=0, columnspan=5, pady=6, sticky="w")
-        ttk.Button(frame, text=t("Entfernen"), command=self._on_remove).grid(
-            row=1, column=5, sticky="n", padx=4
-        )
+        # Bei gleichem Messwert liefert die Quelle mit der höchsten Priorität —
+        # fällt sie aus, springt die nächsthöhere ein. Priorität 0 = aus.
+        # Doppelklick erhöht die Priorität (schnelles Hochstufen zum Testen).
+        self._listbox.bind("<Double-Button-1>", lambda _e: self._on_prio(+1))
+        side = ttk.Frame(frame)
+        side.grid(row=1, column=5, sticky="n", padx=4)
+        ttk.Button(side, text=t("Priorität +"), command=lambda: self._on_prio(+1)).pack(fill="x", pady=(0, 4))
+        ttk.Button(side, text=t("Priorität −"), command=lambda: self._on_prio(-1)).pack(fill="x", pady=(0, 4))
+        ttk.Button(side, text=t("Entfernen"), command=self._on_remove).pack(fill="x")
         self._refresh_list()
 
         # Eingabezeile zum Hinzufügen
@@ -5295,12 +5364,15 @@ class _SourcesDialog:
 
     def _refresh_list(self) -> None:
         self._listbox.delete(0, "end")
-        for d in self._defs:
+        for i, d in enumerate(self._defs):
             port = d.get("port")
             baud = "auto" if str(port).strip() in ("0", "") else port
-            self._listbox.insert(
-                "end", f"{d.get('protocol', 'tcp')}   {d.get('host')} : {baud}"
-            )
+            prio = _source_priority(d)
+            tag = t("aus ") if prio <= 0 else t("Prio {p}", p=prio)
+            text = f"{tag}   {d.get('protocol', 'tcp')}   {d.get('host')} : {baud}"
+            self._listbox.insert("end", text)
+            if prio <= 0:                    # ausgeschaltete Quellen abblenden
+                self._listbox.itemconfig(i, foreground="#999")
 
     def _update_hint(self) -> None:
         if self._proto.get() == "serial":
@@ -5349,7 +5421,8 @@ class _SourcesDialog:
         port = self._port.get().strip()
         if not host or not port:
             return
-        self._defs.append({"host": host, "port": port, "protocol": self._proto.get()})
+        self._defs.append({"host": host, "port": port,
+                           "protocol": self._proto.get(), "priority": 1})
         self._host.set("")
         self._port.set("")
         self._refresh_list()
@@ -5359,6 +5432,21 @@ class _SourcesDialog:
         if sel:
             del self._defs[sel[0]]
             self._refresh_list()
+
+    def _on_prio(self, delta: int) -> None:
+        """Ändert die Priorität der ausgewählten Quelle (je höher, desto
+        bevorzugt). Priorität 0 = aus — die Quelle bleibt gespeichert, wird aber
+        nicht gelesen. Praktisch zum Testen, welche Quelle welche Werte liefert,
+        ohne sie löschen und neu eintragen zu müssen."""
+        sel = self._listbox.curselection()
+        if not sel:
+            return
+        i = sel[0]
+        new_prio = max(0, min(9, _source_priority(self._defs[i]) + delta))
+        self._defs[i]["priority"] = new_prio
+        self._defs[i].pop("enabled", None)   # Alt-Flag entfernen (nur Priorität)
+        self._refresh_list()
+        self._listbox.selection_set(i)      # Auswahl beibehalten
 
     def _on_gofree_search(self) -> None:
         """Lauscht kurz auf GoFree-Ankündigungen und trägt die NMEA-Quelle ein."""

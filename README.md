@@ -239,6 +239,21 @@ klicken — das Dashboard füllt sich mit Live-Werten.
 NMEA-Sätze live anzeigt — ideal, um am Boot zu sehen, ob die Verbindung
 steht und welche Sätze Orca Core / B&G tatsächlich senden.
 
+### Quellen-Priorität (mehrere Quellen zusammenführen)
+
+Sind **mehrere Datenquellen** eingetragen, bekommt jede unter **Quellen…** eine
+**Priorität**: **je höher, desto bevorzugter**. Liefern zwei Quellen denselben
+Messwert (z.B. beide eine Position), gewinnt die Quelle mit der **höheren
+Priorität**; fällt sie aus (kein frischer Wert mehr), springt automatisch die
+nächsthöhere ein. **Priorität 0 = aus** — die Quelle bleibt gespeichert, wird
+aber nicht gelesen.
+
+Praktisch zum Testen, welche Quelle welche Werte liefert: einfach die Priorität
+mit **Priorität +/−** verstellen (oder eine Quelle per **Priorität −** auf 0
+setzen), statt sie zu löschen und neu einzutragen. Neue Quellen starten mit
+Priorität 1; gleiche Prioritäten verhalten sich wie bisher (der zuletzt
+eintreffende Wert gewinnt).
+
 ## Vorher am Schreibtisch testen
 
 Ein mitgelieferter Simulator sendet realistische Segeldaten, damit du

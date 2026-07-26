@@ -44,8 +44,12 @@ class NmeaSource:
         on_ais: Optional[Callable[[str], None]] = None,
         reconnect_delay: float = 3.0,
         log_correction: float = 1.0,
+        priority: int = 1,
     ) -> None:
         self._host = host
+        # Priorität beim Zusammenführen mehrerer Quellen (je höher, desto
+        # bevorzugter). Eine gestartete Quelle hat mindestens 1.
+        self._priority = max(1, int(priority))
         try:
             self._port = int(port)          # Baud (seriell) bzw. Port (TCP/UDP)
         except (TypeError, ValueError):
@@ -281,4 +285,4 @@ class NmeaSource:
                 for key in ("stw_kn", "log_total_nm"):
                     if values.get(key) is not None:
                         values[key] = values[key] * self.log_correction
-            self._live.update(values)
+            self._live.update(values, priority=self._priority)
