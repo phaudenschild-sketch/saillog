@@ -217,6 +217,7 @@
   "Tanken & Verbrauch": "Fuel & consumption",
   "Verbrauch = getankte Menge zwischen zwei „voll getankt\"-Einträgen, geteilt durch die Motorstunden dazwischen.": "Consumption = amount refuelled between two \"filled up\" entries, divided by the engine hours in between.",
   "Tankgröße (L):": "Tank size (L):",
+  "(aus Schiffsdaten)": "(from ship data)",
   "Liter": "Liters",
   "Ort": "Place",
   "Voll": "Full",

@@ -29,6 +29,12 @@ Konfiguration & Datenbank liegen unter `~/.saillog/`
 
 ## Zuletzt geändert (Verhalten)
 
+- **Tankgröße aus Schiffsdaten:** Der „Tanken & Verbrauch"-Dialog nimmt die
+  Tankgröße jetzt bevorzugt aus dem **Treibstofftank des aktiven Schiffs**
+  (`Ship.fuel_tank_l`), sonst weiter aus `config.tank_capacity_l`. Damit stimmt
+  die Restfüllstand-Schätzung (`fuel.remaining_estimate`, „voll-zu-voll"-l/h ×
+  Motorstunden) mit den Schiffsdaten überein — verlässlicher Tankstand ohne
+  zickigen Sensor. Kleiner Hinweis „(aus Schiffsdaten)" im Dialog.
 - **Signal K als Datenquelle (neu):** Neuer Quellentyp `protocol: "signalk"`
   neben tcp/udp/seriell. `signalk.py` fragt einen Signal-K-Server per REST ab
   (`GET http://host:3000/signalk/v1/api/vessels/self`, 1×/s) und rechnet die

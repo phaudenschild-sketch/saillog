@@ -4586,16 +4586,23 @@ class _FuelDialog:
                    "geteilt durch die Motorstunden dazwischen."),
         ).pack(anchor="w", pady=(2, 6))
 
-        # Tankgröße (wird gespeichert)
+        # Tankgröße: bevorzugt aus den Schiffsdaten des aktiven Schiffs
+        # (Treibstofftank), sonst aus der Konfiguration (Abwärtskompatibilität).
+        ship = store.get_ship(config.active_ship_id) if config.active_ship_id else None
+        ship_cap = ship.fuel_tank_l if ship and ship.fuel_tank_l else None
+        default_cap = ship_cap if ship_cap else (config.tank_capacity_l or None)
         tankrow = ttk.Frame(frame)
         tankrow.pack(fill="x", pady=(0, 6))
         ttk.Label(tankrow, text=t("Tankgröße (L):")).pack(side="left")
         self._tank = tk.StringVar(
-            value="" if not config.tank_capacity_l else f"{config.tank_capacity_l:g}")
+            value="" if not default_cap else f"{default_cap:g}")
         ent = ttk.Entry(tankrow, textvariable=self._tank, width=8)
         ent.pack(side="left", padx=(4, 0))
         ent.bind("<FocusOut>", lambda _e: self._save_tank())
         ent.bind("<Return>", lambda _e: self._save_tank())
+        if ship_cap:
+            ttk.Label(tankrow, foreground="#777",
+                      text=t("(aus Schiffsdaten)")).pack(side="left", padx=(6, 0))
 
         cols = ("time", "liters", "loc", "full", "hours")
         headers = {"time": t("Zeit"), "liters": t("Liter"), "loc": t("Ort"),

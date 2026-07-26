@@ -104,6 +104,20 @@ class RemainingEstimateTest(unittest.TestCase):
         e = [_f("2026-07-01T00:00:00Z", 160.0, 1, 120.0)]
         self.assertIsNone(fuel.remaining_estimate(e, 160.0, 110.0, 6.0))  # jetzt < voll
 
+    def test_real_world_masarasi(self):
+        # Echte Bordzahlen: voll bei 181,5 h; danach 82,2 L bei 214,3 h (voll)
+        # -> 82,2 / (214,3-181,5) = 2,506 l/h. Bei jetzt 246,3 h und 150-L-Tank
+        # muss der Rest ~70 L (~47 %) und die Reichweite ~28 h sein.
+        entries = [
+            _f("2026-07-01T00:00:00Z", 60.0, 1, 181.5),
+            _f("2026-07-10T00:00:00Z", 82.2, 1, 214.3),
+        ]
+        s = fuel.consumption_stats(entries)
+        self.assertAlmostEqual(s["last_rate"], 82.2 / 32.8, places=3)  # ~2,506
+        est = fuel.remaining_estimate(entries, 150.0, 246.3, s["avg_rate"])
+        self.assertAlmostEqual(est["remaining_l"], 70.0, delta=0.5)    # ~70 L
+        self.assertAlmostEqual(est["remaining_hours"], 28.0, delta=0.5)  # ~28 h
+
 
 class FuelStoreTest(unittest.TestCase):
     def setUp(self):
