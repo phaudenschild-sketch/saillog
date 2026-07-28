@@ -119,6 +119,31 @@ nutzen, siehe unten).
 | Port | `2000` |
 | Protokoll | `tcp` |
 
+### Signal K (z.B. Victron Cerbo GX)
+
+Statt NMEA2000 selbst zu dekodieren, kann SailLog die Daten von einem
+**Signal-K-Server** lesen — der große, gepflegte Open-Source-Server, der auf
+einem **Victron Cerbo GX**, einem Raspberry Pi o.ä. läuft. Signal K liest den
+NMEA2000-Bus, führt alle Quellen in **ein** Datenmodell zusammen und stellt es
+als **JSON über HTTP** bereit. So bekommst du **verlustfrei alle Motordaten**
+(Drehzahl, Kühlwassertemperatur, Lichtmaschinenspannung, Motorstunden, Öldruck)
+ohne USB-Kabel — der Laptop hängt einfach per WLAN am Bordnetz.
+
+1. In SailLog: **Quellen… → Vorlage „Signal K (GX)"** (Protokoll `signalk`,
+   Port `3000`)
+2. **Host** = IP oder Name des Signal-K-Servers (z.B. `192.168.9.150` oder
+   `cerbo.local`) → **Quelle hinzufügen → Übernehmen → Verbinden**
+
+SailLog ruft dann im Sekundentakt `…/signalk/v1/api/vessels/self` ab und
+rechnet die SI-Einheiten (m/s, Kelvin, Radiant, Pascal) automatisch in Knoten,
+°C, Grad und mbar/bar um. B&G kann parallel als 0183-Quelle laufen (für AIS).
+
+Am Boot testen (Einmal-Abruf mit Ausgabe der erkannten Messwerte):
+
+```bash
+python -m saillog.signalk 192.168.9.150
+```
+
 ### B&G / Navico (Zeus, …)
 
 B&G-Plotter geben NMEA0183 übers WLAN meist per **TCP (~Port 2053)** oder
@@ -310,6 +335,7 @@ saillog/
 │   ├── config.py               ← Einstellungen (~/.saillog/config.json)
 │   ├── fields.py               ← Auswahllisten (Segel, Wetter, Sicht)
 │   ├── nmea.py                 ← NMEA0183-Parser (inkl. Motor RPM/XDR)
+│   ├── signalk.py              ← Signal-K-Anbindung (JSON über HTTP, z.B. Cerbo GX)
 │   ├── ais.py                  ← AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
 │   ├── webmap.py               ← lokaler Kartenserver (Leaflet + OpenFreeMap)
 │   ├── crewlist.py             ← druckbare Crewliste (HTML, DE/EN)

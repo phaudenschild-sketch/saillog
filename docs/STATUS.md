@@ -35,6 +35,7 @@ Konfiguration & Datenbank liegen unter `~/.saillog/`
 | **Maretron USB100** | seriell `COM11 @ 115200` | NMEA2000→0183: **Drehzahl** (`IIRPM`), **Kühlwassertemperatur**, **Lichtmaschinenspannung**, **Motorstunden** (aus `$PMAREPD`), **Log** (`IIVLW`). Öldruck-Feld leer (kein Sensor). |
 | **Orca Core** | `192.168.9.100` | **Geparkt** (Details: `docs/ORCA_CORE.md`). REST-APIs (8080 JSON, 9001 Flask, 8085 Watchdog, 8090 Firmware-Upload) liefern nur Verwaltung/Kalibrierung — **keine Live-Daten** (87 Pfade geprüft). Live-Daten nur über **WebSocket 9000 binär** (`imuBegin` + sporadische Binärframes; Ping→Pong nötig). Kern-Mehrwert wäre IMU-Heading/Lage — Krängung/Trimm/Ruder liefert B&G aber schon (XDR). Nächster Schritt (später): App-Traffic mitschneiden. Diagnose: `orca_probe.py` (`--api`/`--deep`/`--listen`/`--fetch`). |
 | **PredictWind DataHub** | `192.168.9.113` | Multiplexer; aktuell nicht nötig. |
+| **Victron Cerbo GX** (bestellt) | Quelle `signalk`, Host = GX-IP, Port `3000` | **Signal-K-Server** am NMEA2000-Bus → JSON über HTTP. Soll den Maretron-USB ablösen (verlustfreie Motordaten, Laptop per WLAN). Anbindung in `signalk.py` steht; am Boot noch gegen echten `vessels/self`-Baum verifizieren. |
 
 **Mehrquellen-Betrieb:** In der App unter „Quellen…" B&G (TCP) **und** Maretron
 (serial) anlegen → „Verbinden" liest beide gleichzeitig in einen Datensatz.
@@ -84,6 +85,22 @@ findet MFDs und trägt deren NMEA-Quelle (`TCP <ip>:10110`) automatisch ein
 
 ## Umgesetzt
 
+- **Signal-K-Anbindung** (`signalk.py`, Quellen-Protokoll `signalk`, Vorlage
+  „Signal K (GX)"): liest das Datenmodell eines **Signal-K-Servers** (z.B.
+  **Victron Cerbo GX** oder Raspberry Pi) als **JSON über HTTP**
+  (`…/signalk/v1/api/vessels/self`, Standard-Port 3000) und speist es in
+  `LiveData`. So übernimmt Signal K das komplexe NMEA2000-Decoding (große
+  Community), SailLog bleibt ein dünner Client — **verlustfreie Motordaten**
+  (Drehzahl/Kühlwassertemp/Lichtmaschine/Motorstunden/Öldruck) ohne USB, Laptop
+  per WLAN. `map_values()` ist eine **reine** Funktion (SI→SailLog-Einheiten:
+  m/s→kn, K→°C, rad→°, Pa→mbar/bar, Hz→U/min, s→h), voll offline testbar;
+  `SignalKSource` pollt im Sekundentakt (reine stdlib, `urllib`+`json`), gleiche
+  Steuer-Schnittstelle wie `NmeaSource`. Mehrere Motoren über `instance`
+  wählbar (Standard: erste). Am Boot prüfbar mit
+  `python -m saillog.signalk <host>`. Tests: `tests/test_signalk.py` inkl.
+  **End-to-End** gegen einen lokalen `http.server`. **Nächster Schritt am Boot:**
+  echte `vessels/self`-Antwort des Cerbo GX gegen das Mapping prüfen (v.a. den
+  Namen der Propulsion-Instanz und die Wind-/Attitude-Pfade).
 - Mehrquellen-Eingang **TCP / UDP / seriell**, zusammengeführt in `LiveData`
 - NMEA0183-Parser: Navigation + Wind + Tiefe + **Log (VLW)** + Motor (RPM),
   **XDR** (Luft/Baro/Krängung/Trimm/Ruder, Tacho, Spannung, Öldruck, Stunden)
@@ -341,6 +358,7 @@ src/saillog/
                  Törns, Tabelle, Bearbeiten/Löschen, AIS-Karte, Zeitzone)
   source.py      Quelle: TCP/UDP/seriell (Thread, Reconnect, AIS-Routing)
   nmea.py        NMEA0183-Parser + FIELD_LABELS + engine_running()
+  signalk.py     Signal-K-Anbindung (map_values + SignalKSource, JSON/HTTP)
   ais.py         AIS-Decoder (!AIVDM/!AIVDO) + Zielliste
   webmap.py      lokaler Kartenserver (Leaflet + OpenFreeMap)
   crewlist.py    druckbare Crewliste (HTML, DE/EN)

@@ -28,6 +28,7 @@ from saillog.fields import (
 from saillog.livedata import LiveData
 from saillog.logbook import LogbookService, utc_now_iso
 from saillog.nmea import FIELD_LABELS
+from saillog.signalk import SignalKSource
 from saillog.source import (
     STATUS_CONNECTED,
     STATUS_CONNECTING,
@@ -663,6 +664,27 @@ class Application:
             return
         self._ais_decoders = []
         for index, definition in enumerate(self._source_defs):
+            protocol = definition.get("protocol", "tcp")
+            if protocol == "signalk":
+                # Signal-K-Server (z.B. Victron Cerbo GX): JSON über HTTP.
+                # Port ist optional (Standard 3000); AIS kommt weiter über die
+                # 0183-Quellen (B&G), daher hier kein AIS-Decoder.
+                try:
+                    port = int(definition["port"])
+                except (ValueError, KeyError, TypeError):
+                    port = 0                      # 0/leer -> Standard 3000
+                source = SignalKSource(
+                    host=str(definition["host"]).strip(),
+                    port=port,
+                    live=self._live,
+                    on_status=self._make_status_cb(index),
+                    on_raw=self._raw_buffer.append,
+                    instance=definition.get("instance") or None,
+                    log_correction=self._active_log_correction(),
+                )
+                source.start()
+                self._sources.append(source)
+                continue
             try:
                 port = int(definition["port"])
             except (ValueError, KeyError, TypeError):
@@ -672,7 +694,7 @@ class Application:
                 host=str(definition["host"]).strip(),
                 port=port,
                 live=self._live,
-                protocol=definition.get("protocol", "tcp"),
+                protocol=protocol,
                 on_status=self._make_status_cb(index),
                 on_raw=self._raw_buffer.append,
                 # Eigener Decoder je Quelle (Mehrteiler werden pro Kanal
@@ -4271,7 +4293,7 @@ class _SourcesDialog:
         ttk.Label(frame, text="Protokoll:").grid(row=2, column=0, sticky="e", pady=6)
         self._proto = tk.StringVar(value="tcp")
         proto = ttk.Combobox(
-            frame, textvariable=self._proto, values=["tcp", "udp", "serial"],
+            frame, textvariable=self._proto, values=["tcp", "udp", "serial", "signalk"],
             width=8, state="readonly",
         )
         proto.grid(row=2, column=1, sticky="w")
@@ -4297,6 +4319,7 @@ class _SourcesDialog:
         ttk.Button(tmpl, text="GPS-Maus (USB)", command=self._tmpl_gpsmaus).pack(side="left", padx=3)
         ttk.Button(tmpl, text="B&G (TCP 10110)", command=self._tmpl_bg).pack(side="left", padx=3)
         ttk.Button(tmpl, text="Maretron (COM)", command=self._tmpl_maretron).pack(side="left", padx=3)
+        ttk.Button(tmpl, text="Signal K (GX)", command=self._tmpl_signalk).pack(side="left", padx=3)
         ttk.Button(tmpl, text="🔍 Ports…", command=self._on_pick_port).pack(side="left", padx=3)
         self._gofree_btn = ttk.Button(
             tmpl, text="🔍 GoFree suchen", command=self._on_gofree_search
@@ -4318,9 +4341,13 @@ class _SourcesDialog:
             )
 
     def _update_hint(self) -> None:
-        if self._proto.get() == "serial":
+        proto = self._proto.get()
+        if proto == "serial":
             self._hint.config(text="seriell: Host = COM-Port (COM13), "
                                    "Port = Baud (0 = automatisch erkennen)")
+        elif proto == "signalk":
+            self._hint.config(text="Signal K: Host = IP/Name des Servers "
+                                   "(z.B. Cerbo GX), Port = 3000")
         else:
             self._hint.config(text="")
 
@@ -4433,6 +4460,12 @@ class _SourcesDialog:
         # COM-Port ist rechnerabhängig (im Gerätemanager nachsehen); COM3 als
         # üblicher Vorgabewert.
         self._proto.set("serial"); self._host.set("COM3"); self._port.set("115200")
+        self._update_hint()
+
+    def _tmpl_signalk(self) -> None:
+        # Signal-K-Server (z.B. Victron Cerbo GX): JSON über HTTP, Standard-Port
+        # 3000. Host = IP/Name des GX; die IP ist netzabhängig einzutragen.
+        self._proto.set("signalk"); self._host.set(""); self._port.set("3000")
         self._update_hint()
 
     def _on_ok(self) -> None:
