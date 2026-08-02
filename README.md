@@ -98,6 +98,11 @@ Python.
   Einstellungen als **zeitgestempelte ZIP** — manuell oder automatisch beim
   Beenden (die letzten N behalten); eine Datei zum Kopieren auf einen USB-Stick
 - 📥 **Import** alter **TripCon**-Logbücher (`.tcdb`)
+- 🛰️ **GPX-Track-Import** (Menü Extras → „GPX-Track importieren…"): Tages-Tracks
+  aus **Orca** o.ä. einlesen, um **Lücken in der Kartenspur zu füllen**, wenn
+  SailLog zwischendurch nicht lief. Die Punkte werden dem gewählten Törn als
+  reine Trackpunkte zugeordnet (nur Karte/GPX, nicht in der Liste); ein erneuter
+  Import derselben Datei ersetzt sie
 - 🧪 **Simulator** zum Testen ohne Boot
 
 ## Voraussetzungen
@@ -297,6 +302,22 @@ MWV, MWD (scheinbarer & wahrer Wind) · DPT, DBT (Tiefe) · MTW
 (Wassertemperatur) · HDG, HDT, HDM (Steuerkurs) · **AIS** `!AIVDM`/`!AIVDO`
 (Typen 1/2/3/5/18/19/24).
 
+## GPX-Track importieren (Lücken in der Kartenspur füllen)
+
+Zeichnet ein anderes Gerät (z.B. der **Orca**) den Track lückenlos auf und
+exportiert ihn tageweise als **GPX**, kannst du diese Dateien in SailLog
+einlesen — praktisch, wenn SailLog zwischendurch nicht lief und die eigene Spur
+Lücken hat.
+
+**In der App:** Menü **Extras → „GPX-Track importieren…"**, eine oder mehrere
+`.gpx`-Dateien auswählen, den **Törn** wählen, dem die Punkte zugeordnet werden,
+und importieren. Die `<trkpt>` werden als **reine Trackpunkte** angelegt (nur
+Zeit + Position, dazu berechnete **SOG/COG** für die Richtungspfeile) — sie
+erscheinen auf der **Karte** und im **GPX-Export**, aber **nicht** in der
+Logbuch-Liste, genau wie die eigene dichte Trackaufzeichnung. Ein erneuter
+Import derselben Datei **ersetzt** deren Punkte (keine Dubletten); eigene, live
+aufgezeichnete Trackpunkte bleiben unberührt.
+
 ## Altes TripCon-Logbuch importieren
 
 Eine TripCon-Sicherung (`.tcdb`) ist eine SQLite-Datenbank. SailLog kann
@@ -389,6 +410,7 @@ saillog/
 │   ├── plotter_capture.py      ← Bild laden/als-PNG (Pillow optional, ungenutzt)
 │   ├── legacy.py               ← Analyse alter Sicherungen + Bildextraktion
 │   ├── tripcon.py              ← Import alter TripCon-Logbücher (.tcdb)
+│   ├── gpximport.py            ← Import von GPX-Tracks (Orca) als Kartenspur
 │   └── simulator.py            ← NMEA0183-Testsimulator
 └── tests/
 ```

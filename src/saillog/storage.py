@@ -638,6 +638,21 @@ class LogbookStore:
             )
             return cursor.rowcount
 
+    def delete_track_import(self, source: str) -> int:
+        """Löscht die zuvor aus einer GPX-Quelle importierten Track-Punkte.
+
+        Trifft nur reine Track-Punkte (``entry_type='track'``) mit dem
+        GPX-Marker (``logevent='GPX'``) und der angegebenen Quelle (``note``) —
+        eigene (live aufgezeichnete) Track-Punkte bleiben unberührt. Für den
+        idempotenten Wieder-Import derselben Datei."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM log_entries WHERE entry_type = 'track' "
+                "AND logevent = 'GPX' AND note = ?",
+                (source,),
+            )
+            return cursor.rowcount
+
     def all(
         self,
         limit: Optional[int] = None,

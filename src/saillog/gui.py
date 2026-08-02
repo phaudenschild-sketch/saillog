@@ -13,8 +13,8 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Deque, Dict, List, Optional
 
 from saillog import (
-    backup, branding, crewlist, fields, fuel, geo, photos, qrcode, reports,
-    rig, timeutil, tripcon,
+    backup, branding, crewlist, fields, fuel, geo, gpximport, photos, qrcode,
+    reports, rig, timeutil, tripcon,
 )
 from saillog.ais import AisDecoder, AisTargets
 from saillog.autolog import AutoLogSettings
@@ -187,6 +187,8 @@ class Application:
         extras.add_separator()
         extras.add_command(label=t("TripCon-Backup importieren…"),
                            command=self._on_import_tripcon)
+        extras.add_command(label=t("GPX-Track importieren…"),
+                           command=self._on_import_gpx)
         self._build_language_menu(extras)
         menubar.add_cascade(label=t("Extras"), menu=extras)
         self._root.config(menu=menubar)
@@ -1680,6 +1682,63 @@ class Application:
     def _tripcon_failed(self, exc: Exception) -> None:
         messagebox.showerror(
             t("TripCon-Import"), t("Import fehlgeschlagen:\n{error}", error=exc))
+
+    def _on_import_gpx(self) -> None:
+        """Importiert GPX-Track-Dateien (z.B. Orca-Tageslogs) als Kartenspur."""
+        paths = filedialog.askopenfilenames(
+            title=t("GPX-Track-Datei(en) wählen"),
+            filetypes=[(t("GPX-Track"), "*.gpx"), (t("Alle Dateien"), "*.*")],
+        )
+        if not paths:
+            return
+        trips = self._store.all_trips()
+        if not trips:
+            messagebox.showinfo(
+                t("GPX-Import"),
+                t("Bitte zuerst einen Törn anlegen — die Trackpunkte werden ihm "
+                  "zugeordnet, damit die Karte sie zeigt."))
+            return
+        current = getattr(self._logbook, "current_trip_id", None)
+        dialog = _GpxImportDialog(self._root, list(paths), trips, current)
+        self._root.wait_window(dialog.top)
+        if dialog.result is None:
+            return
+        trip_id, motion, files = dialog.result
+        import threading
+        threading.Thread(
+            target=self._gpx_import_thread, args=(files, trip_id, motion),
+            daemon=True,
+        ).start()
+
+    def _gpx_import_thread(self, files, trip_id, motion) -> None:
+        results, errors = [], []
+        for path in files:
+            try:
+                results.append(gpximport.import_gpx_file(
+                    self._store, path, trip_id=trip_id, replace=True, motion=motion))
+            except Exception as exc:  # noqa: BLE001 - je Datei melden, weitermachen
+                errors.append((Path(path).name, str(exc)))
+        self._root.after(0, lambda: self._gpx_import_done(results, errors))
+
+    def _gpx_import_done(self, results, errors) -> None:
+        self._refresh_logbook()
+        total = sum(r["imported"] for r in results)
+        replaced = sum(r["replaced"] for r in results)
+        lines = [t("{n} Datei(en) importiert, {p} Trackpunkte "
+                   "(davon {r} ersetzt).", n=len(results), p=total, r=replaced)]
+        for r in results:
+            lines.append(f"• {r['source']}: {r['points']} Pkt · "
+                         f"{r['distance_nm']:.1f} sm · {r['first'][:10]}")
+        if errors:
+            lines.append("")
+            lines.append(t("Fehler:"))
+            for name, err in errors:
+                lines.append(f"• {name}: {err}")
+        lines.append("")
+        lines.append(t("Die Trackpunkte erscheinen auf der Karte des zugeordneten "
+                       "Törns (nicht in der Logbuch-Liste)."))
+        box = messagebox.showwarning if errors else messagebox.showinfo
+        box(t("GPX-Import"), "\n".join(lines))
 
     # --- Stammdaten ---------------------------------------------------------
 
@@ -3374,6 +3433,76 @@ class _RemoteDialog:
             messagebox.showwarning(t("Fern-Erfassung"), t("Ungültiger Port."))
             return
         self.result = {"enabled": self._enabled.get(), "port": port, "pin": pin}
+        self.top.destroy()
+
+
+class _GpxImportDialog:
+    """Vorschau + Törn-Auswahl für den GPX-Track-Import."""
+
+    def __init__(self, parent, paths, trips, current_trip_id) -> None:
+        self.result = None
+        self._paths = list(paths)
+        self.top = tk.Toplevel(parent)
+        self.top.title(t("GPX-Track importieren"))
+        self.top.transient(parent)
+        self.top.grab_set()
+        frame = ttk.Frame(self.top, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        # Dateien vorab einlesen (Anzahl Punkte / Zeitraum je Datei).
+        infos, total = [], 0
+        for path in self._paths:
+            try:
+                tr = gpximport.parse_gpx_file(path)
+                times = sorted(ts for ts, _la, _lo in tr.points if ts)
+                span = (f"{times[0][:10]}" if times else "?")
+                infos.append(f"• {Path(path).name}: {len(tr.points)} "
+                             + t("Punkte") + f" · {span}")
+                total += len(tr.points)
+            except Exception as exc:  # noqa: BLE001
+                infos.append(f"• {Path(path).name}: {t('Fehler')} — {exc}")
+
+        ttk.Label(frame, text=t("Gewählte Dateien:")).grid(
+            row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(frame, text="\n".join(infos), foreground="#555",
+                  justify="left").grid(row=1, column=0, columnspan=2, sticky="w",
+                                       pady=(2, 8))
+
+        ttk.Label(frame, text=t("Törn (Trackpunkte werden ihm zugeordnet):")).grid(
+            row=2, column=0, sticky="w")
+        self._trip_choices = {}
+        for tr in trips:
+            route = f"{tr.start_location or '?'} → {tr.end_location or '…'}"
+            self._trip_choices[f"#{tr.id} {tr.name or route}"] = tr.id
+        self._trip_var = tk.StringVar()
+        cur = next((d for d, idx in self._trip_choices.items()
+                    if idx == current_trip_id), None)
+        self._trip_var.set(cur or next(iter(self._trip_choices)))
+        ttk.Combobox(frame, textvariable=self._trip_var, width=34, state="readonly",
+                     values=list(self._trip_choices.keys())).grid(
+            row=3, column=0, columnspan=2, sticky="w", pady=(2, 8))
+
+        self._motion = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            frame, text=t("Richtungspfeile berechnen (SOG/COG aus dem Track)"),
+            variable=self._motion).grid(row=4, column=0, columnspan=2, sticky="w")
+
+        ttk.Label(frame, foreground="#777", wraplength=380, justify="left",
+                  text=t("Ein erneuter Import derselben Datei ersetzt deren "
+                         "Punkte (keine Dubletten). Die Punkte erscheinen nur "
+                         "auf der Karte, nicht in der Logbuch-Liste.")).grid(
+            row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
+        btns = ttk.Frame(frame)
+        btns.grid(row=6, column=0, columnspan=2, pady=(10, 0))
+        ttk.Button(btns, text=t("Importieren"), command=self._on_ok).pack(
+            side="left", padx=4)
+        ttk.Button(btns, text=t("Abbrechen"), command=self.top.destroy).pack(
+            side="left", padx=4)
+
+    def _on_ok(self) -> None:
+        trip_id = self._trip_choices.get(self._trip_var.get())
+        self.result = (trip_id, self._motion.get(), self._paths)
         self.top.destroy()
 
 
