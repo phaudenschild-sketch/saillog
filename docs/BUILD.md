@@ -20,7 +20,7 @@ Das Skript:
 - installiert bei Bedarf PyInstaller,
 - baut **`dist\SailLog\SailLog.exe`** (kompletter, eigenständiger Ordner),
 - baut zusätzlich den **Installer**, falls *Inno Setup* installiert ist
-  (siehe unten) → `installer\Output\SailLog-Setup-0.1.0.exe`.
+  (siehe unten) → `installer\Output\SailLog-Setup-0.1.1.exe`.
 
 Zum Weitergeben genügt schon der Ordner **`dist\SailLog\`** als ZIP —
 Empfänger entpacken und `SailLog.exe` starten.
@@ -61,7 +61,7 @@ Deinstaller):
    ```bat
    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\saillog.iss
    ```
-Ergebnis: **`installer\Output\SailLog-Setup-0.1.0.exe`** — das ist die eine
+Ergebnis: **`installer\Output\SailLog-Setup-0.1.1.exe`** — das ist die eine
 Datei, die du weitergibst.
 
 Das Setup nutzt `assets\icon.ico` als Programm-Symbol, zeigt die MIT-Lizenz an
@@ -88,8 +88,8 @@ GitHub-Weboberfläche anlegen — das ist Absicht von GitHub):
   Das Ergebnis (ZIP + Installer) liegt unter dem Lauf als *Artifact*.
 - **Richtiges Release für Tester:** eine Version taggen, z.B.
   ```bat
-  git tag v0.1.0
-  git push origin v0.1.0
+  git tag v0.1.1
+  git push origin v0.1.1
   ```
   Dann baut GitHub automatisch und legt ein **Release** mit ZIP + Installer als
   Download an — dieser Release-Link ist das, was du deinen Testern gibst
