@@ -20,7 +20,7 @@ Das Skript:
 - installiert bei Bedarf PyInstaller,
 - baut **`dist\SailLog\SailLog.exe`** (kompletter, eigenständiger Ordner),
 - baut zusätzlich den **Installer**, falls *Inno Setup* installiert ist
-  (siehe unten) → `installer\Output\SailLog-Setup-0.1.0.exe`.
+  (siehe unten) → `installer\Output\SailLog-Setup-0.1.1.exe`.
 
 Zum Weitergeben genügt schon der Ordner **`dist\SailLog\`** als ZIP —
 Empfänger entpacken und `SailLog.exe` starten.
@@ -61,7 +61,7 @@ Deinstaller):
    ```bat
    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\saillog.iss
    ```
-Ergebnis: **`installer\Output\SailLog-Setup-0.1.0.exe`** — das ist die eine
+Ergebnis: **`installer\Output\SailLog-Setup-0.1.1.exe`** — das ist die eine
 Datei, die du weitergibst.
 
 Das Setup nutzt `assets\icon.ico` als Programm-Symbol, zeigt die MIT-Lizenz an
