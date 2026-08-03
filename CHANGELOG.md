@@ -4,6 +4,21 @@ Alle nennenswerten Änderungen an **SailLog** werden hier festgehalten.
 Format lose nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/);
 Versionen nach [SemVer](https://semver.org/lang/de/).
 
+## [0.1.2] – 2026-08-02
+
+### Neu
+- **GPX-Track-Import** (Menü **Extras → „GPX-Track importieren…"**): Tages-Tracks
+  aus **Orca** o.ä. einlesen, um **Lücken in der Kartenspur zu füllen**, wenn
+  SailLog zwischendurch nicht lief. Die Punkte werden als reine Trackpunkte einem
+  wählbaren **Törn** zugeordnet (nur Karte/GPX, nicht in der Liste); Mehrfachauswahl
+  möglich, mit aus dem Track berechneter SOG/COG für die Richtungspfeile.
+  - **„Nur Lücken füllen"** (Standard): fügt Punkte nur dort ein, wo der Törn noch
+    keine eigene Trackspur hat — verhindert eine doppelte, zickzackende Linie bei
+    zeitgleicher Live- und GPX-Aufzeichnung.
+  - **Anker-/Hafen-Ausdünnung** (Vorgabe 25 m, 0 = aus): verwirft Punkte auf
+    engstem Raum (Schwojen + GPS-Rauschen); echte Fahrt bleibt voll erhalten.
+  - Ein erneuter Import derselben Datei ersetzt deren Punkte (keine Dubletten).
+
 ## [0.1.1] – 2026-08-02
 
 ### Neu
@@ -42,5 +57,6 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
   Tanken/Verbrauch, Fern-Erfassung (Handy/Tablet), Backup, TripCon-Import,
   Mehrquellen-Eingang (TCP/UDP/seriell) und Windows-Build (EXE + Installer).
 
+[0.1.2]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.2
 [0.1.1]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.1
 [0.1.0]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.0

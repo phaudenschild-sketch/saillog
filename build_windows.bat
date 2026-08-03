@@ -50,7 +50,7 @@ if exist "%ISCC%" (
   echo [3/3] Baue Installer mit Inno Setup ...
   "%ISCC%" installer\saillog.iss
   echo.
-  echo [OK] Installer: installer\Output\SailLog-Setup-0.1.1.exe
+  echo [OK] Installer: installer\Output\SailLog-Setup-0.1.2.exe
 ) else (
   echo [Hinweis] Inno Setup nicht gefunden ^(optional^).
   echo           Fuer einen richtigen Installer: https://jrsoftware.org/isdl.php
