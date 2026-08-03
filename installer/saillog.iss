@@ -8,10 +8,10 @@
 ; klicken — oder auf der Kommandozeile:
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\saillog.iss
 ;
-; Ergebnis: installer\Output\SailLog-Setup-0.1.1.exe
+; Ergebnis: installer\Output\SailLog-Setup-0.1.2.exe
 
 #define AppName "SailLog"
-#define AppVersion "0.1.1"
+#define AppVersion "0.1.2"
 #define AppPublisher "Peter Haudenschild"
 #define AppExeName "SailLog.exe"
 

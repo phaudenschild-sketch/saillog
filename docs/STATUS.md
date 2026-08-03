@@ -29,6 +29,28 @@ Konfiguration & Datenbank liegen unter `~/.saillog/`
 
 ## Zuletzt geändert (Verhalten)
 
+- **GPX-Track-Import (neu):** Menü **Extras → „GPX-Track importieren…"**
+  (`gpximport.py`, `_GpxImportDialog`): liest GPX-Tages-Tracks (z.B. vom
+  **Orca**) und legt die `<trkpt>` als **reine Track-Punkte** (`entry_type=
+  'track'`, `logevent='GPX'`, Quelle im `note`) an — mit aus dem Track
+  berechneter **SOG/COG** für die Kartenpfeile. So lassen sich **Lücken in der
+  eigenen Kartenspur füllen**, wenn SailLog zeitweise nicht lief. Zuordnung zu
+  einem wählbaren **Törn**; Mehrfachauswahl möglich. **„Nur Lücken füllen"**
+  (Standard, `gap_only`): GPX-Punkte werden nur eingefügt, wo der Törn noch keine
+  eigene Trackspur hat (im Umkreis von `near_seconds`, Standard 90 s;
+  `store.track_timestamps` + `_filter_gaps`) — verhindert die doppelte
+  Zickzack-Linie bei zeitgleicher Live- und GPX-Aufzeichnung (die Karte zeichnet
+  alle Track-Punkte `ORDER BY timestamp`, würde sonst zwischen beiden Spuren
+  pendeln). **Ausdünnung** (`min_move_nm`, `_thin_by_distance`, GUI-Feld
+  „Anker-/Hafenpunkte ausdünnen ab … m", Vorgabe 25 m, 0 = aus): verwirft Punkte,
+  die sich zu wenig vom letzten behaltenen wegbewegt haben — gegen den
+  Punkt-Knäuel beim Ankern/im Hafen (Schwojen + GPS-Rauschen), echte Fahrt bleibt
+  erhalten. Ein erneuter Import
+  derselben Datei **ersetzt** deren Punkte (`store.delete_track_import(source)`,
+  matcht nur `logevent='GPX'` + `note` — eigene Live-Trackpunkte bleiben
+  unberührt). Rein stdlib (`xml.etree`); Zeiten werden über `timeutil.parse_to_utc`
+  auf das interne UTC-Format normiert. Tests: `test_gpximport.py` (Parsen,
+  Bewegungsberechnung, Import/Re-Import/Idempotenz).
 - **Tankgröße aus Schiffsdaten:** Der „Tanken & Verbrauch"-Dialog nimmt die
   Tankgröße jetzt bevorzugt aus dem **Treibstofftank des aktiven Schiffs**
   (`Ship.fuel_tank_l`), sonst weiter aus `config.tank_capacity_l`. Damit stimmt
@@ -411,6 +433,7 @@ src/saillog/
   discover.py    Quellen-/Port-/GoFree-Scanner
   plotter_capture.py  Bild laden/als-PNG (Pillow optional, ungenutzt)
   legacy.py / tripcon.py  Analyse & Import alter TripCon-Sicherungen
+  gpximport.py   Import von GPX-Tracks (Orca) als Kartenspur (entry_type='track')
   simulator.py   NMEA0183-Testsimulator
 tests/           unittest (ohne Boot lauffähig)
 ```
