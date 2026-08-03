@@ -324,6 +324,11 @@ doppelte, leicht versetzte **Zickzack-Linie** an Tagen, an denen SailLog **und**
 das andere Gerät gleichzeitig aufgezeichnet haben. Wer die GPX-Spur bewusst
 vollständig übernehmen will, schaltet die Option im Dialog ab.
 
+Gegen den **Punkt-Knäuel beim Ankern/im Hafen** (Schwojen + GPS-Rauschen) gibt es
+die **Ausdünnung**: Punkte, die sich weniger als der eingestellte Mindestabstand
+(Vorgabe **25 m**, `0` = aus) vom letzten behaltenen Punkt entfernt haben, werden
+verworfen — echte Fahrt bleibt voll erhalten.
+
 ## Altes TripCon-Logbuch importieren
 
 Eine TripCon-Sicherung (`.tcdb`) ist eine SQLite-Datenbank. SailLog kann

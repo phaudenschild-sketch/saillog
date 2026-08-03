@@ -149,6 +149,46 @@ class ImportTest(unittest.TestCase):
             gpximport.import_gpx(self.store, empty, trip_id=self.trip_id)
 
 
+class ThinningTest(unittest.TestCase):
+    """Anker-/Hafen-Ausdünnung: eng beieinanderliegende Punkte verwerfen."""
+
+    def setUp(self):
+        self.path = tempfile.mktemp(suffix=".sqlite3")
+        self.store = LogbookStore(self.path)
+        self.trip_id = self.store.add_trip(Trip(name="Test"))
+
+    def tearDown(self):
+        if os.path.exists(self.path):
+            os.remove(self.path)
+
+    def _anchor_gpx(self):
+        # 5 Punkte fast am selben Ort (Schwojen, ~wenige Meter) + 1 weit weg.
+        pts = "".join(
+            f'<trkpt lat="43.10000{i}" lon="16.00000{i}">'
+            f'<time>2026-07-23T08:0{i}:00Z</time></trkpt>'
+            for i in range(5))
+        far = ('<trkpt lat="43.20000" lon="16.00000">'
+               '<time>2026-07-23T09:00:00Z</time></trkpt>')
+        return ('<gpx xmlns="http://www.topografix.com/GPX/1/1"><trk><trkseg>'
+                + pts + far + "</trkseg></trk></gpx>")
+
+    def test_thinning_collapses_cluster(self):
+        s = gpximport.import_gpx(
+            self.store, self._anchor_gpx(), trip_id=self.trip_id,
+            source="a.gpx", gap_only=False,
+            min_move_nm=50 * gpximport.NM_PER_METER)   # 50 m Schwelle
+        # Der enge Cluster fällt auf 1 Punkt zusammen, der ferne bleibt -> 2.
+        self.assertEqual(s["imported"], 2)
+        self.assertGreaterEqual(s["thinned"], 4)
+
+    def test_thinning_off_keeps_all(self):
+        s = gpximport.import_gpx(
+            self.store, self._anchor_gpx(), trip_id=self.trip_id,
+            source="a.gpx", gap_only=False, min_move_nm=0.0)
+        self.assertEqual(s["imported"], 6)
+        self.assertEqual(s["thinned"], 0)
+
+
 class GapFillTest(unittest.TestCase):
     """„Nur Lücken füllen": abgedeckte Zeiträume nicht doppelt zeichnen."""
 

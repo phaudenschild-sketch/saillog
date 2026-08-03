@@ -36,6 +36,12 @@ GPX_LOGEVENT = "GPX"
 # GPX-Punkt wird übersprungen (verhindert die doppelte, zickzackende Spur).
 DEFAULT_GAP_SECONDS = 90.0
 
+# Standard-Mindestbewegung fürs Ausdünnen (Seemeilen). Punkte, die weniger als
+# das vom letzten behaltenen Punkt entfernt sind, werden verworfen — gegen den
+# Punkt-Knäuel beim Ankern/im Hafen (Schwojen + GPS-Rauschen). 0 = aus.
+DEFAULT_MIN_MOVE_NM = 0.0
+NM_PER_METER = 1.0 / 1852.0
+
 # (Zeit-ISO-UTC, lat, lon)
 GpxPoint = Tuple[str, float, float]
 
@@ -158,6 +164,28 @@ def build_entries(
     return entries
 
 
+def _thin_by_distance(entries, min_move_nm):
+    """Dünnt Punkte aus, die sich zu wenig vom letzten behaltenen wegbewegt haben.
+
+    So schrumpft der Punkt-Knäuel beim Ankern/im Hafen auf wenige Punkte,
+    während echte Fahrt (große Abstände) voll erhalten bleibt. Gibt
+    (behaltene, ausgedünnt-Anzahl) zurück.
+    """
+    kept, thinned = [], 0
+    last = None
+    for entry in entries:
+        if entry.lat is None or entry.lon is None:
+            kept.append(entry)
+            continue
+        if last is None or geo.haversine_nm(
+                last[0], last[1], entry.lat, entry.lon) >= min_move_nm:
+            kept.append(entry)
+            last = (entry.lat, entry.lon)
+        else:
+            thinned += 1
+    return kept, thinned
+
+
 def _epoch(iso: str) -> Optional[float]:
     dt = parse_to_utc(iso)
     return dt.timestamp() if dt is not None else None
@@ -199,6 +227,7 @@ def import_gpx(
     motion: bool = True,
     gap_only: bool = True,
     near_seconds: float = DEFAULT_GAP_SECONDS,
+    min_move_nm: float = DEFAULT_MIN_MOVE_NM,
 ) -> dict:
     """Importiert einen GPX-Track als Kartenspur in den ``LogbookStore``.
 
@@ -207,7 +236,9 @@ def import_gpx(
     ``gap_only`` (Standard) fügt Punkte **nur in Lücken** ein — dort, wo der Törn
     noch keine eigene Trackspur hat (im Umkreis von ``near_seconds``). Das
     verhindert eine doppelte, zickzackende Linie, wo Live- und GPX-Spur denselben
-    Zeitraum abdecken. Gibt eine Zusammenfassung zurück.
+    Zeitraum abdecken. ``min_move_nm`` > 0 **dünnt** Punkte aus, die sich zu wenig
+    bewegt haben (gegen den Anker-/Hafen-Knäuel). Gibt eine Zusammenfassung
+    zurück.
     """
     try:
         track = parse_gpx(data)
@@ -218,8 +249,12 @@ def import_gpx(
 
     src = (source or track.name or "GPX-Import").strip() or "GPX-Import"
     entries = build_entries(track, trip_id, src, motion=motion)
-    # Erst die eigenen (vorherigen) Punkte dieser Quelle entfernen, DANN die
-    # Lücken gegen die verbleibende (echte) Spur bestimmen.
+    # 1) Anker-/Hafen-Punkte ausdünnen (bevor gegen die Lücken geprüft wird).
+    thinned = 0
+    if min_move_nm and min_move_nm > 0:
+        entries, thinned = _thin_by_distance(entries, min_move_nm)
+    # 2) Erst die eigenen (vorherigen) Punkte dieser Quelle entfernen, DANN die
+    #    Lücken gegen die verbleibende (echte) Spur bestimmen.
     replaced = store.delete_track_import(src) if replace else 0
     skipped = 0
     if gap_only and trip_id is not None:
@@ -235,6 +270,7 @@ def import_gpx(
         "points": len(track.points),
         "imported": imported,
         "skipped": skipped,
+        "thinned": thinned,
         "replaced": replaced,
         "first": times[0] if times else "",
         "last": times[-1] if times else "",
@@ -252,6 +288,7 @@ def import_gpx_file(
     motion: bool = True,
     gap_only: bool = True,
     near_seconds: float = DEFAULT_GAP_SECONDS,
+    min_move_nm: float = DEFAULT_MIN_MOVE_NM,
 ) -> dict:
     """Wie :func:`import_gpx`, liest den Inhalt aus einer Datei."""
     import os
@@ -262,4 +299,5 @@ def import_gpx_file(
         source = os.path.basename(path)
     return import_gpx(store, data, trip_id=trip_id, source=source,
                       replace=replace, motion=motion,
-                      gap_only=gap_only, near_seconds=near_seconds)
+                      gap_only=gap_only, near_seconds=near_seconds,
+                      min_move_nm=min_move_nm)

@@ -41,7 +41,11 @@ Konfiguration & Datenbank liegen unter `~/.saillog/`
   `store.track_timestamps` + `_filter_gaps`) — verhindert die doppelte
   Zickzack-Linie bei zeitgleicher Live- und GPX-Aufzeichnung (die Karte zeichnet
   alle Track-Punkte `ORDER BY timestamp`, würde sonst zwischen beiden Spuren
-  pendeln). Ein erneuter Import
+  pendeln). **Ausdünnung** (`min_move_nm`, `_thin_by_distance`, GUI-Feld
+  „Anker-/Hafenpunkte ausdünnen ab … m", Vorgabe 25 m, 0 = aus): verwirft Punkte,
+  die sich zu wenig vom letzten behaltenen wegbewegt haben — gegen den
+  Punkt-Knäuel beim Ankern/im Hafen (Schwojen + GPS-Rauschen), echte Fahrt bleibt
+  erhalten. Ein erneuter Import
   derselben Datei **ersetzt** deren Punkte (`store.delete_track_import(source)`,
   matcht nur `logevent='GPX'` + `note` — eigene Live-Trackpunkte bleiben
   unberührt). Rein stdlib (`xml.etree`); Zeiten werden über `timeutil.parse_to_utc`
