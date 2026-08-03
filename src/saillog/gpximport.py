@@ -18,6 +18,7 @@ Reine Python-Standardbibliothek (``xml.etree``).
 
 from __future__ import annotations
 
+import bisect
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from math import atan2, cos, degrees, radians, sin
@@ -29,6 +30,11 @@ from saillog.timeutil import parse_to_utc
 
 # Marker im logevent-Feld importierter Track-Punkte (zum Wiederfinden/Ersetzen).
 GPX_LOGEVENT = "GPX"
+
+# Standard-Zeitfenster für „nur Lücken füllen": liegt schon ein eigener
+# Track-Punkt so nah (Sekunden), gilt der Zeitraum als abgedeckt und der
+# GPX-Punkt wird übersprungen (verhindert die doppelte, zickzackende Spur).
+DEFAULT_GAP_SECONDS = 90.0
 
 # (Zeit-ISO-UTC, lat, lon)
 GpxPoint = Tuple[str, float, float]
@@ -152,6 +158,38 @@ def build_entries(
     return entries
 
 
+def _epoch(iso: str) -> Optional[float]:
+    dt = parse_to_utc(iso)
+    return dt.timestamp() if dt is not None else None
+
+
+def _filter_gaps(entries, existing_iso, near_seconds):
+    """Behält nur Punkte, die **nicht** nahe an vorhandenen Track-Punkten liegen.
+
+    So werden bereits (live) abgedeckte Zeiträume nicht doppelt gezeichnet — nur
+    echte Lücken werden gefüllt. Gibt (behaltene, übersprungen-Anzahl) zurück.
+    """
+    covered = sorted(e for e in (_epoch(t) for t in existing_iso) if e is not None)
+    if not covered:
+        return entries, 0
+    kept, skipped = [], 0
+    for entry in entries:
+        te = _epoch(entry.timestamp)
+        if te is None:
+            kept.append(entry)
+            continue
+        i = bisect.bisect_left(covered, te)
+        nearest = min(
+            (abs(te - covered[j]) for j in (i - 1, i) if 0 <= j < len(covered)),
+            default=None,
+        )
+        if nearest is not None and nearest <= near_seconds:
+            skipped += 1
+        else:
+            kept.append(entry)
+    return kept, skipped
+
+
 def import_gpx(
     store: LogbookStore,
     data: Union[str, bytes],
@@ -159,12 +197,17 @@ def import_gpx(
     source: Optional[str] = None,
     replace: bool = True,
     motion: bool = True,
+    gap_only: bool = True,
+    near_seconds: float = DEFAULT_GAP_SECONDS,
 ) -> dict:
     """Importiert einen GPX-Track als Kartenspur in den ``LogbookStore``.
 
     ``trip_id`` ordnet die Punkte einem Törn zu (damit die Karte sie zeigt).
     ``source`` ist die Kennung fürs erneute Ersetzen (Standard: Track-Name).
-    Gibt eine Zusammenfassung (Anzahl, Zeitraum, Distanz, ersetzt) zurück.
+    ``gap_only`` (Standard) fügt Punkte **nur in Lücken** ein — dort, wo der Törn
+    noch keine eigene Trackspur hat (im Umkreis von ``near_seconds``). Das
+    verhindert eine doppelte, zickzackende Linie, wo Live- und GPX-Spur denselben
+    Zeitraum abdecken. Gibt eine Zusammenfassung zurück.
     """
     try:
         track = parse_gpx(data)
@@ -175,7 +218,13 @@ def import_gpx(
 
     src = (source or track.name or "GPX-Import").strip() or "GPX-Import"
     entries = build_entries(track, trip_id, src, motion=motion)
+    # Erst die eigenen (vorherigen) Punkte dieser Quelle entfernen, DANN die
+    # Lücken gegen die verbleibende (echte) Spur bestimmen.
     replaced = store.delete_track_import(src) if replace else 0
+    skipped = 0
+    if gap_only and trip_id is not None:
+        existing = store.track_timestamps(trip_id)
+        entries, skipped = _filter_gaps(entries, existing, near_seconds)
     imported = store.add_many(entries)
 
     times = sorted(t for t, _lat, _lon in track.points if t)
@@ -185,6 +234,7 @@ def import_gpx(
         "source": src,
         "points": len(track.points),
         "imported": imported,
+        "skipped": skipped,
         "replaced": replaced,
         "first": times[0] if times else "",
         "last": times[-1] if times else "",
@@ -200,6 +250,8 @@ def import_gpx_file(
     source: Optional[str] = None,
     replace: bool = True,
     motion: bool = True,
+    gap_only: bool = True,
+    near_seconds: float = DEFAULT_GAP_SECONDS,
 ) -> dict:
     """Wie :func:`import_gpx`, liest den Inhalt aus einer Datei."""
     import os
@@ -209,4 +261,5 @@ def import_gpx_file(
     if source is None:
         source = os.path.basename(path)
     return import_gpx(store, data, trip_id=trip_id, source=source,
-                      replace=replace, motion=motion)
+                      replace=replace, motion=motion,
+                      gap_only=gap_only, near_seconds=near_seconds)

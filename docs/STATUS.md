@@ -35,7 +35,13 @@ Konfiguration & Datenbank liegen unter `~/.saillog/`
   'track'`, `logevent='GPX'`, Quelle im `note`) an — mit aus dem Track
   berechneter **SOG/COG** für die Kartenpfeile. So lassen sich **Lücken in der
   eigenen Kartenspur füllen**, wenn SailLog zeitweise nicht lief. Zuordnung zu
-  einem wählbaren **Törn**; Mehrfachauswahl möglich. Ein erneuter Import
+  einem wählbaren **Törn**; Mehrfachauswahl möglich. **„Nur Lücken füllen"**
+  (Standard, `gap_only`): GPX-Punkte werden nur eingefügt, wo der Törn noch keine
+  eigene Trackspur hat (im Umkreis von `near_seconds`, Standard 90 s;
+  `store.track_timestamps` + `_filter_gaps`) — verhindert die doppelte
+  Zickzack-Linie bei zeitgleicher Live- und GPX-Aufzeichnung (die Karte zeichnet
+  alle Track-Punkte `ORDER BY timestamp`, würde sonst zwischen beiden Spuren
+  pendeln). Ein erneuter Import
   derselben Datei **ersetzt** deren Punkte (`store.delete_track_import(source)`,
   matcht nur `logevent='GPX'` + `note` — eigene Live-Trackpunkte bleiben
   unberührt). Rein stdlib (`xml.etree`); Zeiten werden über `timeutil.parse_to_utc`

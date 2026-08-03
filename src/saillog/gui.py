@@ -1703,19 +1703,20 @@ class Application:
         self._root.wait_window(dialog.top)
         if dialog.result is None:
             return
-        trip_id, motion, files = dialog.result
+        trip_id, motion, gap_only, files = dialog.result
         import threading
         threading.Thread(
-            target=self._gpx_import_thread, args=(files, trip_id, motion),
+            target=self._gpx_import_thread, args=(files, trip_id, motion, gap_only),
             daemon=True,
         ).start()
 
-    def _gpx_import_thread(self, files, trip_id, motion) -> None:
+    def _gpx_import_thread(self, files, trip_id, motion, gap_only) -> None:
         results, errors = [], []
         for path in files:
             try:
                 results.append(gpximport.import_gpx_file(
-                    self._store, path, trip_id=trip_id, replace=True, motion=motion))
+                    self._store, path, trip_id=trip_id, replace=True,
+                    motion=motion, gap_only=gap_only))
             except Exception as exc:  # noqa: BLE001 - je Datei melden, weitermachen
                 errors.append((Path(path).name, str(exc)))
         self._root.after(0, lambda: self._gpx_import_done(results, errors))
@@ -1724,10 +1725,12 @@ class Application:
         self._refresh_logbook()
         total = sum(r["imported"] for r in results)
         replaced = sum(r["replaced"] for r in results)
-        lines = [t("{n} Datei(en) importiert, {p} Trackpunkte "
-                   "(davon {r} ersetzt).", n=len(results), p=total, r=replaced)]
+        skipped = sum(r.get("skipped", 0) for r in results)
+        lines = [t("{n} Datei(en): {p} Trackpunkte eingefügt "
+                   "({s} übersprungen, {r} ersetzt).",
+                   n=len(results), p=total, s=skipped, r=replaced)]
         for r in results:
-            lines.append(f"• {r['source']}: {r['points']} Pkt · "
+            lines.append(f"• {r['source']}: {r['imported']}/{r['points']} Pkt · "
                          f"{r['distance_nm']:.1f} sm · {r['first'][:10]}")
         if errors:
             lines.append("")
@@ -3482,19 +3485,26 @@ class _GpxImportDialog:
                      values=list(self._trip_choices.keys())).grid(
             row=3, column=0, columnspan=2, sticky="w", pady=(2, 8))
 
+        self._gap_only = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            frame, text=t("Nur Lücken füllen (eigene Trackspur nicht doppeln)"),
+            variable=self._gap_only).grid(row=4, column=0, columnspan=2, sticky="w")
+
         self._motion = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             frame, text=t("Richtungspfeile berechnen (SOG/COG aus dem Track)"),
-            variable=self._motion).grid(row=4, column=0, columnspan=2, sticky="w")
+            variable=self._motion).grid(row=5, column=0, columnspan=2, sticky="w")
 
         ttk.Label(frame, foreground="#777", wraplength=380, justify="left",
-                  text=t("Ein erneuter Import derselben Datei ersetzt deren "
-                         "Punkte (keine Dubletten). Die Punkte erscheinen nur "
-                         "auf der Karte, nicht in der Logbuch-Liste.")).grid(
-            row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
+                  text=t("„Nur Lücken füllen“ fügt GPX-Punkte nur dort ein, wo "
+                         "der Törn noch keine eigene Spur hat — sonst entstünde "
+                         "eine doppelte Zickzack-Linie. Ein erneuter Import "
+                         "derselben Datei ersetzt deren Punkte. Die Punkte "
+                         "erscheinen nur auf der Karte, nicht in der Liste.")).grid(
+            row=6, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
         btns = ttk.Frame(frame)
-        btns.grid(row=6, column=0, columnspan=2, pady=(10, 0))
+        btns.grid(row=7, column=0, columnspan=2, pady=(10, 0))
         ttk.Button(btns, text=t("Importieren"), command=self._on_ok).pack(
             side="left", padx=4)
         ttk.Button(btns, text=t("Abbrechen"), command=self.top.destroy).pack(
@@ -3502,7 +3512,8 @@ class _GpxImportDialog:
 
     def _on_ok(self) -> None:
         trip_id = self._trip_choices.get(self._trip_var.get())
-        self.result = (trip_id, self._motion.get(), self._paths)
+        self.result = (trip_id, self._motion.get(), self._gap_only.get(),
+                       self._paths)
         self.top.destroy()
 
 

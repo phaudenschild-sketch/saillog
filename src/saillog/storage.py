@@ -653,6 +653,20 @@ class LogbookStore:
             )
             return cursor.rowcount
 
+    def track_timestamps(self, trip_id: Optional[int] = None) -> List[str]:
+        """Nur die Zeitstempel vorhandener Track-Punkte (leichtgewichtig).
+
+        Für die Lücken-Erkennung beim GPX-Import: dort wird geprüft, wo bereits
+        eine eigene Trackspur liegt."""
+        query = "SELECT timestamp FROM log_entries WHERE entry_type = 'track'"
+        params: List[Any] = []
+        if trip_id is not None:
+            query += " AND trip_id = ?"
+            params.append(trip_id)
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [r[0] for r in rows if r[0]]
+
     def all(
         self,
         limit: Optional[int] = None,

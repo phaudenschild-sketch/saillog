@@ -120,10 +120,13 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(len(self.store.all(include_track=True)), 3)  # keine Dubletten
 
     def test_different_sources_coexist(self):
+        # gap_only=False: zwei Quellen mit gleichen Zeiten dürfen koexistieren
+        # (die Idempotenz greift nur pro Quelle). Mit gap_only würde die zweite
+        # als „schon abgedeckt" übersprungen — das prüft GapFillTest separat.
         gpximport.import_gpx(self.store, SAMPLE_GPX, trip_id=self.trip_id,
-                             source="tag1.gpx")
+                             source="tag1.gpx", gap_only=False)
         gpximport.import_gpx(self.store, SAMPLE_GPX, trip_id=self.trip_id,
-                             source="tag2.gpx")
+                             source="tag2.gpx", gap_only=False)
         self.assertEqual(len(self.store.all(include_track=True)), 6)
 
     def test_own_track_points_untouched_by_reimport(self):
@@ -144,6 +147,58 @@ class ImportTest(unittest.TestCase):
         empty = '<gpx xmlns="http://www.topografix.com/GPX/1/1"><trk></trk></gpx>'
         with self.assertRaises(ValueError):
             gpximport.import_gpx(self.store, empty, trip_id=self.trip_id)
+
+
+class GapFillTest(unittest.TestCase):
+    """„Nur Lücken füllen": abgedeckte Zeiträume nicht doppelt zeichnen."""
+
+    def setUp(self):
+        self.path = tempfile.mktemp(suffix=".sqlite3")
+        self.store = LogbookStore(self.path)
+        self.trip_id = self.store.add_trip(Trip(name="Test"))
+
+    def tearDown(self):
+        if os.path.exists(self.path):
+            os.remove(self.path)
+
+    def _own_track(self, iso):
+        from saillog.storage import LogEntry
+        self.store.add(LogEntry(timestamp=iso, entry_type="track",
+                                trip_id=self.trip_id, lat=43.0, lon=16.0,
+                                logevent="Track"))
+
+    def test_gap_only_default_true(self):
+        # Ohne eigene Spur wird nichts übersprungen (nichts abgedeckt).
+        s = gpximport.import_gpx(self.store, SAMPLE_GPX, trip_id=self.trip_id,
+                                 source="a.gpx")
+        self.assertEqual(s["skipped"], 0)
+        self.assertEqual(s["imported"], 3)
+
+    def test_covered_points_skipped(self):
+        # Eigener Track-Punkt bei 08:06:00 deckt den ersten GPX-Punkt
+        # (08:06:00) ab -> dieser wird übersprungen, die anderen bleiben.
+        self._own_track("2026-07-23T08:06:00Z")
+        s = gpximport.import_gpx(self.store, SAMPLE_GPX, trip_id=self.trip_id,
+                                 source="a.gpx", near_seconds=90)
+        self.assertEqual(s["skipped"], 1)
+        self.assertEqual(s["imported"], 2)
+
+    def test_gap_only_off_imports_all(self):
+        self._own_track("2026-07-23T08:06:00Z")
+        s = gpximport.import_gpx(self.store, SAMPLE_GPX, trip_id=self.trip_id,
+                                 source="a.gpx", gap_only=False)
+        self.assertEqual(s["skipped"], 0)
+        self.assertEqual(s["imported"], 3)
+
+    def test_own_track_not_counted_against_reimport(self):
+        # Beim Re-Import derselben Quelle dürfen deren EIGENE (gelöschte) Punkte
+        # nicht als „Abdeckung" zählen — sonst würde alles übersprungen.
+        gpximport.import_gpx(self.store, SAMPLE_GPX, trip_id=self.trip_id,
+                             source="a.gpx")
+        s2 = gpximport.import_gpx(self.store, SAMPLE_GPX, trip_id=self.trip_id,
+                                  source="a.gpx")
+        self.assertEqual(s2["imported"], 3)   # ersetzt, nicht übersprungen
+        self.assertEqual(s2["skipped"], 0)
 
 
 if __name__ == "__main__":

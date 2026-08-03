@@ -318,6 +318,12 @@ Logbuch-Liste, genau wie die eigene dichte Trackaufzeichnung. Ein erneuter
 Import derselben Datei **ersetzt** deren Punkte (keine Dubletten); eigene, live
 aufgezeichnete Trackpunkte bleiben unberührt.
 
+Standardmäßig ist **„Nur Lücken füllen"** aktiv: GPX-Punkte werden nur dort
+eingefügt, wo der Törn **noch keine eigene Trackspur** hat. Das verhindert eine
+doppelte, leicht versetzte **Zickzack-Linie** an Tagen, an denen SailLog **und**
+das andere Gerät gleichzeitig aufgezeichnet haben. Wer die GPX-Spur bewusst
+vollständig übernehmen will, schaltet die Option im Dialog ab.
+
 ## Altes TripCon-Logbuch importieren
 
 Eine TripCon-Sicherung (`.tcdb`) ist eine SQLite-Datenbank. SailLog kann
