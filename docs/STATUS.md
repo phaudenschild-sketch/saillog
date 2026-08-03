@@ -29,6 +29,12 @@ Konfiguration & Datenbank liegen unter `~/.saillog/`
 
 ## Zuletzt geändert (Verhalten)
 
+- **Fix (0.1.3): Englische Sprachdatei fehlte in der EXE.** `saillog.spec` packte
+  die Kataloge `src/saillog/lang/*.json` nicht mit (`datas=[]`), daher nur Deutsch
+  in der installierten App. Jetzt werden sie ins Bundle nach `saillog/lang`
+  aufgenommen; `i18n._package_lang_dir()` findet sie auch im PyInstaller-Bundle
+  (`sys._MEIPASS`). Aus dem Quellcode war Englisch nie betroffen.
+
 - **GPX-Track-Import (neu):** Menü **Extras → „GPX-Track importieren…"**
   (`gpximport.py`, `_GpxImportDialog`): liest GPX-Tages-Tracks (z.B. vom
   **Orca**) und legt die `<trkpt>` als **reine Track-Punkte** (`entry_type=

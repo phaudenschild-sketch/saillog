@@ -13,15 +13,21 @@ mitgepackt (Foto-Verkleinerung bzw. serieller Anschluss), sonst degradiert die
 App sauber.
 """
 
+import glob
 import os
 
 ICON = "assets/icon.ico" if os.path.exists("assets/icon.ico") else None
+
+# Mitgelieferte Sprachkataloge (lang/*.json) ins Bundle nach `saillog/lang`
+# packen — sonst fehlt in der EXE die Englisch-Übersetzung (Logo/Icon sind
+# dagegen als base64 im Code eingebettet und brauchen keine Datendateien).
+LANG_DATAS = [(f, "saillog/lang") for f in glob.glob("src/saillog/lang/*.json")]
 
 a = Analysis(
     ["main.py"],
     pathex=["src"],                 # damit `import saillog...` gefunden wird
     binaries=[],
-    datas=[],                        # Logo/Icon sind im Code eingebettet (base64)
+    datas=LANG_DATAS,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

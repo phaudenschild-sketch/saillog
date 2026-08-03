@@ -23,12 +23,28 @@ Verwendung::
 from __future__ import annotations
 
 import json
+import sys
 import threading
 from pathlib import Path
 from typing import Dict, Optional
 
-# Mitgelieferte Kataloge (im Paket)
-_LANG_DIR = Path(__file__).resolve().parent / "lang"
+
+def _package_lang_dir() -> Path:
+    """Ordner der mitgelieferten Kataloge — auch im PyInstaller-Bundle.
+
+    Als gefrorene EXE (PyInstaller) liegen die Datendateien unter
+    ``sys._MEIPASS`` (bei onedir der ``_internal``-Ordner); aus dem Quellcode
+    neben diesem Modul."""
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        frozen = Path(base) / "saillog" / "lang"
+        if frozen.is_dir():
+            return frozen
+    return Path(__file__).resolve().parent / "lang"
+
+
+# Mitgelieferte Kataloge (im Paket bzw. im EXE-Bundle)
+_LANG_DIR = _package_lang_dir()
 
 # Sonderschlüssel im Katalog: hält den Anzeigenamen der Sprache
 _NAME_KEY = "__language__"

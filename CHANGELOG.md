@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen an **SailLog** werden hier festgehalten.
 Format lose nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/);
 Versionen nach [SemVer](https://semver.org/lang/de/).
 
+## [0.1.3] – 2026-08-03
+
+### Behoben
+- **Englische Sprachdatei fehlte in der Windows-EXE.** Die mitgelieferten
+  Sprachkataloge (`lang/*.json`) wurden vom PyInstaller-Build nicht mitgepackt —
+  in der installierten App gab es daher nur Deutsch. Jetzt werden sie ins Bundle
+  aufgenommen (`saillog.spec`), und der Katalog-Pfad findet sie auch im
+  gefrorenen Bundle (`sys._MEIPASS`). Aus dem Quellcode war Englisch schon immer
+  verfügbar.
+
 ## [0.1.2] – 2026-08-02
 
 ### Neu
@@ -57,6 +67,7 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
   Tanken/Verbrauch, Fern-Erfassung (Handy/Tablet), Backup, TripCon-Import,
   Mehrquellen-Eingang (TCP/UDP/seriell) und Windows-Build (EXE + Installer).
 
+[0.1.3]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.3
 [0.1.2]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.2
 [0.1.1]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.1
 [0.1.0]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.0
