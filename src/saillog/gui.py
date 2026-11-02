@@ -95,6 +95,9 @@ class Application:
         self._source_defs = self._load_source_defs()
         self._sources: list = []
         self._src_status: Dict[int, tuple] = {}
+        # Signal-K-Alarme: Pfade, die gerade aktiv sind und schon geloggt wurden
+        # (für die Flankenerkennung -> ein Logbucheintrag je Alarm-Ereignis).
+        self._alarm_active_paths: set = set()
 
         # AIS: gemeinsame Zielliste, je Quelle ein Decoder (Mehrteiler pro Kanal)
         self._ais_targets = AisTargets()
@@ -215,6 +218,14 @@ class Application:
         self._sources_label = ttk.Label(top, text="", foreground="#555")
         self._sources_label.grid(row=1, column=0, columnspan=5, sticky="w", padx=8, pady=(0, 4))
         self._update_sources_label()
+
+        # Alarm-/Warn-Banner (aus Signal-K-Notifications) — standardmäßig
+        # ausgeblendet, erscheint rot/orange, sobald ein Alarm aktiv ist.
+        self._alarm_label = tk.Label(
+            top, text="", fg="#ffffff", bg="#c0392b", anchor="w",
+            font=("TkDefaultFont", 10, "bold"), padx=8, pady=3)
+        self._alarm_label.grid(row=2, column=0, columnspan=5, sticky="we", padx=8, pady=(0, 4))
+        self._alarm_label.grid_remove()   # erst zeigen, wenn ein Alarm ansteht
 
         # Törn-Leiste
         trip_bar = ttk.LabelFrame(self._root, text=t("Törn"))
@@ -1038,7 +1049,59 @@ class Application:
     def _schedule_live_update(self) -> None:
         self._update_live_labels()
         self._update_sources_label()  # Quellen-Status im GUI-Thread aktualisieren
+        self._update_alarms()         # Signal-K-Alarme: Banner + Logbucheintrag
         self._root.after(1000, self._schedule_live_update)
+
+    def _collect_alarms(self) -> list:
+        """Aktive Alarme über alle Quellen einsammeln (ein Eintrag je Pfad)."""
+        by_path: Dict[str, dict] = {}
+        for src in self._sources:
+            for alarm in getattr(src, "alarms", None) or []:
+                by_path[alarm.get("path", alarm.get("message", ""))] = alarm
+        return list(by_path.values())
+
+    def _update_alarms(self) -> None:
+        """Zeigt aktive Alarme im Banner und schreibt je Ereignis EINEN
+        Logbucheintrag (Flankenerkennung: inaktiv -> aktiv)."""
+        alarms = self._collect_alarms()
+        # Banner aktualisieren
+        if alarms:
+            worst = max((a.get("state", "") for a in alarms),
+                        key=lambda s: {"warning": 1, "warn": 1, "alert": 1,
+                                       "alarm": 2, "emergency": 3}.get(s, 0))
+            colour = "#c0392b" if worst in ("alarm", "emergency") else "#e67e22"
+            text = "⚠ " + "   ".join(
+                f"{a.get('message', a.get('path', '?'))}" for a in alarms)
+            self._alarm_label.config(text=text, bg=colour)
+            self._alarm_label.grid()
+        else:
+            self._alarm_label.grid_remove()
+
+        # Flankenerkennung -> neue Alarme ins Logbuch
+        active_paths = {a.get("path", a.get("message", "")) for a in alarms}
+        new = [a for a in alarms
+               if a.get("path", a.get("message", "")) not in self._alarm_active_paths]
+        self._alarm_active_paths = active_paths
+        if not new:
+            return
+        logged = 0
+        for alarm in new:
+            msg = alarm.get("message") or alarm.get("path") or "Alarm"
+            path = alarm.get("path", "")
+            state = alarm.get("state", "")
+            try:
+                entry = self._logbook.record_auto(
+                    trip_id=self._logbook.open_trip_id(),
+                    conditions={"note": t("Signal-K-Alarm: {path} ({state})",
+                                          path=path, state=state)},
+                    reason=t("⚠ Alarm: {msg}", msg=msg),
+                )
+                if entry is not None:
+                    logged += 1
+            except Exception:  # noqa: BLE001 - ein Alarm-Log darf nie die GUI stören
+                pass
+        if logged:
+            self._refresh_logbook()
 
     def _update_live_labels(self) -> None:
         snapshot = self._live.snapshot()
