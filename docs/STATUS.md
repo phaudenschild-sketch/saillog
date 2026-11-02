@@ -29,6 +29,18 @@ Konfiguration & Datenbank liegen unter `~/.saillog/`
 
 ## Zuletzt geändert (Verhalten)
 
+- **„Quittieren"-Knopf im Alarm-Banner (0.1.5):** Das Banner ist jetzt ein
+  `tk.Frame` (`_alarm_bar`) mit Label + Button `_alarm_ack_btn`. Ein Klick
+  (`_on_ack_alarms`) legt die aktuell aktiven Alarm-Schlüssel in
+  `_alarm_acknowledged_paths` und blendet das Banner lokal aus. `_update_alarms`
+  filtert quittierte via `signalk.visible_alarms(alarms, acked)` heraus; die
+  Funktion räumt zugleich Quittierungen für **nicht mehr aktive** Alarme weg,
+  sodass ein erneutes Auftreten (nach zwischenzeitlichem „normal") wieder
+  angezeigt wird. Logbuch-Flankenerkennung bleibt unabhängig vom Quittieren.
+  Hintergrund: signalk-venus schiebt nach dem Quittieren am Cerbo oft kein
+  „normal" nach → Alarm hing im Signal-K-Baum. Hilfsfunktionen `alarm_key`,
+  `visible_alarms` in `signalk.py`; Tests: `test_signalk.py` (AcknowledgeTest).
+
 - **Alarmanzeige aus Signal K (0.1.4):** `signalk.parse_notifications()` liest
   den `notifications`-Zweig des Signal-K-Baums (Cerbo GX, Victron) und liefert
   aktive Alarme/Warnungen (`state` != normal) mit Pfad+Meldung. `SignalKSource`

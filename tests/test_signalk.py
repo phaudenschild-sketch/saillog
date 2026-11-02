@@ -225,5 +225,46 @@ class NotificationsTest(unittest.TestCase):
         self.assertEqual(src.alarms[0]["message"], "LowStarterVoltage")
 
 
+class AcknowledgeTest(unittest.TestCase):
+    """Lokales Quittieren von Alarmen (``visible_alarms``)."""
+
+    A = {"path": "electrical.batteries.278.lowStarterVoltage",
+         "state": "alarm", "message": "LowStarterVoltage"}
+    B = {"path": "electrical.chargers.276.ripple",
+         "state": "warning", "message": "Ripple"}
+
+    def test_nothing_acknowledged_shows_all(self):
+        from saillog.signalk import visible_alarms
+        visible, cleaned = visible_alarms([self.A, self.B], set())
+        self.assertEqual(visible, [self.A, self.B])
+        self.assertEqual(cleaned, set())
+
+    def test_acknowledged_alarm_is_hidden(self):
+        from saillog.signalk import visible_alarms, alarm_key
+        acked = {alarm_key(self.A)}
+        visible, cleaned = visible_alarms([self.A, self.B], acked)
+        self.assertEqual(visible, [self.B])          # A ausgeblendet
+        self.assertEqual(cleaned, {alarm_key(self.A)})
+
+    def test_ack_expires_when_alarm_clears(self):
+        # A quittiert, dann nicht mehr aktiv -> Quittierung verfällt, sodass
+        # ein erneutes Auftreten wieder angezeigt würde.
+        from saillog.signalk import visible_alarms, alarm_key
+        acked = {alarm_key(self.A)}
+        visible, cleaned = visible_alarms([self.B], acked)   # A fehlt
+        self.assertEqual(visible, [self.B])
+        self.assertEqual(cleaned, set())                     # A verfallen
+        # A tritt erneut auf -> wieder sichtbar.
+        visible2, _ = visible_alarms([self.A, self.B], cleaned)
+        self.assertIn(self.A, visible2)
+
+    def test_message_fallback_key(self):
+        from saillog.signalk import visible_alarms, alarm_key
+        a = {"state": "warning", "message": "Ripple"}        # ohne path
+        self.assertEqual(alarm_key(a), "Ripple")
+        visible, _ = visible_alarms([a], {"Ripple"})
+        self.assertEqual(visible, [])
+
+
 if __name__ == "__main__":
     unittest.main()

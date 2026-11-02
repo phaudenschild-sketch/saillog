@@ -39,7 +39,7 @@ from saillog.source import (
     STATUS_ERROR,
     NmeaSource,
 )
-from saillog.signalk import SignalKSource
+from saillog.signalk import SignalKSource, alarm_key, visible_alarms
 from saillog.storage import (
     CrewMember, EquipmentParam, EQUIP_CATEGORIES, FuelEntry, LogbookStore,
     LogEntry, Person, REEF_TYPES, Ship, ShipEquipment, Trip, Voyage,
@@ -98,6 +98,9 @@ class Application:
         # Signal-K-Alarme: Pfade, die gerade aktiv sind und schon geloggt wurden
         # (für die Flankenerkennung -> ein Logbucheintrag je Alarm-Ereignis).
         self._alarm_active_paths: set = set()
+        # Lokal quittierte Alarme: Banner ausgeblendet, bis der Alarm erneut
+        # auftritt (verfällt, sobald er zwischenzeitlich „normal" war).
+        self._alarm_acknowledged_paths: set = set()
 
         # AIS: gemeinsame Zielliste, je Quelle ein Decoder (Mehrteiler pro Kanal)
         self._ais_targets = AisTargets()
@@ -221,11 +224,21 @@ class Application:
 
         # Alarm-/Warn-Banner (aus Signal-K-Notifications) — standardmäßig
         # ausgeblendet, erscheint rot/orange, sobald ein Alarm aktiv ist.
+        # Enthält einen „Quittieren"-Knopf, der hängende Alarme lokal ausblendet
+        # (nützlich, wenn Signal K ein „normal" nicht nachschiebt).
+        self._alarm_bar = tk.Frame(top, bg="#c0392b")
+        self._alarm_bar.grid(row=2, column=0, columnspan=5, sticky="we", padx=8, pady=(0, 4))
+        self._alarm_bar.columnconfigure(0, weight=1)
         self._alarm_label = tk.Label(
-            top, text="", fg="#ffffff", bg="#c0392b", anchor="w",
+            self._alarm_bar, text="", fg="#ffffff", bg="#c0392b", anchor="w",
             font=("TkDefaultFont", 10, "bold"), padx=8, pady=3)
-        self._alarm_label.grid(row=2, column=0, columnspan=5, sticky="we", padx=8, pady=(0, 4))
-        self._alarm_label.grid_remove()   # erst zeigen, wenn ein Alarm ansteht
+        self._alarm_label.grid(row=0, column=0, sticky="we")
+        self._alarm_ack_btn = tk.Button(
+            self._alarm_bar, text=t("Quittieren"), command=self._on_ack_alarms,
+            bg="#ffffff", fg="#000000", relief="raised", bd=1,
+            padx=8, pady=0, cursor="hand2")
+        self._alarm_ack_btn.grid(row=0, column=1, sticky="e", padx=(6, 4), pady=2)
+        self._alarm_bar.grid_remove()   # erst zeigen, wenn ein Alarm ansteht
 
         # Törn-Leiste
         trip_bar = ttk.LabelFrame(self._root, text=t("Törn"))
@@ -1062,25 +1075,29 @@ class Application:
 
     def _update_alarms(self) -> None:
         """Zeigt aktive Alarme im Banner und schreibt je Ereignis EINEN
-        Logbucheintrag (Flankenerkennung: inaktiv -> aktiv)."""
+        Logbucheintrag (Flankenerkennung: inaktiv -> aktiv). Lokal quittierte
+        Alarme bleiben ausgeblendet, bis sie erneut auftreten."""
         alarms = self._collect_alarms()
-        # Banner aktualisieren
-        if alarms:
-            worst = max((a.get("state", "") for a in alarms),
+        # Quittierte Alarme herausfiltern; abgeklungene Quittierungen verfallen.
+        visible, self._alarm_acknowledged_paths = visible_alarms(
+            alarms, self._alarm_acknowledged_paths)
+        # Banner aktualisieren (nur nicht-quittierte Alarme)
+        if visible:
+            worst = max((a.get("state", "") for a in visible),
                         key=lambda s: {"warning": 1, "warn": 1, "alert": 1,
                                        "alarm": 2, "emergency": 3}.get(s, 0))
             colour = "#c0392b" if worst in ("alarm", "emergency") else "#e67e22"
             text = "⚠ " + "   ".join(
-                f"{a.get('message', a.get('path', '?'))}" for a in alarms)
+                f"{a.get('message', a.get('path', '?'))}" for a in visible)
             self._alarm_label.config(text=text, bg=colour)
-            self._alarm_label.grid()
+            self._alarm_bar.config(bg=colour)
+            self._alarm_bar.grid()
         else:
-            self._alarm_label.grid_remove()
+            self._alarm_bar.grid_remove()
 
-        # Flankenerkennung -> neue Alarme ins Logbuch
-        active_paths = {a.get("path", a.get("message", "")) for a in alarms}
-        new = [a for a in alarms
-               if a.get("path", a.get("message", "")) not in self._alarm_active_paths]
+        # Flankenerkennung -> neue Alarme ins Logbuch (unabhängig vom Quittieren)
+        active_paths = {alarm_key(a) for a in alarms}
+        new = [a for a in alarms if alarm_key(a) not in self._alarm_active_paths]
         self._alarm_active_paths = active_paths
         if not new:
             return
@@ -1102,6 +1119,15 @@ class Application:
                 pass
         if logged:
             self._refresh_logbook()
+
+    def _on_ack_alarms(self) -> None:
+        """Quittiert die aktuell angezeigten Alarme: blendet das Banner lokal
+        aus. Ein neuer Alarm — oder derselbe nach zwischenzeitlichem „normal" —
+        erscheint wieder. Hilft bei in Signal K hängenden Benachrichtigungen,
+        die kein „normal" nachschieben. Der Logbucheintrag bleibt bestehen."""
+        for alarm in self._collect_alarms():
+            self._alarm_acknowledged_paths.add(alarm_key(alarm))
+        self._alarm_bar.grid_remove()
 
     def _update_live_labels(self) -> None:
         snapshot = self._live.snapshot()

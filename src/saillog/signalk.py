@@ -250,6 +250,29 @@ def parse_notifications(tree: Dict) -> list:
     return out
 
 
+def alarm_key(alarm: Dict) -> str:
+    """Eindeutiger Schlüssel eines Alarms: der Pfad, ersatzweise die Meldung."""
+    return str(alarm.get("path") or alarm.get("message") or "")
+
+
+def visible_alarms(alarms: list, acknowledged: set) -> tuple:
+    """Filtert lokal quittierte Alarme heraus.
+
+    ``acknowledged`` ist eine Menge von Alarm-Schlüsseln (:func:`alarm_key`),
+    die der Benutzer im Banner weggeklickt hat. Rückgabe ``(sichtbar, bereinigt)``:
+
+    * ``sichtbar`` – die Alarme, die (noch) nicht quittiert sind, in gleicher
+      Reihenfolge wie ``alarms``.
+    * ``bereinigt`` – ``acknowledged`` ohne die Schlüssel, die gerade **nicht**
+      aktiv sind. So wird ein Alarm, der zwischenzeitlich „normal" war, bei
+      erneutem Auftreten wieder angezeigt (die Quittierung „verfällt").
+    """
+    active = {alarm_key(a) for a in alarms}
+    cleaned = {k for k in acknowledged if k in active}
+    visible = [a for a in alarms if alarm_key(a) not in cleaned]
+    return visible, cleaned
+
+
 class SignalKSource:
     """Fragt einen Signal-K-Server per REST ab und speist ``LiveData``.
 
