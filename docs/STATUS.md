@@ -29,6 +29,16 @@ Konfiguration & Datenbank liegen unter `~/.saillog/`
 
 ## Zuletzt geändert (Verhalten)
 
+- **Alarmanzeige aus Signal K (0.1.4):** `signalk.parse_notifications()` liest
+  den `notifications`-Zweig des Signal-K-Baums (Cerbo GX, Victron) und liefert
+  aktive Alarme/Warnungen (`state` != normal) mit Pfad+Meldung. `SignalKSource`
+  wertet sie bei jedem Poll aus (`.alarms`-Property, `on_alarms`-Callback). Die
+  GUI zeigt ein **rotes/orangefarbenes Banner** (`_update_alarms`, aus
+  `source.alarms` im 1-Hz-Tick) und schreibt je **neuem** Alarm-Ereignis
+  (Flanke) **einen** Logbucheintrag (`record_auto`, Anlass „⚠ Alarm: …", Notiz
+  mit Pfad/Zustand) — Ersatz fürs ausgefallene Motorpanel. Tests:
+  `test_signalk.py` (NotificationsTest).
+
 - **Fix (0.1.3): Englische Sprachdatei fehlte in der EXE.** `saillog.spec` packte
   die Kataloge `src/saillog/lang/*.json` nicht mit (`datas=[]`), daher nur Deutsch
   in der installierten App. Jetzt werden sie ins Bundle nach `saillog/lang`

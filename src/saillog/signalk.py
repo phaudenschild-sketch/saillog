@@ -207,6 +207,49 @@ def signalk_to_snapshot(tree: Dict) -> Dict:
     return out
 
 
+# --- Alarme / Warnungen (Signal-K-notifications) ---------------------------
+
+# Zustände, die als aktiver Alarm/Warnung gelten (alles außer „normal").
+_ALARM_STATES = {"alert", "warn", "warning", "alarm", "emergency"}
+# Schwere für die Sortierung (schwerste zuerst).
+_ALARM_SEVERITY = {"alert": 1, "warn": 1, "warning": 1, "alarm": 2, "emergency": 3}
+# Diese Schlüssel innerhalb eines Notification-Blatts sind keine Unterpfade.
+_NOTIF_SKIP = ("value", "meta", "$source", "timestamp", "pgn", "sentence")
+
+
+def _collect_alarms(node: Dict, path: list, out: list) -> None:
+    for key, child in node.items():
+        if key in _NOTIF_SKIP or not isinstance(child, dict):
+            continue
+        here = path + [key]
+        val = child.get("value")
+        if isinstance(val, dict) and "state" in val:
+            state = str(val.get("state") or "").strip().lower()
+            if state in _ALARM_STATES:
+                msg = str(val.get("message") or "").strip() or key
+                out.append({"path": ".".join(here), "state": state, "message": msg})
+        _collect_alarms(child, here, out)
+
+
+def parse_notifications(tree: Dict) -> list:
+    """Aktive Alarme/Warnungen aus dem Signal-K-``notifications``-Zweig.
+
+    Gibt ``[{"path", "state", "message"}, …]`` zurück, nach Schwere sortiert
+    (schwerste zuerst). ``state='normal'`` wird ausgelassen. So kann SailLog die
+    Motor-/Bord-Alarme anzeigen (Ersatz fürs Instrumentenpanel), z.B.
+    ``electrical.batteries.278.lowStarterVoltage`` → „LowStarterVoltage".
+    """
+    out: list = []
+    if not isinstance(tree, dict):
+        return out
+    node = tree.get("notifications")
+    if not isinstance(node, dict):
+        return out
+    _collect_alarms(node, [], out)
+    out.sort(key=lambda a: _ALARM_SEVERITY.get(a["state"], 0), reverse=True)
+    return out
+
+
 class SignalKSource:
     """Fragt einen Signal-K-Server per REST ab und speist ``LiveData``.
 
@@ -223,6 +266,7 @@ class SignalKSource:
         on_status: Optional[StatusCallback] = None,
         on_raw: Optional[Callable[[str], None]] = None,
         on_ais: Optional[Callable[[str], None]] = None,   # (noch) ungenutzt
+        on_alarms: Optional[Callable[[list], None]] = None,
         reconnect_delay: float = 3.0,
         log_correction: float = 1.0,
         poll_interval: float = 1.0,
@@ -240,6 +284,8 @@ class SignalKSource:
         self._live = live
         self._on_status = on_status
         self._on_raw = on_raw
+        self._on_alarms = on_alarms
+        self._alarms: list = []   # zuletzt gesehene aktive Alarme/Warnungen
         self._reconnect_delay = reconnect_delay
         self._poll_interval = max(0.2, float(poll_interval))
         self.log_correction = float(log_correction) if log_correction else 1.0
@@ -274,6 +320,11 @@ class SignalKSource:
     def status(self) -> str:
         return self._status
 
+    @property
+    def alarms(self) -> list:
+        """Zuletzt gesehene aktive Alarme/Warnungen (aus den Notifications)."""
+        return self._alarms
+
     # --- interne Logik ----------------------------------------------------
 
     def _set_status(self, status: str, message: str = "") -> None:
@@ -297,6 +348,11 @@ class SignalKSource:
         with self._opener.open(self._url, timeout=5.0) as resp:
             raw = resp.read()
         tree = json.loads(raw.decode("utf-8", "replace"))
+        # Alarme/Warnungen (unabhängig von den Messwerten auswerten).
+        alarms = parse_notifications(tree)
+        self._alarms = alarms
+        if self._on_alarms is not None:
+            self._on_alarms(alarms)
         values = signalk_to_snapshot(tree)
         if values:
             if self.log_correction != 1.0:

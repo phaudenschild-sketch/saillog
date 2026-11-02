@@ -168,5 +168,62 @@ class LivePollTest(unittest.TestCase):
         self.assertIn(":3000/signalk", src._url)
 
 
+class NotificationsTest(unittest.TestCase):
+    # Echte Cerbo-GX-Antwort (im vessels/self-Baum unter "notifications").
+    CERBO = {"notifications": {"electrical": {"batteries": {"278": {
+        "lowStarterVoltage": {"meta": {}, "value": {
+            "state": "alarm", "message": "LowStarterVoltage",
+            "method": ["visual", "sound"]}, "timestamp": "2026-11-02T07:47:50Z"},
+        "alarm": {"meta": {}, "value": {
+            "state": "warning", "message": "Alarm"}},
+    }}}}}
+
+    def test_parses_active_alarms(self):
+        from saillog.signalk import parse_notifications
+        alarms = parse_notifications(self.CERBO)
+        paths = [a["path"] for a in alarms]
+        self.assertIn("electrical.batteries.278.lowStarterVoltage", paths)
+        self.assertIn("electrical.batteries.278.alarm", paths)
+        first = alarms[0]
+        self.assertEqual(first["state"], "alarm")          # schwerste zuerst
+        self.assertEqual(first["message"], "LowStarterVoltage")
+
+    def test_normal_state_is_ignored(self):
+        from saillog.signalk import parse_notifications
+        tree = {"notifications": {"propulsion": {"0": {"oilPressure": {
+            "value": {"state": "normal", "message": "ok"}}}}}}
+        self.assertEqual(parse_notifications(tree), [])
+
+    def test_no_notifications_branch(self):
+        from saillog.signalk import parse_notifications
+        self.assertEqual(parse_notifications({}), [])
+        self.assertEqual(parse_notifications({"navigation": {}}), [])
+        self.assertEqual(parse_notifications(None), [])
+
+    def test_source_exposes_alarms_after_poll(self):
+        # vessels/self mit Notifications -> SignalKSource.alarms wird gefüllt.
+        tree = dict(SAMPLE)
+        tree["notifications"] = self.CERBO["notifications"]
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        _Handler.payload = json.dumps(tree).encode("utf-8")
+        port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        seen = []
+        live = LiveData()
+        src = SignalKSource(host="127.0.0.1", port=port, live=live,
+                            poll_interval=0.05, on_alarms=seen.append)
+        src.start()
+        self.addCleanup(src.stop)
+        deadline = time.time() + 3.0
+        while not src.alarms and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(src.alarms, "SignalKSource.alarms blieb leer")
+        self.assertTrue(seen, "on_alarms wurde nicht aufgerufen")
+        self.assertEqual(src.alarms[0]["message"], "LowStarterVoltage")
+
+
 if __name__ == "__main__":
     unittest.main()
