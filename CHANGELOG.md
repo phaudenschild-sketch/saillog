@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen an **SailLog** werden hier festgehalten.
 Format lose nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/);
 Versionen nach [SemVer](https://semver.org/lang/de/).
 
+## [0.1.5] – 2026-11-02
+
+### Neu
+- **„Quittieren"-Knopf im Alarm-Banner**: Aktive Alarme/Warnungen lassen sich
+  jetzt direkt im Banner **lokal wegklicken**. Praktisch, wenn eine
+  Signal-K-Benachrichtigung **hängenbleibt** (z.B. nach dem Quittieren am
+  Victron Cerbo schiebt das Plugin kein „normal" nach, der Alarm steht aber
+  längst nicht mehr an). Die Quittierung **verfällt automatisch**, sobald der
+  Alarm zwischenzeitlich „normal" war — ein echtes neues Ereignis zeigt das
+  Banner also wieder, und der ursprüngliche Logbucheintrag bleibt erhalten.
+
 ## [0.1.4] – 2026-11-02
 
 ### Neu
@@ -80,6 +91,7 @@ Versionen nach [SemVer](https://semver.org/lang/de/).
   Tanken/Verbrauch, Fern-Erfassung (Handy/Tablet), Backup, TripCon-Import,
   Mehrquellen-Eingang (TCP/UDP/seriell) und Windows-Build (EXE + Installer).
 
+[0.1.5]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.5
 [0.1.4]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.4
 [0.1.3]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.3
 [0.1.2]: https://github.com/phaudenschild-sketch/saillog/releases/tag/v0.1.2

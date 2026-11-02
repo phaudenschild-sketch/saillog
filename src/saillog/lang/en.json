@@ -3,6 +3,10 @@
 
   "SailLog — Segel-Logbuch": "SailLog — Sailing logbook",
 
+  "Quittieren": "Acknowledge",
+  "Signal-K-Alarm: {path} ({state})": "Signal K alarm: {path} ({state})",
+  "⚠ Alarm: {msg}": "⚠ Alarm: {msg}",
+
   "Stammdaten": "Master data",
   "Personen verwalten…": "Manage people…",
   "Schiffe verwalten…": "Manage ships…",
